@@ -50,3 +50,7 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [14:41] wrote biome.json — 2-space, single-quote, 120-col, trailing commas, import organizer (assist.actions.source.organizeImports)
 - [14:41] wrote .env.example — CONTEXTOS_MODE, LOG_LEVEL, service ports, DB/Redis URLs, Clerk solo-bypass, LLM + integration placeholders
 - [14:42] edited External api and library reference.md — Vitest 4.1.4 → 4.1.5, Biome 2.2.4 → 2.4.12, Turborepo pinned 2.9.6 + pipeline→tasks gotcha, new TypeScript 6.0.3 entry
+- [14:43] ran pnpm install — 75 packages added, esbuild postinstall materialized after approving via pnpm.onlyBuiltDependencies
+- [14:44] ran pnpm lint — 4 files checked clean after tightening biome folder-ignore glob (`!**/drizzle/**/meta/**` → `!**/drizzle/**/meta`)
+- [14:44] commit 6c7cd6c on feat/01-foundation — feat(foundation): monorepo scaffold + tooling pins + reference amendments (9 files, +1740/-7)
+- [14:45] wrote docker-compose.yml — pgvector/pgvector:pg16 + redis:7-alpine, healthchecks, local-loopback port bindings, named volumes
