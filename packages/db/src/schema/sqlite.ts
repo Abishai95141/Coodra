@@ -4,17 +4,30 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 /**
  * SQLite schema — solo-mode primary store (`system-architecture.md` §4.1).
  *
- * Five tables shipped in Module 01 (the append-only core):
- *   - projects, runs, run_events, context_packs, pending_jobs
+ * Nine tables total after Module 02:
+ *   - Module-01 core (append-only where noted in §4.3):
+ *     projects, runs, run_events, context_packs, pending_jobs
+ *   - Module-02 additions:
+ *     policies, policy_rules, policy_decisions (append-only), feature_packs
  *
  * Every timestamp column uses `integer({ mode: 'timestamp' })` so Drizzle
- * returns `Date` instances; the underlying storage is Unix seconds. The
- * `unixepoch()` default keeps read parity with the Postgres `defaultNow()`.
+ * returns `Date` instances; the underlying storage is Unix seconds. Every
+ * boolean column uses `integer({ mode: 'boolean' })` which stores 0/1 but
+ * maps to JS boolean at the ORM layer; this keeps the schema-parity test
+ * green against Postgres's native `boolean` type (Drizzle reports the same
+ * `dataType: 'boolean'` for both).
  *
- * `context_packs.summary_embedding` is `text` here — sqlite-vec wiring is
- * Module 02's responsibility (see `docs/feature-packs/01-foundation/spec.md`
- * §4). The Postgres dialect defines the same column as `vector(384)`; the
- * schema-parity test allows that single intentional dialect drift.
+ * `context_packs.summary_embedding` is `text` here — the sqlite-vec
+ * virtual table `context_packs_vec` shipped in Module 02 holds the real
+ * vector and is created by a hand-appended SQL block in migration 0001
+ * (sha256-locked per `packages/db/migrations.lock.json`). The Postgres
+ * dialect keeps `vector(384)` on the main table with an HNSW index.
+ * The schema-parity test allows this single intentional dialect drift.
+ *
+ * `context_packs.content_excerpt` is populated at save time by
+ * `save_context_pack` with the first 500 Unicode code points of
+ * `content` (trailing whitespace trimmed). Powers the `search_packs_nl`
+ * LIKE fallback when `summary_embedding` is still NULL (pre-Module-05).
  */
 
 export const projects = sqliteTable('projects', {
@@ -74,6 +87,7 @@ export const contextPacks = sqliteTable(
       .references(() => projects.id),
     title: text('title').notNull(),
     content: text('content').notNull(),
+    contentExcerpt: text('content_excerpt').notNull().default(''),
     summaryEmbedding: text('summary_embedding'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   },
@@ -97,6 +111,68 @@ export const pendingJobs = sqliteTable(
   (t) => [index('pending_jobs_poll_idx').on(t.queue, t.status, t.runAfter)],
 );
 
+export const policies = sqliteTable('policies', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  name: text('name').notNull(),
+  description: text('description'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+});
+
+export const policyRules = sqliteTable(
+  'policy_rules',
+  {
+    id: text('id').primaryKey(),
+    policyId: text('policy_id')
+      .notNull()
+      .references(() => policies.id),
+    priority: integer('priority').notNull(),
+    matchEventType: text('match_event_type').notNull(),
+    matchToolName: text('match_tool_name').notNull(),
+    matchPathGlob: text('match_path_glob'),
+    matchAgentType: text('match_agent_type'),
+    decision: text('decision').notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (t) => [index('policy_rules_policy_priority_idx').on(t.policyId, t.priority)],
+);
+
+export const policyDecisions = sqliteTable(
+  'policy_decisions',
+  {
+    id: text('id').primaryKey(),
+    idempotencyKey: text('idempotency_key').notNull().unique(),
+    runId: text('run_id').references(() => runs.id),
+    sessionId: text('session_id').notNull(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    agentType: text('agent_type').notNull(),
+    eventType: text('event_type').notNull(),
+    toolName: text('tool_name').notNull(),
+    toolInputSnapshot: text('tool_input_snapshot').notNull(),
+    permissionDecision: text('permission_decision').notNull(),
+    matchedRuleId: text('matched_rule_id').references(() => policyRules.id),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (t) => [index('policy_decisions_session_idx').on(t.sessionId, t.createdAt)],
+);
+
+export const featurePacks = sqliteTable('feature_packs', {
+  id: text('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  parentSlug: text('parent_slug'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  checksum: text('checksum').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+});
+
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Run = typeof runs.$inferSelect;
@@ -107,3 +183,11 @@ export type ContextPack = typeof contextPacks.$inferSelect;
 export type NewContextPack = typeof contextPacks.$inferInsert;
 export type PendingJob = typeof pendingJobs.$inferSelect;
 export type NewPendingJob = typeof pendingJobs.$inferInsert;
+export type Policy = typeof policies.$inferSelect;
+export type NewPolicy = typeof policies.$inferInsert;
+export type PolicyRule = typeof policyRules.$inferSelect;
+export type NewPolicyRule = typeof policyRules.$inferInsert;
+export type PolicyDecision = typeof policyDecisions.$inferSelect;
+export type NewPolicyDecision = typeof policyDecisions.$inferInsert;
+export type FeaturePack = typeof featurePacks.$inferSelect;
+export type NewFeaturePack = typeof featurePacks.$inferInsert;

@@ -82,7 +82,7 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('applies the generated migrations and creates the 5-table core', () => {
+  it('applies the generated migrations and creates the nine-table schema', () => {
     const handle = createSqliteDb({ path: dbPath });
     try {
       migrateSqlite(handle.db);
@@ -92,7 +92,17 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
         )
         .all() as Array<{ name: string }>;
       const tables = rows.map((r) => r.name);
-      expect(tables).toEqual(['context_packs', 'pending_jobs', 'projects', 'run_events', 'runs']);
+      expect(tables).toEqual([
+        'context_packs',
+        'feature_packs',
+        'pending_jobs',
+        'policies',
+        'policy_decisions',
+        'policy_rules',
+        'projects',
+        'run_events',
+        'runs',
+      ]);
     } finally {
       handle.close();
     }
@@ -108,7 +118,7 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
           "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE '__drizzle%' AND name NOT LIKE 'sqlite_%'",
         )
         .get() as { n: number };
-      expect(rows.n).toBe(5);
+      expect(rows.n).toBe(9);
     } finally {
       first.close();
     }

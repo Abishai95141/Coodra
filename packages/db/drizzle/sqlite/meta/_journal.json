@@ -8,6 +8,13 @@
       "when": 1776851176748,
       "tag": "0000_productive_meltdown",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1776873614963,
+      "tag": "0001_chief_turbo",
+      "breakpoints": true
     }
   ]
 }
