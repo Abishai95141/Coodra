@@ -8,5 +8,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "__tests__", "vitest.config.ts"]
+  "exclude": ["dist", "node_modules", "drizzle", "__tests__", "vitest.config.ts", "drizzle.*.config.ts"]
 }

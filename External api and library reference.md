@@ -184,7 +184,7 @@ CREATE INDEX ON items USING hnsw (embedding vector_cosine_ops);
 
 ### better-sqlite3
 
-**Version:** Latest documented: works with Node ≥ 14.21.1; npm latest version must be verified via `npm view better-sqlite3 version`. [dev](https://dev.to/lovestaco/understanding-better-sqlite3-the-fastest-sqlite-library-for-nodejs-4n8)
+**Version:** 12.9.0 (pinned 2026-04-22 in the Module-01 Foundation commit that introduced `packages/db`; requires Node ≥ 20). [npmjs](https://www.npmjs.com/package/better-sqlite3)
 **Install:**
 
 ```bash
@@ -224,7 +224,7 @@ export const db = drizzle(sqlite);
 ### Postgres.js (`postgres`)
 
 **Package:** `postgres` (commonly referred to as Postgres.js)  
-**Version:** Not shown in retrieved docs; run `npm view postgres version` to obtain the current latest.  
+**Version:** 3.4.9 (pinned 2026-04-22 in the Module-01 Foundation commit that introduced `packages/db`).  
 **Install:**
 
 ```bash
@@ -282,7 +282,7 @@ postgres('postgres://user:pass@host:5432/db', {
 
 ### Drizzle ORM & drizzle-kit
 
-**Version:** Not explicit; use `npm view drizzle-orm version` and `npm view drizzle-kit version` to pin.  
+**Version:** `drizzle-orm@0.45.2` + `drizzle-kit@0.31.10` (pinned 2026-04-22 in the Module-01 Foundation commit that introduced `packages/db`).  
 **Install (SQLite + Postgres):**
 
 ```bash

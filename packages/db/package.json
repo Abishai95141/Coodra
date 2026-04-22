@@ -1,0 +1,60 @@
+{
+  "name": "@contextos/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ContextOS database layer — Drizzle ORM schemas (SQLite + Postgres), createDb factory, numbered migrations.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema/sqlite": {
+      "types": "./dist/schema/sqlite.d.ts",
+      "import": "./dist/schema/sqlite.js"
+    },
+    "./schema/postgres": {
+      "types": "./dist/schema/postgres.d.ts",
+      "import": "./dist/schema/postgres.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./migrate": {
+      "types": "./dist/migrate.d.ts",
+      "import": "./dist/migrate.js"
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "lint": "biome check .",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo drizzle/.tmp",
+    "db:generate:sqlite": "drizzle-kit generate --config=drizzle.sqlite.config.ts",
+    "db:generate:postgres": "drizzle-kit generate --config=drizzle.postgres.config.ts",
+    "db:generate": "pnpm run db:generate:sqlite && pnpm run db:generate:postgres",
+    "db:studio:sqlite": "drizzle-kit studio --config=drizzle.sqlite.config.ts",
+    "db:studio:postgres": "drizzle-kit studio --config=drizzle.postgres.config.ts"
+  },
+  "dependencies": {
+    "@contextos/shared": "workspace:*",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}

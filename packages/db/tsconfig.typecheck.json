@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "tsBuildInfoFile": null
+  },
+  "include": [
+    "src/**/*.ts",
+    "__tests__/**/*.ts",
+    "vitest.config.ts",
+    "drizzle.sqlite.config.ts",
+    "drizzle.postgres.config.ts"
+  ],
+  "exclude": ["dist", "node_modules", "drizzle"]
+}

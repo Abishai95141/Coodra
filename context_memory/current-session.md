@@ -75,3 +75,21 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [14:57] edited External api and library reference.md — Zod 4.1.9 → 4.3.6, Pino 9.9.5 → 10.3.1 with ESM-only gotcha
 - [14:58] ran pnpm exec biome check --write --unsafe . — applied useLiteralKeys fix (`process.env.HOSTNAME` form); 17 files clean
 - [14:58] reran pnpm lint + typecheck + test:unit — all green
+- [15:00] commit d9f878c on feat/01-foundation — feat(shared): @contextos/shared — logger/errors/config/idempotency (13 files, +915)
+- [15:14] wrote packages/db/package.json — @contextos/db, deps better-sqlite3@^12.9.0, drizzle-orm@^0.45.2, postgres@^3.4.9 and workspace @contextos/shared; devDeps drizzle-kit@^0.31.10 + @types/better-sqlite3
+- [15:14] wrote packages/db/tsconfig.json (build-only, rootDir=src) and packages/db/tsconfig.typecheck.json (includes tests + drizzle configs)
+- [15:14] wrote packages/db/drizzle.{sqlite,postgres}.config.ts — dialect configs pointing at src/schema/*.ts, out=drizzle/{dialect}/, strict+verbose
+- [15:14] wrote packages/db/src/schema/sqlite.ts — 5-table core: projects, runs, run_events, context_packs, pending_jobs; sqlite timestamps via integer({mode:'timestamp'}) + unixepoch() defaults
+- [15:14] wrote packages/db/src/schema/postgres.ts — same 5 tables with timestamp+tz defaults and context_packs.summary_embedding as vector(384)
+- [15:14] wrote packages/db/src/schema/index.ts — namespace re-exports (sqliteSchema, postgresSchema) for the parity test
+- [15:14] wrote packages/db/src/client.ts — SqliteHandle / PostgresHandle, resolveSqlitePath (~ expansion + :memory:), RECOMMENDED_PRAGMAS, createSqliteDb / createPostgresDb / createDb mode-dispatcher
+- [15:14] wrote packages/db/src/migrate.ts — migrateSqlite + migratePostgres + MIGRATIONS_FOLDER paths derived from import.meta.url
+- [15:14] wrote packages/db/src/index.ts — public surface re-exports
+- [15:15] ran pnpm install — 45 packages added (drizzle-orm, drizzle-kit, better-sqlite3, postgres, @types/better-sqlite3, 3 deprecated esbuild-kit subdeps noted)
+- [15:16] ran pnpm --filter @contextos/db db:generate — wrote drizzle/sqlite/0000_productive_meltdown.sql and drizzle/postgres/0000_free_wind_dancer.sql; drizzle-kit reports parity (5 tables, same column counts per table)
+- [15:17] wrote packages/db/__tests__/unit/schema-parity.test.ts — 18 assertions: table presence + column-name + notNull + dataType category parity with an explicit allowlist for context_packs.summary_embedding
+- [15:17] wrote packages/db/__tests__/unit/client.test.ts — 12 assertions covering resolveSqlitePath, createSqliteDb with/without PRAGMAs, migrate idempotence, Drizzle insert/select roundtrip, createDb mode dispatch (including ValidationError when team has no DATABASE_URL)
+- [15:18] discovered the shared workspace dep couldn't be resolved by tsc because rootDir=. placed outputs at dist/src/*.js; fixed by splitting into tsconfig.json (build, rootDir=src) + tsconfig.typecheck.json (src+tests+configs) in both packages/shared and packages/db; rebuilt @contextos/shared → dist/index.js now at the expected path
+- [15:35] first test:unit run: one failure (foreign_keys default=1 in better-sqlite3 12 broke the brittle "skipPragmas=true leaves fk off" assertion); replaced the assertion to verify our cache_size=-64000 is present vs absent, all 30 tests green
+- [15:36] edited External api and library reference.md — pinned better-sqlite3 12.9.0, postgres 3.4.9, drizzle-orm 0.45.2, drizzle-kit 0.31.10 in the same commit
+- [15:36] ran pnpm exec biome check --write --unsafe — useLiteralKeys fixes across 11 files; reran pnpm lint + typecheck + test:unit — 88/88 tests green
