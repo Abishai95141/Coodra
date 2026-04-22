@@ -28,7 +28,8 @@
     "test": "pnpm test:unit",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
-    "clean": "turbo run clean && rm -rf node_modules .turbo"
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",

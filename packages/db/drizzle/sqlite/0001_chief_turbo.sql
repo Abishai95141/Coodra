@@ -55,4 +55,17 @@ CREATE TABLE `policy_rules` (
 );
 --> statement-breakpoint
 CREATE INDEX `policy_rules_policy_priority_idx` ON `policy_rules` (`policy_id`,`priority`);--> statement-breakpoint
-ALTER TABLE `context_packs` ADD `content_excerpt` text DEFAULT '' NOT NULL;
+ALTER TABLE `context_packs` ADD `content_excerpt` text DEFAULT '' NOT NULL;--> statement-breakpoint
+-- @preserve-begin hand-written:sqlite-vec
+-- Block owner: Module 02. Creates the vec0 virtual table paired with
+-- `context_packs`. Drizzle-Kit does NOT emit this; sha256 of this block
+-- is locked in `packages/db/migrations.lock.json`. If drizzle-kit regenerates
+-- this migration and wipes this block, restore from git and re-run
+-- `pnpm --filter @contextos/db check:migration-lock` to verify the sha256.
+-- EMBEDDING_DIM (384) is sourced from `@contextos/shared/constants`; change
+-- via the checklist in `packages/shared/src/constants.ts`.
+CREATE VIRTUAL TABLE IF NOT EXISTS context_packs_vec USING vec0(
+  context_pack_id TEXT PRIMARY KEY,
+  embedding FLOAT[384]
+);
+-- @preserve-end hand-written:sqlite-vec

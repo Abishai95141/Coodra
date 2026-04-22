@@ -46,53 +46,78 @@ PRAGMA temp_store = MEMORY;
 
 ### sqlite-vec
 
-**Version:** Not pinned; architecture assumes a `vec0` virtual table module with cosine distance support. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-**Install:**  
+**Version:** `0.1.9` — pinned **exact** in `packages/db/package.json` (no caret). 0.x packages do not follow semver; a minor bump can and has added column syntax. The matching platform binary ships as an `optionalDependencies` entry (e.g. `sqlite-vec-darwin-arm64@0.1.9`), resolved automatically by pnpm from the parent `sqlite-vec` package.
+**Install:**
 
-Installation is environment-specific; typical patterns (must verify manually):
-
-- Python / CLI wrapper:  
-
-  ```bash
-  # Example from sqlite-utils ecosystem
-  sqlite-utils install sqlite-utils-sqlite-vec
-  ``` [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-- Direct dynamic extension: download the `sqlite-vec` shared library for your platform and load with `load_extension()`. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-**Docs:** <https://github.com/asg017/sqlite-vec> [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-#### Cosine KNN virtual table
-
-Architecture uses a 384‑dimensional cosine KNN table for embeddings. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
-
-```sql
-SELECT load_extension('/path/to/vec0');
-
-CREATE VIRTUAL TABLE IF NOT EXISTS pack_embeddings USING vec0(
-  pack_id   TEXT PRIMARY KEY,
-  embedding FLOAT[384] distance_metric=cosine
-);
-
-SELECT pack_id, distance
-FROM pack_embeddings
-WHERE embedding MATCH ?   -- query vector as packed float32 blob
-  AND k = 5
-ORDER BY distance;
+```bash
+pnpm --filter @contextos/db add sqlite-vec@0.1.9 --save-exact
 ```
 
-- `distance_metric=cosine` must be supported by the installed `sqlite-vec` build; early versions only supported L2. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-- Query uses `MATCH` with `k` filter; this is the canonical sqlite-vec query style. [github](https://github.com/TablePlus/TablePlus/issues/3625)
+**Node.js load pattern** (what `createSqliteDb` does, guarded by the strict-vs-WARN contract below):
+
+```ts
+import Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
+
+const db = new Database(path);
+sqliteVec.load(db);   // throws if the platform binary is missing
+```
+
+**Docs:** <https://alexgarcia.xyz/sqlite-vec/> · <https://github.com/asg017/sqlite-vec>
+
+#### vec0 virtual table (what ContextOS writes)
+
+Module 02 migration `0001_chief_turbo.sql` creates:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS context_packs_vec USING vec0(
+  context_pack_id TEXT PRIMARY KEY,
+  embedding       FLOAT[384]
+);
+```
+
+`sqlite-vec@0.1.9` does **not** accept `distance_metric=cosine` as an inline column modifier. The default distance for `FLOAT[N]` columns is L2; for cosine similarity, we normalise vectors to unit length before inserting and rely on the `vec_distance_cosine(a, b)` scalar function in ad-hoc queries. The HNSW-cosine cloud index lives on the Postgres side (`context_packs_embedding_hnsw_idx`, migration 0001, preserve-block).
+
+**Insert + KNN from Node:**
+
+```ts
+// JSON-text form is the canonical input — sidesteps any ambiguity around
+// how better-sqlite3 binds typed-array buffers into BLOB parameters.
+const vec = `[${values.join(',')}]`;
+
+db.prepare(
+  'INSERT INTO context_packs_vec(context_pack_id, embedding) VALUES (?, ?)',
+).run(packId, vec);
+
+const rows = db
+  .prepare(
+    `SELECT context_pack_id, distance
+       FROM context_packs_vec
+       WHERE embedding MATCH ?
+         AND k = ?
+       ORDER BY distance`,
+  )
+  .all(vec, 5);
+```
+
+#### Strict-vs-WARN load contract (decision 2026-04-22 22:08)
+
+`packages/db/src/client.ts::loadSqliteVecOrFail` attempts `sqliteVec.load(db)` and handles failure based on the environment:
+
+- `NODE_ENV=test` **or** `CONTEXTOS_REQUIRE_VEC=1` → throw `InternalError('sqlite_vec_unavailable')` and refuse the SQLite handle. Dev and CI must never silently degrade to the LIKE-over-`content_excerpt` fallback, because that would hide embedding-index regressions.
+- otherwise → log a structured WARN tagged `sqlite_vec_unavailable` with `{ loadablePath, platform, arch, err }` and continue. This is the production fail-open path (§7 of `system-architecture.md`): the server still serves contextual reads and falls back to LIKE search.
 
 **Gotchas & caveats**
 
-- Architecture assumes brute-force KNN by default: `sqlite-vec` can behave as an O(n·d) scan engine; ANN indices like IVF/HNSW are optional and version-dependent. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-- Do **not** assume HNSW support; you must explicitly check documentation and extension version before configuring any `index_type`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
-- Vectors are stored as fixed-length arrays; changing dimensionality requires table recreation.  
+- **Dimension changes require recreation.** `FLOAT[N]` is baked into the vtab schema; changing `EMBEDDING_DIM` (from `@contextos/shared/constants`) means a migration + full re-embed. The `packages/shared/src/constants.ts` docblock carries the five-step checklist.
+- **Shadow tables.** Creating a `vec0` virtual table also materialises 4–5 companion tables (`<name>_chunks`, `<name>_rowids`, `<name>_vector_chunks00`, `<name>_info`). The unit test in `packages/db/__tests__/unit/client.test.ts` filters them via `substr(name, 1, 18) <> 'context_packs_vec_'` so assertions target the 10-object logical schema.
+- **Migration lock.** The `CREATE VIRTUAL TABLE` block is hand-written and sha256-locked via `packages/db/migrations.lock.json`. Drizzle-Kit regenerating `0001` would wipe it; CI and the `.githooks/pre-commit` hook run `pnpm --filter @contextos/db check:migration-lock` to catch that drift before it reaches main.
+- **ANN vs brute-force.** `vec0` is an O(n·d) scan engine in 0.1.x; HNSW/IVF support is not in 0.1.9. Solo-mode SQLite search is therefore brute-force, which is acceptable for the dataset sizes solo workflows produce. Team mode uses the Postgres HNSW index.
+- **Loadable-extension privilege.** `loadExtension(path)` requires SQLite to have extension loading enabled. `better-sqlite3` enables it for the lifetime of the connection it's called on; no pragma needed.
 
 **Incompatibilities**
 
-- Some GUI tools cannot introspect `vec0` virtual tables; they may show errors when browsing DBs using sqlite-vec. [github](https://github.com/TablePlus/TablePlus/issues/3625)
+- Some GUI tools (TablePlus, DB Browser) cannot introspect `vec0` virtual tables and will surface errors when browsing `context_packs_vec`. Use the CLI (`sqlite3`) for direct inspection.
 
 ***
 

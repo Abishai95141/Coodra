@@ -1,14 +1,17 @@
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { ValidationError } from '@contextos/shared';
+import { createLogger, InternalError, ValidationError } from '@contextos/shared';
 import Database, { type Database as BetterSqliteDatabase } from 'better-sqlite3';
 import { type BetterSQLite3Database, drizzle as drizzleSqlite } from 'drizzle-orm/better-sqlite3';
 import { drizzle as drizzlePostgres, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
+import * as sqliteVec from 'sqlite-vec';
 
 import * as postgresSchema from './schema/postgres.js';
 import * as sqliteSchema from './schema/sqlite.js';
+
+const clientLogger = createLogger('db.sqlite-vec-loader');
 
 /**
  * The SQLite Drizzle client shape used by solo-mode services and by every
@@ -33,6 +36,23 @@ export interface CreateSqliteDbOptions {
 
   /** Skip setting the recommended PRAGMAs (for ephemeral test DBs). */
   skipPragmas?: boolean;
+
+  /**
+   * Load the `sqlite-vec` loadable extension on the raw connection so the
+   * `context_packs_vec` vec0 virtual table (and future vec0 tables) are
+   * usable by this handle. Defaults to `true`.
+   *
+   * Failure handling (per decision 2026-04-22 22:08):
+   *   - `NODE_ENV=test` or `CONTEXTOS_REQUIRE_VEC=1` → throw
+   *     `InternalError('sqlite_vec_unavailable')`. Dev and test must not
+   *     silently degrade — a missing extension would hide embedding-index
+   *     regressions.
+   *   - otherwise → log a WARN line tagged `sqlite_vec_unavailable` and
+   *     continue. This is the production fail-open path
+   *     (`system-architecture.md` §7): the server still serves contextual
+   *     reads and falls back to LIKE-over-`content_excerpt`.
+   */
+  loadVecExtension?: boolean;
 }
 
 export interface CreatePostgresDbOptions {
@@ -94,9 +114,55 @@ export function resolveSqlitePath(input: string | undefined): string {
 }
 
 /**
+ * Whether the current process requires sqlite-vec to load successfully.
+ * In `test` and explicit opt-in contexts, a silent fallback would hide
+ * embedding-path regressions; so we throw. Production defaults to WARN.
+ * Environment variables are re-read on every call so test code can flip
+ * `CONTEXTOS_REQUIRE_VEC` at runtime without re-importing the module.
+ */
+function vecLoadIsRequired(): boolean {
+  return process.env.NODE_ENV === 'test' || process.env.CONTEXTOS_REQUIRE_VEC === '1';
+}
+
+/**
+ * Attempt to load the `sqlite-vec` loadable extension on the given raw
+ * `better-sqlite3` handle. On failure: throw when the process is in a
+ * must-not-silently-degrade environment, otherwise WARN and continue.
+ * Exported so integration tests can cover both branches directly.
+ */
+export function loadSqliteVecOrFail(raw: BetterSqliteDatabase): void {
+  let loadablePath = '<unknown>';
+  try {
+    try {
+      loadablePath = sqliteVec.getLoadablePath();
+    } catch {
+      // `getLoadablePath` can throw on unsupported platforms before we even
+      // reach `load`; keep the placeholder so the log line still has a slot.
+    }
+    sqliteVec.load(raw);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const meta = {
+      event: 'sqlite_vec_unavailable',
+      loadablePath,
+      platform: process.platform,
+      arch: process.arch,
+      err: message,
+    };
+    if (vecLoadIsRequired()) {
+      clientLogger.error(meta, 'sqlite_vec_unavailable: strict mode, aborting SQLite handle creation');
+      throw new InternalError(`sqlite_vec_unavailable: ${message}`, cause);
+    }
+    clientLogger.warn(meta, 'sqlite_vec_unavailable: falling back to LIKE search path');
+  }
+}
+
+/**
  * Open (or create) a SQLite-backed Drizzle client per §4.1. The returned
  * handle carries a `.close()` the caller is expected to invoke during
- * shutdown.
+ * shutdown. The `sqlite-vec` loadable extension is loaded by default;
+ * see `CreateSqliteDbOptions.loadVecExtension` for the failure-handling
+ * contract.
  */
 export function createSqliteDb(options: CreateSqliteDbOptions = {}): SqliteHandle {
   const path = resolveSqlitePath(options.path);
@@ -107,6 +173,14 @@ export function createSqliteDb(options: CreateSqliteDbOptions = {}): SqliteHandl
   if (options.skipPragmas !== true) {
     for (const pragma of RECOMMENDED_PRAGMAS) {
       raw.pragma(pragma);
+    }
+  }
+  if (options.loadVecExtension !== false) {
+    try {
+      loadSqliteVecOrFail(raw);
+    } catch (err) {
+      raw.close();
+      throw err;
     }
   }
   const db = drizzleSqlite(raw, { schema: sqliteSchema });

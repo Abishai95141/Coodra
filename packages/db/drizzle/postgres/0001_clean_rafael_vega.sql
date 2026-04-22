@@ -55,4 +55,22 @@ ALTER TABLE "policy_decisions" ADD CONSTRAINT "policy_decisions_project_id_proje
 ALTER TABLE "policy_decisions" ADD CONSTRAINT "policy_decisions_matched_rule_id_policy_rules_id_fk" FOREIGN KEY ("matched_rule_id") REFERENCES "public"."policy_rules"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "policy_rules" ADD CONSTRAINT "policy_rules_policy_id_policies_id_fk" FOREIGN KEY ("policy_id") REFERENCES "public"."policies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "policy_decisions_session_idx" ON "policy_decisions" USING btree ("session_id","created_at");--> statement-breakpoint
-CREATE INDEX "policy_rules_policy_priority_idx" ON "policy_rules" USING btree ("policy_id","priority");
+CREATE INDEX "policy_rules_policy_priority_idx" ON "policy_rules" USING btree ("policy_id","priority");--> statement-breakpoint
+-- @preserve-begin hand-written:pgvector-hnsw
+-- Block owner: Module 02. Ensures the pgvector extension is loaded and
+-- materialises the HNSW index on `context_packs.summary_embedding` with
+-- cosine distance. Drizzle-Kit does NOT emit this; sha256 of this block
+-- is locked in `packages/db/migrations.lock.json`. If drizzle-kit
+-- regenerates this migration and wipes this block, restore from git and
+-- re-run `pnpm --filter @contextos/db check:migration-lock` to verify.
+-- HNSW params per decision 2026-04-22 22:10: m=16, ef_construction=64
+-- (pgvector 0.8.x defaults — balanced recall/build-time for datasets up
+-- to ~1M rows; revisit in Module 05 if recall degrades measurably).
+-- ef_search stays at the session default (40) and is tunable via
+-- `SET hnsw.ef_search` in the query path.
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE INDEX IF NOT EXISTS context_packs_embedding_hnsw_idx
+  ON context_packs
+  USING hnsw (summary_embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
+-- @preserve-end hand-written:pgvector-hnsw

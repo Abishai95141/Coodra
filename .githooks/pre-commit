@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# ContextOS pre-commit hook — zero-dependency (no Husky, no simple-git-hooks).
+#
+# Activated automatically on `pnpm install` via the workspace `postinstall`
+# script (`package.json` → "prepare"). If a contributor skips pnpm install,
+# the hook is inert until they run it once.
+#
+# Runs the migration-lock check only when files inside packages/db are
+# staged, so commits that do not touch the database layer stay fast.
+# CI (.github/workflows/ci.yml → verify job) runs the same check
+# unconditionally, so a stale or bypassed hook cannot sneak drift into
+# main.
+set -eu
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-commit: pnpm is not on PATH; skipping migration-lock check." >&2
+  exit 0
+fi
+
+# Git 2.0+ exposes the staged file list via --cached + --name-only.
+staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+
+case "$staged" in
+  *packages/db/*)
+    echo "pre-commit: running migration-lock check (staged files in packages/db detected)"
+    pnpm --filter @contextos/db run check:migration-lock
+    ;;
+  *)
+    # No DB changes staged — nothing to verify.
+    :
+    ;;
+esac

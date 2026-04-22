@@ -188,3 +188,23 @@ Format:
 **Rationale:** Env parsing is the gate on every startup. Without fixture coverage, a refactor to the schema could silently accept invalid envs or reject valid ones. Four fixtures is the minimum to pin the two axes (mode × Clerk presence) + one "obviously wrong" control.
 **Alternatives considered:** Exhaustive combinatorial fixtures (rejected — four is enough to pin each path). No regression test (rejected — addition D is explicitly required).
 **Reference:** user plan-approval addition D.
+
+## 2026-04-22 22:08 — sqlite-vec load failure is strict in test, fail-open in production (S4 refinement)
+
+**Decision:** `packages/db/src/client.ts::loadSqliteVecOrFail` wraps `sqliteVec.load(db)` in a try/catch. When `process.env.NODE_ENV === 'test'` **or** `process.env.CONTEXTOS_REQUIRE_VEC === '1'`, a load failure throws `InternalError('sqlite_vec_unavailable')` with the underlying cause, logs an `error`-level structured line (`{ event: 'sqlite_vec_unavailable', loadablePath, platform, arch, err }`), and refuses the SQLite handle. Otherwise, the failure logs a `warn`-level line with the same shape and `createSqliteDb` returns a working handle that still serves all non-vector operations. Env vars are re-read on every call so tests can flip them at runtime. Covered by three integration tests in `packages/db/__tests__/integration/sqlite-vec.test.ts` (one per branch).
+
+**Rationale:** The user's S4 approval was explicit — "Don't let dev/test silently degrade". CI and local test runs must never produce false-green results from a missing embedding-index, because the LIKE-over-`content_excerpt` fallback is a semantic degradation that would mask real regressions. Production, by contrast, must stay available: a new binary platform without a prebuilt sqlite-vec should still let the MCP server serve contextual reads with reduced precision, per the §7 fail-open discipline.
+
+**Alternatives considered:** Always throw (rejected — would take down production on any platform sqlite-vec doesn't yet ship binaries for). Always warn (rejected — hides CI regressions). Toggle via a schema env field only (rejected — `NODE_ENV=test` is Vitest's own convention; coupling to it is more predictable than requiring every test to set a ContextOS-specific flag).
+
+**Reference:** user S4 approval, third refinement; `system-architecture.md §7`; `packages/db/src/client.ts`; `External api and library reference.md` → sqlite-vec → Strict-vs-WARN contract.
+
+## 2026-04-22 22:10 — pgvector HNSW index parameters are m=16, ef_construction=64
+
+**Decision:** The hand-written preserve-block in `packages/db/drizzle/postgres/0001_clean_rafael_vega.sql` creates `context_packs_embedding_hnsw_idx ON context_packs USING hnsw (summary_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`. `m` = number of bidirectional HNSW links per node (controls graph connectivity and storage). `ef_construction` = size of the dynamic candidate list during index build (controls build-time quality). `ef_search` stays at the pgvector session default (40) and is tunable at query time via `SET LOCAL hnsw.ef_search = N`. The `postgres-migrate.test.ts` integration test asserts both parameters appear in `pg_indexes.indexdef`.
+
+**Rationale:** `m=16, ef_construction=64` are pgvector 0.8.x's own defaults, chosen by its authors for datasets up to ~1M rows with ~95% recall at `ef_search=40`. Module 02's expected working set (every Context Pack ever saved) is well inside that envelope. Explicitly writing the defaults (rather than omitting them and relying on the version default) locks the DDL against pgvector default changes and makes the decision grep-able in the migration file itself.
+
+**Alternatives considered:** `m=32, ef_construction=128` (rejected — doubles index size and build time for a recall improvement we cannot currently measure; revisit in Module 05 if recall benchmarks motivate it). `m=8, ef_construction=32` (rejected — pgvector README warns that below the default, recall degrades noticeably beyond a few hundred thousand rows). Omit the WITH clause and rely on pgvector defaults (rejected — silent version coupling).
+
+**Reference:** user S4 approval, fourth refinement ("Record HNSW param choice via record_decision"); pgvector 0.8.x README → HNSW tuning; `packages/db/drizzle/postgres/0001_clean_rafael_vega.sql` preserve-block; `packages/db/__tests__/integration/postgres-migrate.test.ts` HNSW-index-exists assertion.

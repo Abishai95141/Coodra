@@ -24,7 +24,8 @@
       "!**/.next",
       "!**/out",
       "!**/*.min.js",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!packages/db/migrations.lock.json"
     ]
   },
   "formatter": {

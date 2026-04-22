@@ -27,6 +27,10 @@
     "./idempotency": {
       "types": "./dist/idempotency.d.ts",
       "import": "./dist/idempotency.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.js"
     }
   },
   "files": [

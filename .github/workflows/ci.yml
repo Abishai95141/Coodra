@@ -47,6 +47,14 @@ jobs:
         # them against the already-resolved versions.
         run: pnpm rebuild
 
+      - name: Migration lock (hand-written preserve-blocks in drizzle/*.sql)
+        # Runs BEFORE lint so a drift in an architecturally-locked block
+        # (e.g. drizzle-kit regenerated 0001 and wiped the vec0 virtual
+        # table) surfaces before any other signal. Produces a diffable
+        # failure naming file, marker, expected sha256, and remediation
+        # command (see packages/db/scripts/check-migration-lock.mjs).
+        run: pnpm --filter @contextos/db run check:migration-lock
+
       - name: Lint
         run: pnpm lint
 

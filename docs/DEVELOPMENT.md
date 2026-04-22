@@ -108,6 +108,49 @@ The schema-parity unit test
 the two dialects drift in a way that is not explicitly allow-listed in
 the test's `DIALECT_TYPE_EXEMPTIONS` map.
 
+### Migration lock (hand-written preserve-blocks)
+
+Some SQL that the database needs cannot be emitted by Drizzle-Kit —
+today: the `sqlite-vec` virtual-table DDL (SQLite) and the pgvector
+HNSW index DDL (Postgres). These live inside the Drizzle-generated
+migration files, wrapped in preserve markers:
+
+```sql
+-- @preserve-begin hand-written:<marker>
+<hand-written SQL>
+-- @preserve-end hand-written:<marker>
+```
+
+Every marked block is sha256-locked in
+`packages/db/migrations.lock.json` with `{ file, blockMarker, sha256,
+lineRange, generatedAt }`. CI (`.github/workflows/ci.yml` → `verify`
+job) and the `.githooks/pre-commit` hook both run the checker:
+
+```bash
+pnpm --filter @contextos/db run check:migration-lock
+```
+
+The checker surfaces three failure modes, each with a diffable
+message naming the file, the marker, the expected sha256, and the
+remediation command:
+
+- `MISSING_IN_FILE` — the block is gone (Drizzle-Kit regenerated and
+  wiped it). Restore from git: `git log -p <migration>`.
+- `MISSING_IN_LOCK` — a new hand-written block was added without
+  running `--write`. Run it and commit.
+- `SHA256_MISMATCH` — the body drifted. If the edit was intentional,
+  regenerate the lock:
+
+  ```bash
+  pnpm --filter @contextos/db run check:migration-lock -- --write
+  git diff packages/db/migrations.lock.json   # sanity check
+  git add packages/db/migrations.lock.json
+  ```
+
+Pre-commit only runs the check when files under `packages/db/` are
+staged; CI always runs it. The hook is wired automatically by `pnpm
+install` (root `prepare` script sets `core.hooksPath` to `.githooks`).
+
 ## Branching, commits, and the session protocol
 
 Per the standing context (`CLAUDE.md`, `system-architecture.md` §24),
