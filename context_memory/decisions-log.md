@@ -111,3 +111,80 @@ Format:
 **Rationale:** Prevents the documented version drifting out of sync with the pinned version even for one commit window. Follow-up commits tend to get forgotten.
 **Alternatives considered:** Batch doc updates at end-of-module (rejected — drift window between commits).
 **Reference:** user plan amendment B.
+
+## 2026-04-22 20:58 — Module 02 auth chain on HTTP transport: three layers, first match wins (Q-02-1)
+
+**Decision:** MCP server HTTP transport applies auth middleware in this order: (1) solo-bypass when `CLERK_SECRET_KEY === 'sk_test_replace_me'`, (2) `X-Local-Hook-Secret` header equals `LOCAL_HOOK_SECRET` env value, (3) full Clerk JWT via `@clerk/backend` `authenticateRequest()`. First match wins. Stdio transport has no auth (local-only by construction — parent process owns stdin).
+**Rationale:** Matches `system-architecture.md` §19's three-mode model. Solo developers never need real Clerk; local adapter scripts authenticate via the shared secret without embedding a user token in a shell script; full JWT covers the real team-mode case. Ordering ensures the cheapest, most common path (solo-bypass) short-circuits.
+**Alternatives considered:** Single-mode (Clerk JWT only) with a separate dev endpoint (rejected — two code paths instead of one, and the dev endpoint would itself need auth).
+**Reference:** user Q-02-1 answer; `system-architecture.md §19`.
+
+## 2026-04-22 20:58 — Module 02 policy_decisions write cadence: async + idempotent + WARN on failure (Q-02-2)
+
+**Decision:** `check_policy` evaluates synchronously and returns the decision in-line; the `policy_decisions` INSERT fires asynchronously via `setImmediate` using `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING`. Async-write failure logs at **WARN** (not INFO) with full decision context — `sessionId`, `toolName`, `eventType`, `matchedRuleId`, `error`. Durable outbox via `pending_jobs` is explicitly deferred; revisit post-Module-03 if DB downtime becomes visible in decision-count drift.
+**Rationale:** Meets §24.4's <10 ms latency target for `check_policy` while preserving the §4.3 append-only guarantee via the unique idempotency-key constraint. WARN-level logging on write failure is loud enough to surface in log aggregation without being a live-site alarm (decision is already in the agent's hands by then, and fail-open preserves availability).
+**Alternatives considered:** Synchronous write in the request path (rejected — blows the 10 ms budget). Route through `pending_jobs` outbox today (rejected — extra machinery before we've observed any failure mode).
+**Reference:** user Q-02-2 answer; `system-architecture.md §16 pattern 3 (Outbox)`, §4.3, §24.4.
+
+## 2026-04-22 20:58 — Module 02 content_excerpt is Unicode code-point safe (Q-02-3)
+
+**Decision:** `context_packs.content_excerpt` is the first **500 Unicode code points** (not bytes, not JS string `.length`) of `content` with trailing whitespace trimmed. Implemented via `Array.from(content).slice(0, 500).join('')` which iterates code points and preserves multi-byte characters. A unit test inserts an emoji or CJK character at position 499 and asserts lossless truncation.
+**Rationale:** `String#slice` in JS operates on UTF-16 code units and will split surrogate pairs mid-character on emoji or supplementary-plane CJK, producing a broken string. The column is NOT NULL and used by `search_packs_nl` LIKE fallback — corrupted excerpts would poison search results. The code-point approach is O(n) but n ≤ 500 so cost is negligible.
+**Alternatives considered:** `content.slice(0, 500)` (rejected — surrogate-pair unsafe). `Buffer.byteLength` byte-bounded truncation (rejected — bytes != characters; variable-width-UTF-8 makes this even worse than UTF-16 code units).
+**Reference:** user Q-02-3 answer.
+
+## 2026-04-22 20:58 — Module 02 Feature Pack storage: filesystem source of truth + DB checksum invalidation (Q-02-4)
+
+**Decision:** Feature Packs live at `docs/feature-packs/<slug>/{spec,implementation,techstack}.md` on disk (source of truth). A `feature_packs` DB row carries metadata only: `id`, `slug`, `parent_slug`, `is_active`, `checksum`, `updated_at`. Checksum = sha256 of `spec.md + implementation.md + techstack.md` concatenated in that fixed order. On read, compare against the DB row; mismatch drops the 60-second in-process cache entry and updates the row.
+**Rationale:** Files-first respects the editorial workflow (tech leads edit markdown in PRs) while the DB row enables activation/inheritance queries without fanning reads across the filesystem. Fixed concatenation order makes the checksum reproducible across machines. 60 s cache TTL matches §5's AP, cache-first tolerance for feature-pack retrieval.
+**Alternatives considered:** DB-first with markdown rendered from a `content` column (rejected — breaks the PR-review workflow). No cache (rejected — every tool call re-reads three files). Cache with time-only invalidation (rejected — allows a tech lead's push to be ignored for up to 60s).
+**Reference:** user Q-02-4 answer; `system-architecture.md §5` Feature Pack Retrieval → AP Cache-First, §16 pattern 9.
+
+## 2026-04-22 20:58 — Module 02 Clerk middleware ships wired but unvalidated against live Clerk (Q-02-5)
+
+**Decision:** Clerk middleware is coded against env-var reads and commits in S7b. All unit/integration tests pass without real Clerk keys (solo-bypass + mocked verify). The Module 02 Context Pack and `context_memory/pending-user-actions.md` explicitly flag "Team-mode auth wired but untested against live Clerk until user provides keys; first live validation during Module 04 or when team mode is first flipped for real". Module 02 acceptance checklist marks team-mode auth as 'wired, pending live validation' — not 'complete'.
+**Rationale:** Waiting on real Clerk keys before merging Module 02 would gate 9 other slices on an external account registration. The solo-bypass path is complete and testable today. Honest flagging in the Context Pack prevents a future session assuming Clerk is fully validated.
+**Alternatives considered:** Halt at the Clerk commit until keys are pasted (rejected by user Q-02-5). Ship without Clerk middleware at all and add in Module 04 (rejected — leaves team-mode HTTP transport unauthenticated; risks a merged-without-auth state that would be hard to spot).
+**Reference:** user Q-02-5 answer; `essentialsforclaude/02-agent-human-boundary.md §2.2` "never fake a user action".
+
+## 2026-04-22 20:58 — Module 02 manifest word budget: 40–80 soft target, 120 hard max (Q-02-6)
+
+**Decision:** Per-tool `manifest.test.ts` asserts description word count is ≥ 40 and ≤ 120. `system-architecture.md §24.3` is amended in the same commit as the manifest test (S6) from "40–80 words" to "40–80 word soft target, 120-word hard maximum". The eight verbatim descriptions from `§24.4` are not tightened — architecture should describe what we actually test.
+**Rationale:** §24.4's description for `check_policy` is 93 words and for `save_context_pack` is 85; tightening them would lose load-bearing detail (the "do NOT proceed on deny" clause, the "only handoff mechanism to next session" clause). Widening the test bound and documenting the widening is the honest reconciliation. 120 words at ~5 chars/word = ~600 chars, still well under the 800-char hard cap in §24.9.
+**Alternatives considered:** Keep 80-word max and rewrite §24.4 descriptions to fit (rejected — lose load-bearing detail). Keep 80-word max and exempt the two offending tools in code comments (rejected — allowlist-based discipline drifts).
+**Reference:** user Q-02-6 answer; `system-architecture.md §24.3`, §24.4.
+
+## 2026-04-22 20:58 — Module 02 `.mcp.json` target: workspace-relative dist, no CLI install helper (Q-02-7)
+
+**Decision:** `.mcp.json` stub updated in S20 from `~/.contextos/bin/mcp-server.js` (the eventual install location) to the workspace-relative `apps/mcp-server/dist/index.js`. The inline `_comment` field notes the CLI install helper (which would symlink into `~/.contextos/bin/`) is deferred to Module 07 or a dedicated distribution module.
+**Rationale:** Dev ergonomics — the server becomes immediately runnable after a `pnpm build` without a separate install step. Contributors don't need to know about `~/.contextos/bin/` to try ContextOS. When distribution matters (Module 07, VS Code extension packaging, external contributors), the install helper lands and the stub updates then.
+**Alternatives considered:** Ship the CLI install helper in Module 02 (rejected — out of scope for an MCP-server module; belongs with distribution work). Keep the stub pointing at `~/.contextos/bin/` and expect the contributor to symlink (rejected — poor first-run UX).
+**Reference:** user Q-02-7 answer; `system-architecture.md §3.5`.
+
+## 2026-04-22 20:58 — Module 02 split S7 into S7a/S7b/S7c along trust boundaries (Addition A)
+
+**Decision:** The single S7 "Lib layer" slice in the original plan is split into three separately-committed slices: S7a (infra — `db.ts`, `env.ts`, `logger.ts`, `errors.ts`, `manifest-from-zod.ts`), S7b (security-critical — `auth.ts`, `policy.ts`), S7c (domain — `feature-pack.ts`, `context-pack.ts`, `run-recorder.ts`, `graphify.ts`, `sqlite-vec-client.ts`). Total slice count goes from 21 to 23.
+**Rationale:** S7b touches the auth surface and the fail-open policy engine; isolating it in its own commit makes CODEOWNERS review tractable and the blast radius of a security regression bounded to one commit to revert. The infra / domain split keeps each slice small enough to review in one sitting.
+**Alternatives considered:** Keep S7 as one commit (rejected — ~2000-line diff spanning infra/security/domain). Split by file rather than by trust boundary (rejected — arbitrary, doesn't help review).
+**Reference:** user plan-approval addition A.
+
+## 2026-04-22 20:58 — Module 02 hand-edited migrations are sha256-locked with CI enforcement (Addition B)
+
+**Decision:** Every migration file that contains SQL Drizzle-Kit did not emit (the sqlite-vec `CREATE VIRTUAL TABLE`, the pgvector `CREATE INDEX ... USING hnsw`, and any future similar block) wraps that block in `-- @preserve-begin hand-written` / `-- @preserve-end` comments. A committed `packages/db/migrations.lock.json` records the sha256 of each block. `packages/db/scripts/check-migration-lock.mjs` extracts every preserve-block, recomputes sha256, diffs against the lock file, and exits non-zero on mismatch. Wired as the first step of the CI `verify` job (before lint). A pre-commit-reminder paragraph in `docs/DEVELOPMENT.md` tells contributors what to do if `drizzle-kit generate` regenerates a migration and wipes the hand-written block.
+**Rationale:** `drizzle-kit generate` has no awareness of the custom vec0 and HNSW DDL and will happily rewrite a migration file, losing the hand-written bits. Without enforcement, this would only surface at runtime when `migrate` runs a migration without the virtual table or index. sha256-lock + CI grep catches it at PR time.
+**Alternatives considered:** Trust review (rejected — drift inevitable). Put the hand-written SQL in a separate migration file (rejected — breaks Drizzle's sequential migration numbering and introduces an out-of-order migration problem).
+**Reference:** user plan-approval addition B.
+
+## 2026-04-22 20:58 — Module 02 env schema is strict on Clerk keys (Addition C)
+
+**Decision:** `apps/mcp-server/src/lib/env.ts` `superRefine`s the base env schema so `CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` are optional in solo mode OR when `CLERK_SECRET_KEY === 'sk_test_replace_me'`, but required in team mode with the placeholder disallowed. Secret must match `/^sk_(test|live)_/`, publishable `/^pk_(test|live)_/`. Parse failure is a startup `ValidationError` from `@contextos/shared` with a specific pointer to the wrong env var.
+**Rationale:** Team mode with the placeholder secret would silently run as solo-bypass in production — exactly the "team-mode without auth" failure mode that would be hardest to detect (it works for the developer who set it up, fails silently for everyone else). Startup-time fast-fail is the correct boundary.
+**Alternatives considered:** Allow the placeholder in all modes and rely on CI/staging to catch it (rejected — "works on my machine, fails in prod" is the anti-pattern we're preventing). Discriminated union in the main env schema (rejected — `superRefine` is cleaner because the discriminant is a string value, not a type).
+**Reference:** user plan-approval addition C; `system-architecture.md §19`.
+
+## 2026-04-22 20:58 — Module 02 env-shape regression test with four fixtures (Addition D)
+
+**Decision:** `apps/mcp-server/__tests__/unit/lib/env.test.ts` locks the env contract with four fixtures: (1) **valid-solo** — `CONTEXTOS_MODE=solo`, no Clerk keys, all defaults populate; (2) **valid-team** — `CONTEXTOS_MODE=team`, real `sk_test_...` + `pk_test_...`, parse succeeds; (3) **missing-clerk-in-team** — `CONTEXTOS_MODE=team`, no Clerk keys, MUST throw `ValidationError` with the Clerk-specific error message; (4) **malformed-port** — `MCP_SERVER_PORT=abc`, MUST throw `ValidationError`.
+**Rationale:** Env parsing is the gate on every startup. Without fixture coverage, a refactor to the schema could silently accept invalid envs or reject valid ones. Four fixtures is the minimum to pin the two axes (mode × Clerk presence) + one "obviously wrong" control.
+**Alternatives considered:** Exhaustive combinatorial fixtures (rejected — four is enough to pin each path). No regression test (rejected — addition D is explicitly required).
+**Reference:** user plan-approval addition D.
