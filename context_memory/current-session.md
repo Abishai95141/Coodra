@@ -54,3 +54,5 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [14:44] ran pnpm lint — 4 files checked clean after tightening biome folder-ignore glob (`!**/drizzle/**/meta/**` → `!**/drizzle/**/meta`)
 - [14:44] commit 6c7cd6c on feat/01-foundation — feat(foundation): monorepo scaffold + tooling pins + reference amendments (9 files, +1740/-7)
 - [14:45] wrote docker-compose.yml — pgvector/pgvector:pg16 + redis:7-alpine, healthchecks, local-loopback port bindings, named volumes
+- [14:45] commit 702b5c7 on feat/01-foundation — feat(foundation): docker-compose for postgres + redis (2 files, +69)
+- [14:46] wrote .mcp.json — HTTP transport stub pointing to 127.0.0.1:3100/mcp with `_comment` naming Module 02 as the delivery point

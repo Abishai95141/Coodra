@@ -1,0 +1,10 @@
+{
+  "_comment": "ContextOS MCP server — STUB during Module 01. The HTTP endpoint below is the intended URL once Module 02 (MCP Server) ships. Until then, Claude Code / Cursor / Windsurf will fail to connect when they attempt to reach this server; that failure is expected and not an error in the config itself.",
+  "_implementedBy": "Module 02 (see docs/feature-packs/02-mcp-server/ once authored)",
+  "mcpServers": {
+    "contextos": {
+      "type": "http",
+      "url": "http://127.0.0.1:3100/mcp"
+    }
+  }
+}
