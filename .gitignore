@@ -1,0 +1,82 @@
+# --- Node / pnpm / Turborepo ---
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.turbo/
+
+# --- Build output ---
+dist/
+build/
+out/
+.next/
+.nuxt/
+.output/
+.vercel/
+.svelte-kit/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# --- TypeScript / Vite / Vitest ---
+*.log
+.vitest-cache/
+.vite/
+
+# --- Environments & secrets ---
+.env
+.env.*
+!.env.example
+.envrc
+
+# --- Python (services/) ---
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+.env.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.uv/
+uv.lock.local
+
+# --- Databases / local state ---
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.db
+data/
+/data.db
+
+# --- ContextOS local runtime ---
+.contextos/
+
+# --- IDE & editor ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.sample.json
+.idea/
+*.swp
+*.swo
+*.iml
+
+# --- OS junk ---
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Drizzle local artefacts kept out of git (generated files live in packages/db/drizzle/ and ARE committed) ---
+drizzle/.journal/tmp/
