@@ -99,3 +99,7 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [15:39] added test:integration script to packages/db/package.json
 - [15:40] wrote .github/workflows/ci.yml — two jobs: `verify` (lint + typecheck + unit on Node from .nvmrc) and `integration` (pgvector/pgvector:pg16 + redis:7-alpine service containers, runs pnpm test:integration with DATABASE_URL/REDIS_URL/CONTEXTOS_MODE=team); integration job needs: verify and builds @contextos/shared before running tests
 - [15:40] verified locally: pnpm lint + typecheck + test:unit clean; pnpm --filter @contextos/db test:integration correctly skips when DATABASE_URL is unset
+- [15:41] commit fce4a5b on feat/01-foundation — ci(foundation): GitHub Actions workflow with verify + Postgres integration jobs (5 files, +140)
+- [15:43] wrote docs/DEVELOPMENT.md — single-page onboarding: prerequisites (.nvmrc-pinned Node 22, pnpm 10, Docker), first-time setup, daily commands (lint/typecheck/test:unit/test:integration/db:generate), monorepo layout, branching + session protocol, troubleshooting, pointers to standing context
+- [15:43] wrote docs/context-packs/template.md — required sections: header, outcome, scope boundary, decisions made, files touched, tests (with verification commands), open questions, pending user actions, handoff to next session, references
+- [15:43] ran pnpm lint — 34 files clean (markdown files are not touched by biome)
