@@ -1,0 +1,37 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["tsconfig.base.json", "biome.json", ".env"],
+  "globalEnv": ["NODE_ENV", "CONTEXTOS_MODE", "LOG_LEVEL"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "!dist/**/*.test.*"],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "package.json", "tsconfig.json"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "tsconfig.json", "../../tsconfig.base.json"]
+    },
+    "lint": {
+      "outputs": [],
+      "inputs": ["src/**/*", "__tests__/**/*", "biome.json", "../../biome.json"]
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**/*", "__tests__/unit/**/*", "vitest.config.ts", "package.json"]
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["src/**/*", "__tests__/integration/**/*", "vitest.config.ts", "package.json"],
+      "env": ["DATABASE_URL", "REDIS_URL", "CONTEXTOS_MODE"]
+    },
+    "clean": {
+      "cache": false,
+      "outputs": []
+    }
+  }
+}

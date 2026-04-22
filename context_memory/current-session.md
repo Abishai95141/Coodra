@@ -35,3 +35,18 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [14:35] wrote docs/feature-packs/01-foundation/implementation.md — 12-step implementation plan (S1–S12)
 - [14:35] wrote docs/feature-packs/01-foundation/techstack.md — pinned versions + forward-looking pins + gotchas
 - [14:35] commit 1024e78 on feat/01-foundation — docs(01-foundation): spec, implementation plan, techstack (3 files, +325)
+- [14:38] wrote context_memory/README.md — folder guide + bootstrap caveat
+- [14:38] wrote context_memory/current-session.md — session goal + context loaded + log
+- [14:38] wrote context_memory/decisions-log.md — 12 decisions backfilled (bootstrap caveat, Next.js 16, Pino 10, @hono/node-server 2, TS 6, Python 3.12–3.13, dual schemas, Clerk deferral, 5-table core, .mcp.json stub, Docker deferral, MIT, amendment B)
+- [14:38] wrote context_memory/open-questions.md — empty (all Q1–Q10 resolved)
+- [14:38] wrote context_memory/pending-user-actions.md — Docker, Clerk, cloud infra, LLM keys, GitHub App, Atlassian OAuth
+- [14:38] wrote context_memory/blockers.md — empty
+- [14:38] wrote context_memory/sessions/.gitkeep — archive placeholder
+- [14:38] commit b166fa1 on feat/01-foundation — chore(context-memory): initialize session memory folder (7 files, +288)
+- [14:41] wrote package.json (root) — private, workspaces, pnpm@10.33.0, engines, MIT, scripts, root devDeps (biome 2.4.12, vitest 4.1.5, coverage-v8, turbo 2.9.6, typescript 6.0.3, tsx, dotenv)
+- [14:41] wrote pnpm-workspace.yaml — packages/* and apps/*, with a comment noting services/* is uv-managed
+- [14:41] wrote turbo.json — Turbo 2.x tasks schema (build, typecheck, lint, test:unit, test:integration, clean) with inputs + outputs + env passthroughs
+- [14:41] wrote tsconfig.base.json — strict TS 6 baseline (ES2023, NodeNext, noUncheckedIndexedAccess, exactOptionalPropertyTypes, verbatimModuleSyntax)
+- [14:41] wrote biome.json — 2-space, single-quote, 120-col, trailing commas, import organizer (assist.actions.source.organizeImports)
+- [14:41] wrote .env.example — CONTEXTOS_MODE, LOG_LEVEL, service ports, DB/Redis URLs, Clerk solo-bypass, LLM + integration placeholders
+- [14:42] edited External api and library reference.md — Vitest 4.1.4 → 4.1.5, Biome 2.2.4 → 2.4.12, Turborepo pinned 2.9.6 + pipeline→tasks gotcha, new TypeScript 6.0.3 entry

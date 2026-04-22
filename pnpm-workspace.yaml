@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+  # services/* (Python) is managed by uv, not pnpm.

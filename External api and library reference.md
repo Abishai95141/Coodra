@@ -1221,9 +1221,52 @@ logger.info({ sessionId, runId, orgId }, 'PreToolUse decision allow');
 
 ## Tooling: Testing, Linting, Monorepo
 
+### TypeScript
+
+**Version:** 6.0.3 (pinned 2026-04-22 in ContextOS; previously unspecified in this reference). [npmjs](https://www.npmjs.com/package/typescript)
+**Install (repo-local dev dependency — ContextOS pattern):**
+
+```bash
+pnpm add -Dw typescript@^6.0.3
+```
+
+**Docs:** <https://www.typescriptlang.org/docs/>
+
+#### Compiler configuration used by ContextOS
+
+The root `tsconfig.base.json` is the source of truth for compiler options; every workspace package extends it. Key options:
+
+```jsonc
+// tsconfig.base.json  (excerpt — see the file for full contents)
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+**Gotchas**
+
+- `verbatimModuleSyntax: true` requires explicit `import type` on type-only imports; mixed imports are an error.
+- `exactOptionalPropertyTypes: true` makes `{ field?: string }` reject `{ field: undefined }`; use `field?: string` + omission, or switch to `field: string | undefined` if explicit undefined must be allowed.
+- ESM-only packages (notably `pino@^10`) require `module: NodeNext` (or equivalent ESM mode). TS 6's `NodeNext` mode is the supported path.
+- TS 6 is newer than the vast majority of ecosystem `@types/*` packages; keep `skipLibCheck: true` so third-party types are compiled opportunistically rather than as hard errors.
+
+***
+
 ### Vitest
 
-**Version:** 4.1.4. [npmjs](https://www.npmjs.com/package/vitest)
+**Version:** 4.1.5 (pinned 2026-04-22; bumped from 4.1.4 in the Module-01 Foundation commit). [npmjs](https://www.npmjs.com/package/vitest)
 **Install:**
 
 ```bash
@@ -1259,7 +1302,7 @@ export default defineConfig({
 ### Biome
 
 **Package:** `@biomejs/biome`  
-**Version:** 2.2.4. [npmjs](https://www.npmjs.com/package/@biomejs/biome)
+**Version:** 2.4.12 (pinned 2026-04-22; bumped from 2.2.4 in the Module-01 Foundation commit). [npmjs](https://www.npmjs.com/package/@biomejs/biome)
 **Install:**
 
 ```bash
@@ -1299,12 +1342,14 @@ Config file: `biome.json` or `biome.jsonc` at repo root. [spacejelly](https://sp
 
 ### Turborepo (`turbo`)
 
-**Version:** Not shown; use `npm view turbo version`.  
-**Install (global, as per docs):**
+**Version:** 2.9.6 (pinned 2026-04-22 in ContextOS; previously unspecified in this reference). [npmjs](https://www.npmjs.com/package/turbo)
+**Install (as a repo-local dev dependency — ContextOS pattern):**
 
 ```bash
-npm install turbo --global
+pnpm add -Dw turbo@^2.9.6
 ```
+
+Global install is also supported but the repo-local dev-dependency pattern keeps the pinned version reproducible across machines and CI.
 
 **Docs:** <https://turbo.build/repo/docs> [nhost](https://nhost.io/blog/how-we-configured-pnpm-and-turborepo-for-our-monorepo)
 
@@ -1313,9 +1358,10 @@ npm install turbo --global
 Example from monorepo guide: [turborepo](https://turborepo.dev/docs/guides/publishing-libraries)
 
 ```jsonc
-// turbo.json
+// turbo.json  (Turborepo 2.x)
 {
-  "pipeline": {
+  "$schema": "https://turborepo.com/schema.json",
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "build/**"]
@@ -1326,6 +1372,8 @@ Example from monorepo guide: [turborepo](https://turborepo.dev/docs/guides/publi
   }
 }
 ```
+
+> **Gotcha (2.x):** Turborepo 2 renamed the top-level `pipeline` key to `tasks`. Configurations written for 1.x will error. ContextOS uses `tasks`.
 
 Architecture’s `turbo build` in CI aligns with this pattern. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
 
