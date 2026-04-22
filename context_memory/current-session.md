@@ -56,3 +56,22 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [14:45] wrote docker-compose.yml — pgvector/pgvector:pg16 + redis:7-alpine, healthchecks, local-loopback port bindings, named volumes
 - [14:45] commit 702b5c7 on feat/01-foundation — feat(foundation): docker-compose for postgres + redis (2 files, +69)
 - [14:46] wrote .mcp.json — HTTP transport stub pointing to 127.0.0.1:3100/mcp with `_comment` naming Module 02 as the delivery point
+- [14:46] commit 203f2d0 on feat/01-foundation — feat(foundation): .mcp.json stub (2 files, +12)
+- [14:52] wrote packages/shared/package.json — @contextos/shared, ESM type:module, deps pino@^10.3.1 + zod@^4.3.6, devDeps pino-pretty@^13.1.3 + @types/node@^22.15.0, subpath exports for logger/errors/config/idempotency
+- [14:52] wrote packages/shared/tsconfig.json — extends base, rootDir=., outDir=dist, types=node
+- [14:52] wrote packages/shared/vitest.config.ts — v8 coverage, 80% thresholds on lines/branches/functions/statements
+- [14:52] wrote packages/shared/src/errors/index.ts — AppError base + Validation/Unauthorized/Forbidden/NotFound/Conflict/InternalError + isAppError + toJSON
+- [14:52] wrote packages/shared/src/logger.ts — pino singleton + createLogger, LOG_LEVEL env, ISO timestamp, level-as-label formatter
+- [14:52] wrote packages/shared/src/config.ts — baseEnvSchema (NODE_ENV/CONTEXTOS_MODE/LOG_LEVEL) + parseEnv<Schema> helper with formatted ValidationError + loadBaseEnv
+- [14:52] wrote packages/shared/src/idempotency.ts — generateRunKey, generateRunEventKey, RUN_KEY_PATTERN, RUN_EVENT_KEY_PATTERN, assertion helpers
+- [14:52] wrote packages/shared/src/index.ts — public surface re-exports
+- [14:53] wrote packages/shared/__tests__/unit/errors.test.ts — 19 assertions across AppError + subclass table + isAppError
+- [14:53] wrote packages/shared/__tests__/unit/logger.test.ts — 5 assertions verifying pino child bindings through an in-memory Writable
+- [14:53] wrote packages/shared/__tests__/unit/config.test.ts — 14 assertions on defaults, extension, coercion, invalid-input error message shape
+- [14:53] wrote packages/shared/__tests__/unit/idempotency.test.ts — 20 assertions including literal regex-source comparisons against §4.3 shapes (amendment A)
+- [14:55] ran pnpm install — 33 pkgs added for the new workspace (pino 10, zod 4, @types/node, pino-pretty dev)
+- [14:56] ran pnpm --filter @contextos/shared typecheck — failed once on exactOptionalPropertyTypes vs pino LoggerOptions.level, fixed by tightening resolveLevel return to `NonNullable<LoggerOptions['level']>`
+- [14:57] ran pnpm --filter @contextos/shared test:unit — 4 files, 58/58 passed in 249ms
+- [14:57] edited External api and library reference.md — Zod 4.1.9 → 4.3.6, Pino 9.9.5 → 10.3.1 with ESM-only gotcha
+- [14:58] ran pnpm exec biome check --write --unsafe . — applied useLiteralKeys fix (`process.env.HOSTNAME` form); 17 files clean
+- [14:58] reran pnpm lint + typecheck + test:unit — all green

@@ -1056,7 +1056,7 @@ export async function callBackend() {
 
 ### Zod
 
-**Version:** Latest npm version: 4.1.9. [npmjs](https://www.npmjs.com/package/zod)
+**Version:** 4.3.6 (pinned 2026-04-22; bumped from 4.1.9 in the Module-01 Foundation commit that introduced `packages/shared`). [npmjs](https://www.npmjs.com/package/zod)
 **Install:**
 
 ```bash
@@ -1190,7 +1190,7 @@ const retryWithBreaker = wrap(retryPolicy, circuitBreakerPolicy);
 
 ### Pino
 
-**Version:** 9.9.5. [npmjs](https://www.npmjs.com/package/pino)
+**Version:** 10.3.1 (pinned 2026-04-22; bumped from 9.9.5 in the Module-01 Foundation commit that introduced `packages/shared`). **Major bump — Pino 10 is ESM-only.** [npmjs](https://www.npmjs.com/package/pino)
 **Install:**
 
 ```bash
@@ -1216,6 +1216,7 @@ logger.info({ sessionId, runId, orgId }, 'PreToolUse decision allow');
 **Gotchas**
 
 - For pretty logs in dev, you can pipe through `pino-pretty`; do **not** use pretty transports in production hot path due to performance cost. [libraries](https://libraries.io/npm/pino-api-logger)
+- **Pino 10 is ESM-only.** Consumers must use `import pino from 'pino'` from an ESM context; `require('pino')` is no longer supported. ContextOS's `tsconfig.base.json` sets `module: NodeNext`, which matches Pino 10's expectations. Transitive consumers that still ship CJS will need to be updated or pinned.
 
 ***
 
