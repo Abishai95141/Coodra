@@ -93,3 +93,9 @@ Write the `context_memory/` scaffold (this file + `decisions-log.md`, `open-ques
 - [15:35] first test:unit run: one failure (foreign_keys default=1 in better-sqlite3 12 broke the brittle "skipPragmas=true leaves fk off" assertion); replaced the assertion to verify our cache_size=-64000 is present vs absent, all 30 tests green
 - [15:36] edited External api and library reference.md — pinned better-sqlite3 12.9.0, postgres 3.4.9, drizzle-orm 0.45.2, drizzle-kit 0.31.10 in the same commit
 - [15:36] ran pnpm exec biome check --write --unsafe — useLiteralKeys fixes across 11 files; reran pnpm lint + typecheck + test:unit — 88/88 tests green
+- [15:37] commit 42a166b on feat/01-foundation — feat(db): @contextos/db — dual schemas + createDb factory + migrations (25 files, +2.1k)
+- [15:39] wrote packages/db/vitest.integration.config.ts — 30 s timeouts, fileParallelism=false + sequence.concurrent=false for serial DB access
+- [15:39] wrote packages/db/__tests__/integration/postgres-migrate.test.ts — 4 assertions: 5-table core present, summary_embedding is pgvector `vector` udt, runs(project_id,session_id) unique index exists, re-migrate is a no-op; describe.skip when DATABASE_URL is absent
+- [15:39] added test:integration script to packages/db/package.json
+- [15:40] wrote .github/workflows/ci.yml — two jobs: `verify` (lint + typecheck + unit on Node from .nvmrc) and `integration` (pgvector/pgvector:pg16 + redis:7-alpine service containers, runs pnpm test:integration with DATABASE_URL/REDIS_URL/CONTEXTOS_MODE=team); integration job needs: verify and builds @contextos/shared before running tests
+- [15:40] verified locally: pnpm lint + typecheck + test:unit clean; pnpm --filter @contextos/db test:integration correctly skips when DATABASE_URL is unset
