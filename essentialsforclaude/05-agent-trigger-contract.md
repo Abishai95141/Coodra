@@ -1,0 +1,140 @@
+# 05 — Agent Trigger Contract: When to Call ContextOS Tools
+
+The ContextOS MCP server exposes 26 tools. Their `tools/list` manifest — with full descriptions, input schemas, and return shapes — is specified in `../system-architecture.md` §24. That section tells the agent **what** each tool does and **when it applies**; this file converts those into **directive rules you must follow** while operating on this repo.
+
+> **If you do not call these tools, ContextOS does not exist.** The hooks and services described in the architecture are only reachable because the agent's planner decides to invoke the MCP tools. Skipping the triggers below breaks the entire coordination layer — Feature Packs never load, policy never evaluates, context packs never save, prior decisions are forgotten. Follow these rules as if they were runtime preconditions, because for the architecture they are.
+
+## 5.1 Session start — FIRST, in parallel, before any other tool call
+
+1. `contextos__get_run_id { projectSlug }` — obtains the `runId` that binds every subsequent call in this session. Cache the result; reuse it.
+2. `contextos__get_feature_pack { projectSlug }` — loads architecture, conventions, permitted files, gotchas.
+3. `contextos__query_run_history { projectSlug, status: 'in_progress', limit: 1 }` — checks whether a previous session left work in-flight.
+4. `contextos__search_packs_nl { projectSlug, query: <brief summary of what you are about to build> }` — retrieves prior context packs on the topic so you don't duplicate or contradict past work.
+
+If the previous session left an `in_progress` run, read its `context_memory/current-session.md` and "Next action" (see `03-context-memory.md`) before deciding whether to start something new.
+
+If `runs.issueRef` is set on the in-progress run AND the JIRA integration is active, also call `jira_get_issue { key: <issueRef> }`.
+
+If `runs.prRef` is set on the in-progress run AND the GitHub integration is active, also call `github_get_pr_context { prRef: <prRef> }`.
+
+## 5.2 Before every file write, create, or delete — non-negotiable
+
+```
+contextos__check_policy({
+  projectSlug, sessionId: runId, agentType: 'claude_code',
+  eventType: 'PreToolUse',
+  toolName: 'write_file',          // or 'edit_file', 'delete_file'
+  toolInput: { file_path: '...' }
+})
+```
+
+- `permissionDecision === 'deny'` → **STOP.** Do not attempt a workaround, do not call a sibling tool, do not retry. Report the `reason` and ask how to proceed.
+- `permissionDecision === 'ask'` → surface the question to the user verbatim and wait.
+- `permissionDecision === 'allow'` → proceed.
+
+If the file is in an area of the codebase you have not yet loaded a Feature Pack for, ALSO call `contextos__get_feature_pack { projectSlug, filePath }` before the write.
+
+## 5.3 Before every shell command
+
+```
+contextos__check_policy({ ..., toolName: 'bash', toolInput: { command } })
+```
+
+Same decision rules as §5.2. Commands that modify state (package installs, migrations, git operations, file deletions) are the ones that most often get denied.
+
+## 5.4 At every design decision — immediately, not at session end
+
+Any of the following triggers `contextos__record_decision`:
+
+- You picked library A over library B.
+- You designed an API shape or data schema.
+- You chose an implementation approach over an alternative.
+- You decided NOT to implement something (deferral, scope cut).
+
+```
+contextos__record_decision({
+  runId,
+  description: "One sentence: what was decided",
+  rationale: "Why this approach over alternatives",
+  alternatives: ["option A", "option B"]
+})
+```
+
+Do not batch these. Do not wait for `save_context_pack`. Log each as you make it — if the session is interrupted, unlogged decisions are lost.
+
+## 5.5 When the user asks about prior work
+
+Triggers: *"what was done before?"*, *"has X been tried?"*, *"what is the state of Y?"*, *"why did we choose Z?"*.
+
+1. `contextos__search_packs_nl { projectSlug, query }` — semantic search over prior context packs.
+2. `contextos__query_run_history { projectSlug, limit: 10 }` — chronological recent runs.
+3. Answer from the retrieved data. **Do not answer from memory.** If both return empty, say so — don't confabulate.
+
+## 5.6 Before structural refactors or unfamiliar code navigation
+
+Triggers: *"refactor X"*, *"rename Y across the codebase"*, *"where is Z defined?"*, *"what depends on A?"*.
+
+`contextos__query_codebase_graph { projectSlug, query }` returns the symbol-level dependency graph from the Graphify index. Use it to find blast radius before touching shared code. Fall back to reading files only if the graph is empty.
+
+## 5.7 JIRA triggers (when the JIRA integration is active)
+
+| User intent | Tool |
+|---|---|
+| References a key like `PROJ-123` | `jira_get_issue { key: 'PROJ-123' }` |
+| "My open tickets" / implicit pronoun for a ticket | `jira_list_my_issues` |
+| Query by text rather than key | `jira_search_issues { jql }` |
+| Move a ticket's state | `jira_transition_issue` |
+| Add a comment (explicit user request only) | `jira_add_comment` |
+| Edit ticket fields (explicit user request only) | `jira_update_issue` |
+| Create a new ticket (explicit user request only) | `jira_create_issue` |
+| "X blocks Y" / "this duplicates Z" | `jira_link_issues` |
+
+**Never post comments, create tickets, or transition issues unprompted.** JIRA is shared state and noise has a cost.
+
+## 5.8 GitHub triggers (when the GitHub integration is active)
+
+| User intent | Tool |
+|---|---|
+| Session starts with an open PR on the current branch | `github_get_pr_context` |
+| References a PR by number | `github_get_pr_context` (if reviews needed), else `github_get_pr` |
+| "What did reviewers say?" | `github_list_pr_comments` |
+| "Who owns this file?" | `github_get_codeowners { filePath }` |
+| Before writing to a non-default / protected branch | `github_get_branch_protection` |
+| "What needs my review?" | `github_list_my_reviews` |
+| Debugging why a line exists / blame investigation | `github_get_blame { filePath, startLine, endLine }` |
+| References a GitHub issue (not PR) | `github_get_issue` |
+| Post a PR comment | `github_post_pr_comment` — **ONLY** if the `allow_agent_pr_comment` policy rule is true AND the user explicitly asked |
+
+## 5.9 At session end — mandatory
+
+When the feature/bugfix/refactor is complete and tests pass:
+
+```
+contextos__save_context_pack({
+  runId,
+  title: "One-line title of what was built",
+  content: "Full markdown: what was done, decisions made, files modified, test results, open TODOs, flags for next session",
+  featurePackId: <if applicable>
+})
+```
+
+This is the only handoff mechanism to the next session. Skipping it leaves the run as dead weight. See `03-context-memory.md` for how this relates to the session-level `current-session.md`.
+
+## 5.10 Failure modes and fallbacks
+
+| Situation | What to do |
+|---|---|
+| MCP server unreachable at session start | Fall back to direct HTTP to `http://127.0.0.1:3100/mcp`. If that also fails, note it and proceed — do not block the user. |
+| `check_policy` returns `deny` | STOP. Do not retry. Do not call sibling tools to work around. Report and ask. |
+| A tool returns `{ ok: false, error: 'integration_unavailable' }` | The integration (JIRA, GitHub) is down or not configured. Continue work that doesn't depend on it. Flag in `context_memory/blockers.md` if it persists. |
+| `save_context_pack` fails | Retry once. If it still fails, write the same content to `context_memory/sessions/<timestamp>-<topic>.md` manually so the work is not lost, and flag in `context_memory/blockers.md`. |
+| A tool description in `tools/list` looks wrong or outdated | Do NOT "guess around it". Raise it in `context_memory/open-questions.md` and ask. The manifest is the contract. |
+
+## 5.11 What NOT to do
+
+- Don't call `check_policy` once and assume the answer holds for the rest of the session. Every write is a new check.
+- Don't treat `get_feature_pack` as a one-time call if you change areas of the codebase — re-call when you switch modules.
+- Don't batch `record_decision` calls for the end of the session. Log each as it happens.
+- Don't skip `save_context_pack` because "the user will remember." The user won't; the next session definitely won't.
+- Don't call tools that don't apply (`github_*` with no GitHub integration, `jira_*` with no JIRA integration) just because they exist — they'll return `integration_unavailable` and waste a turn. Check `runs.issueRef` / `runs.prRef` presence first.
+- Don't invent tool names. If the tool isn't in `tools/list`, it doesn't exist.
