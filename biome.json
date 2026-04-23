@@ -83,5 +83,17 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/mcp-server/src/lib/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noImportCycles": "error"
+          }
+        }
+      }
+    }
+  ]
 }

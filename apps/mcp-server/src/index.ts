@@ -13,8 +13,17 @@ import { randomUUID } from 'node:crypto';
 import { createLogger } from '@contextos/shared';
 
 import { env } from './config/env.js';
-import { devNullPolicyCheck, logDevNullPolicyInUse } from './framework/policy-wrapper.js';
+import type { ContextDeps } from './framework/tool-context.js';
 import { ToolRegistry } from './framework/tool-registry.js';
+import { createSoloAuthClient } from './lib/auth.js';
+import { createContextPackStore } from './lib/context-pack.js';
+import { createDbClient } from './lib/db.js';
+import { createFeaturePackStore } from './lib/feature-pack.js';
+import { createGraphifyClient } from './lib/graphify.js';
+import { createMcpLogger } from './lib/logger.js';
+import { createDevNullPolicyClient } from './lib/policy.js';
+import { createRunRecorder } from './lib/run-recorder.js';
+import { createSqliteVecClient } from './lib/sqlite-vec.js';
 import { pingToolRegistration } from './tools/ping/manifest.js';
 import { startStdioTransport } from './transports/stdio.js';
 
@@ -26,26 +35,31 @@ const SERVER_VERSION = '0.0.0' as const;
 /**
  * Process entrypoint for `@contextos/mcp-server`.
  *
- * S5 scope (walking skeleton):
+ * S7a scope (walking skeleton + frozen ToolContext):
  *   - stdio transport only (HTTP deferred to S16).
- *   - `ping` tool only (S6–S15 ship the eight real tools).
- *   - Always-allow `devNullPolicyCheck` wrapping every call (real
- *     policy engine lands in S7b as a single-file swap at the call
- *     site below).
+ *   - `ping` tool only (S8–S15 ship the eight real tools).
+ *   - Full `ContextDeps` bag wired from `src/lib/*` factories, even
+ *     though only `policy` is consumed at call time in S7a. The
+ *     remaining lib clients (db, auth, featurePack, contextPack,
+ *     runRecorder, sqliteVec, graphify) exist as stubs that throw
+ *     `NotImplementedError` — their bodies fill in across S7b/c.
+ *     Wiring them now locks the boot-order contract so S7b/c are
+ *     function-body changes, not file additions.
  *
  * Layout invariants locked by this file:
  *   1. `./bootstrap/ensure-stderr-logging.js` is the first import.
  *   2. `env` is read from `./config/env.js` — the one module allowed
  *      to touch `process.env`.
- *   3. The `ToolRegistry` is constructed once, with the injected
- *      `PolicyCheck` as its single constructor arg. Handlers cannot
- *      opt out because they never see an unwrapped call path.
- *   4. Graceful shutdown on SIGINT/SIGTERM — close the transport,
- *      flush pino (stderr), exit 0.
+ *   3. Each lib client is constructed via a `createXxx` factory
+ *      from `./lib/*`; no module-level singletons cross the
+ *      function boundary. This is the user S7a directive.
+ *   4. The `ToolRegistry` is constructed once, with the built
+ *      `ContextDeps` bag as `options.deps`. Handlers cannot opt out
+ *      of policy because they never see an unwrapped call path.
+ *   5. Graceful shutdown on SIGINT/SIGTERM — close the transport,
+ *      close the DB, flush pino (stderr), exit 0.
  */
 async function main(): Promise<void> {
-  // `env` is parsed at module load; touching it here just confirms
-  // it was imported and surfaces parse errors in the main boot log.
   bootLogger.info(
     {
       event: 'boot',
@@ -58,9 +72,34 @@ async function main(): Promise<void> {
     'starting @contextos/mcp-server',
   );
 
-  const registry = new ToolRegistry(devNullPolicyCheck);
-  logDevNullPolicyInUse();
+  // --- Build ContextDeps from the lib factories. -----------------------
+  // Each `createXxx` is the ONLY entry point through which its
+  // subsystem reaches the ToolContext. A swap (e.g. S7b replacing
+  // dev-null policy with the cache-backed evaluator) is a single-
+  // line change here.
+  const sharedLogger = createMcpLogger('root');
+  const dbClient = createDbClient({});
+  const auth = createSoloAuthClient();
+  const policy = createDevNullPolicyClient();
+  const featurePack = createFeaturePackStore({ db: dbClient.client });
+  const contextPack = createContextPackStore({ db: dbClient.client });
+  const runRecorder = createRunRecorder({ db: dbClient.client });
+  const sqliteVec = createSqliteVecClient({ db: dbClient.client });
+  const graphify = createGraphifyClient();
 
+  const deps: ContextDeps = Object.freeze({
+    db: dbClient.client,
+    logger: sharedLogger,
+    auth,
+    policy,
+    featurePack,
+    contextPack,
+    runRecorder,
+    sqliteVec,
+    graphify,
+  });
+
+  const registry = new ToolRegistry({ deps });
   registry.register(pingToolRegistration);
 
   const sessionId = `stdio:${randomUUID()}`;
@@ -79,6 +118,14 @@ async function main(): Promise<void> {
       bootLogger.error(
         { event: 'shutdown_error', err: err instanceof Error ? err.message : String(err) },
         'transport close threw',
+      );
+    }
+    try {
+      await dbClient.client.close();
+    } catch (err) {
+      bootLogger.error(
+        { event: 'shutdown_error', err: err instanceof Error ? err.message : String(err) },
+        'db close threw',
       );
     }
     process.exit(0);

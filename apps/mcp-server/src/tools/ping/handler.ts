@@ -1,4 +1,4 @@
-import type { ToolCallContext } from '../../framework/tool-registry.js';
+import type { ToolContext } from '../../framework/tool-context.js';
 
 import type { PingInput, PingOutput } from './schema.js';
 
@@ -15,12 +15,21 @@ import type { PingInput, PingOutput } from './schema.js';
  * manifest-from-zod, policy wrapper, stdio transport, and pino-to-
  * stderr plumbing are all correct. Any domain side effect here would
  * weaken that signal.
+ *
+ * Clock discipline (S7a user directive): `serverTime` is derived
+ * from `ctx.now()` rather than the global Date constructor. The
+ * registry routes `ctx.now()` through its injected `clock`
+ * function, letting tests freeze the clock and lock deterministic
+ * output. A guard test in
+ * `__tests__/unit/tools/_no-raw-date.test.ts` enforces the rule by
+ * grepping every file under `src/tools/**` and failing CI if any
+ * handler reintroduces a raw Date constructor call.
  */
-export async function pingHandler(input: PingInput, ctx: ToolCallContext): Promise<PingOutput> {
+export async function pingHandler(input: PingInput, ctx: ToolContext): Promise<PingOutput> {
   return {
     ok: true,
     pong: true,
-    serverTime: ctx.receivedAt.toISOString(),
+    serverTime: ctx.now().toISOString(),
     sessionId: ctx.sessionId,
     idempotencyKey: ctx.idempotencyKey.key,
     ...(input.echo !== undefined ? { echo: input.echo } : {}),

@@ -268,3 +268,47 @@ Format:
 **Alternatives considered:** A new `@contextos/test-utils` package (rejected — one additional publish surface for a single-function module; can be extracted later if test utilities grow substantially). Leaving the helper in `apps/mcp-server/__tests__/helpers/` and copying it to future packages (rejected — three copies means three points of drift when §24.3 evolves). Re-export from the shared package root (rejected — the package root is reserved for production code; test utilities should be explicitly opt-in via the subpath).
 
 **Reference:** `packages/shared/package.json` exports; `packages/shared/src/test-utils/manifest-assertions.ts`; `apps/mcp-server/__tests__/unit/tools/ping.test.ts` (first consumer); `system-architecture.md` §24.8 safeguard 1; user S6 directive 2026-04-23.
+
+## 2026-04-23 20:55 — S7a: freeze `ToolContext` shape with typed lib factories before S7b/c bodies
+
+**Decision:** Introduce `apps/mcp-server/src/framework/tool-context.ts` defining `ToolContext = ContextDeps & PerCallContext`, and ship nine lib factories in `apps/mcp-server/src/lib/` (`logger`, `errors`, `db`, `auth`, `policy`, `feature-pack`, `context-pack`, `run-recorder`, `sqlite-vec`, `graphify`), each returning a value that satisfies one `ToolContext` slot. Factories expose no module-level singletons. The domain factories (`feature-pack`, `context-pack`, `run-recorder`, `sqlite-vec`, `graphify`) have methods that throw `NotImplementedError('<subsystem>.<method>')` from `@contextos/shared::InternalError`; S7b and S7c replace those bodies only — file tree, interfaces, and wiring are frozen.
+
+`ToolRegistry`'s constructor becomes `new ToolRegistry({ deps: ContextDeps, clock?: () => Date, mintRequestId?: () => string })`. Every handler receives the full frozen `ToolContext`. `ctx.now()` is the ONLY legitimate clock in `src/tools/**`; an `_no-raw-date.test.ts` guard under `__tests__/unit/tools/` fails CI if a handler file contains the literal substring `new Date(`.
+
+**Rationale:** User S7a directive 2026-04-23: "shapes before guts". A handler written today and a handler written in S15 must reach every subsystem through identical names and identical types. Without the freeze, swapping the dev-null policy for the real evaluator (S7b) or swapping the `NotImplementedError` stubs for real bodies (S7c) would require edits across every tool file — that is the scenario this slice prevents. The factory pattern (no singletons) means tests spin per-suite instances without leaking through hidden module state. `ctx.now()` routed through the registry's injected clock is the single place we need to freeze time for deterministic output; the guard test enforces that nothing else in `src/tools/**` bypasses it.
+
+Domain-API-only constraint (`sqliteVec.searchSimilarPacks`, not `sqliteVec.run(sql)`; `graphify.expandContext`, not `graphify.readFile`) keeps tool manifests honest: an agent-visible description like "this tool only reads context_packs_vec" is provable at the interface level, not just the SQL level.
+
+**User-directive answers pinned by this slice:**
+- Q2 — `runRecorder.record({ runId: string | null, ... })` accepts null; the nullable invariant is handled inside the recorder, not at every call site.
+- Q3 — `contextPack.write(pack, embedding: Float32Array | null)` — the store NEVER computes an embedding; Module 04 does. Null is a first-class value.
+
+**Alternatives considered:** Build `ToolContext` + lib factories only when each handler needs them (rejected — N × refactors, drift across 8 tools). Pass raw `PolicyCheck` / `DbHandle` / etc. into the registry (rejected — leaks driver choice, widens the opt-out surface, blocks policy auto-wrap). Skip `NotImplementedError` stubs and have `ContextDeps` carry `null` slots (rejected — every caller would need a null-check; a typed `NotImplementedError` gives grep-able failure modes and satisfies the interface).
+
+**Reference:** `apps/mcp-server/src/framework/tool-context.ts`; `apps/mcp-server/src/lib/*.ts`; `apps/mcp-server/src/framework/tool-registry.ts` (constructor); `apps/mcp-server/__tests__/unit/tools/_no-raw-date.test.ts`; `apps/mcp-server/__tests__/integration/lib/*.test.ts`; `docs/feature-packs/02-mcp-server/implementation.md` §S7a; user S7a directive 2026-04-23.
+
+## 2026-04-23 21:05 — `ContextPackStore.write(pack, embedding: Float32Array | null)` — `null` is a first-class value
+
+**Decision:** `apps/mcp-server/src/framework/tool-context.ts` types `ContextPackStore.write`'s second parameter as `Float32Array | null`. `null` is not an error sentinel — it is a legal and expected value. The `context_packs` row is still persisted when `null` is passed; `summary_embedding` is written as SQL `NULL`.
+
+**Rationale:** Three grounds, all anchored in existing spec + schema, not discovered at implementation time:
+
+1. **The DB schema permits it.** Both `packages/db/src/schema/sqlite.ts` and `packages/db/src/schema/postgres.ts` declare `summary_embedding` as nullable from Module 01. The column was designed for this shape.
+2. **`search_packs_nl` has a documented LIKE fallback for exactly this case.** `docs/feature-packs/02-mcp-server/implementation.md` S11 defines `notice: 'no_embeddings_yet'` + `howToFix: 'Module 05 (NL Assembly) will populate summary_embedding on save.'`. A fallback that queries rows lacking `summary_embedding` only exists because rows lacking embeddings are expected. Dropping `| null` here would make S11's own contract unsatisfiable — the tool would have nothing to fall back FROM.
+3. **Timing / module boundaries.** Module 02 must be able to `save_context_pack` before Module 04 ships the embedder. In solo mode today there is no embedder wired; a `save_context_pack` call with `embedding: null` must still land a row so the rest of the run-graph (Module 05 NL Assembly, Module 07 analytics) continues to work against a complete history. Forcing `Float32Array` non-null would block every solo-mode save until Module 04, which the implementation plan explicitly defers.
+
+Additionally: the type signature carries a user-directive invariant by itself — it names the fact that `ContextPackStore` does NOT compute embeddings. Module 04 owns embedding computation. The store is a sink, not a pipeline stage. Typing the parameter as non-null would quietly imply a computation responsibility that does not belong here.
+
+**Alternatives considered:** `write(pack, embedding: Float32Array)` non-null (rejected — contradicts the schema, the §S11 LIKE fallback, and the module-boundary user directive; every solo-mode save breaks until Module 04). `write(pack, embedding?: Float32Array)` with `undefined` (rejected — `undefined` and `null` at the SQL boundary both encode as SQL `NULL`; `null` is explicit at the type level and matches the Drizzle `.notNull(false)` default). Separate `writeWithoutEmbedding(pack)` + `writeWithEmbedding(pack, vec)` methods (rejected — two call sites per save, doubles the surface to stub + integration-test, and obscures the LIKE-fallback contract).
+
+**Reference:** `apps/mcp-server/src/framework/tool-context.ts::ContextPackStore.write`; `apps/mcp-server/src/lib/context-pack.ts`; `apps/mcp-server/__tests__/integration/lib/context-pack.test.ts` (`write(Float32Array)` + `write(null)` both pinned); `packages/db/src/schema/sqlite.ts` + `packages/db/src/schema/postgres.ts` (`summary_embedding` nullability); `docs/feature-packs/02-mcp-server/implementation.md` §S11; user S7a review question 2 (2026-04-23).
+
+## 2026-04-23 21:07 — Clock-discipline guard extended to ban `Date.now(` and `Date.parse(`
+
+**Decision:** `apps/mcp-server/__tests__/unit/tools/_no-raw-date.test.ts` now fails CI on three banned wall-clock reads in any file under `src/tools/**`: `new Date(`, `Date.now(`, and `Date.parse(`. `Date.UTC(` remains legal (pure computation, no clock read).
+
+**Rationale:** User S7a review noted that `Date.now()` is the more common sneak-in than `new Date()` — a one-line timestamp read that the original regex missed entirely. `Date.parse(` is included as belt-and-braces; even though it is always called with an argument today, a future zero-arg `Date.parse()` call returns a clock-dependent `NaN` or an engine-specific current time, which would silently corrupt determinism. `Date.UTC(` stays allowed because it performs pure arithmetic on its arguments with no clock dependency. A self-sanity test inside the same file locks each regex against its intended sample (and confirms `Date.UTC(` is not a false positive), so a careless refactor that loosens one of the regexes fails on that line, not silently in production.
+
+**Alternatives considered:** Leave the guard catching only `new Date(` (rejected — `Date.now()` is unambiguously a wall-clock read and the more frequent pattern in real codebases). Add an eslint-plugin-ban-date rule instead (rejected — would require biome/eslint plugin overhead for a single-file grep that is less than 30 LOC). Switch to an AST-based matcher (rejected — adds a TypeScript parser dep to the unit-test path for negligible precision gain; the lexical regex already catches every real case and the sanity test locks the intent).
+
+**Reference:** `apps/mcp-server/__tests__/unit/tools/_no-raw-date.test.ts`; `apps/mcp-server/src/framework/tool-registry.ts::handleCall` (the only legitimate clock read in `src/**`); user S7a review question 1 (2026-04-23).

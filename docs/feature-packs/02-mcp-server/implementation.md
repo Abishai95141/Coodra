@@ -174,27 +174,45 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(shared): assertManifestDescriptionValid in @contextos/shared/test-utils + §24.3 amendment`.
 
-### S7a — Lib: infra primitives
+### S7a — Lib layer + frozen `ToolContext` (landed 2026-04-23)
 
-`apps/mcp-server/src/lib/db.ts` — re-exports a memoised `createDb()` call that reuses Module 01's `@contextos/db` factory. Test asserts mode dispatch + single-instance behaviour.
+**User directive recap:** before S7b/c land real behaviour, lock the shape of every infrastructure boundary every tool handler will see. "Shapes before guts": a handler written today and a handler written in S15 must reach every subsystem through identical names and identical types. The slice below is that lock.
 
-`apps/mcp-server/src/lib/env.ts` — extends `@contextos/shared`'s `baseEnvSchema` via Zod `superRefine`:
+**What landed:**
 
-- Adds `MCP_SERVER_PORT` (default 3100), `LOCAL_HOOK_SECRET` (optional), `CLERK_PUBLISHABLE_KEY` (optional), `CLERK_SECRET_KEY` (optional), `CLERK_JWT_ISSUER` (optional — defaults to Clerk's `https://clerk.<tenant>.dev` pattern; set in team mode).
-- **Strictness (per addition C):**
-  - solo mode OR `CLERK_SECRET_KEY === 'sk_test_replace_me'` → Clerk keys optional.
-  - team mode AND `CLERK_SECRET_KEY !== 'sk_test_replace_me'` → **both** required, AND `CLERK_SECRET_KEY` must match `/^sk_(test|live)_/`, AND `CLERK_PUBLISHABLE_KEY` must match `/^pk_(test|live)_/`.
-- Failure is a startup `ValidationError` from `@contextos/shared` with a pointer to which env var is wrong.
+- `apps/mcp-server/src/framework/tool-context.ts` — canonical `ToolContext` + `ContextDeps` + `PerCallContext`. Every handler receives the frozen bag; there are no hidden imports, no `globalThis`, no module-level singletons. The `AuthClient`, `PolicyClient`, `FeaturePackStore`, `ContextPackStore`, `RunRecorder`, `SqliteVecClient`, `GraphifyClient`, and `DbClient` interfaces live here — they are the vocabulary shared between the registry and the lib layer.
+- `apps/mcp-server/src/lib/{logger,errors,db,auth,policy,feature-pack,context-pack,run-recorder,sqlite-vec,graphify}.ts` — nine typed factories, one file each, each returning a value that satisfies the corresponding `ToolContext` slot. **No module-level singletons are exported.** `createXxxClient(...)` is the only way in.
+  - `logger.ts` — `createMcpLogger(moduleName)` wraps `@contextos/shared::createLogger` with an `mcp-server.<moduleName>` namespace.
+  - `errors.ts` — `NotImplementedError` (subclass of `@contextos/shared::InternalError`, name `'NotImplementedError'`, carries a `subsystem` tag) + `mcpErrorResult(err)` that translates any `AppError` / unknown throwable into the MCP `{ content, isError: true }` envelope. Used consistently by every lib stub so a CI grep can verify a single error shape across all 8 tools.
+  - `db.ts` — `createDbClient(options)` delegates to `@contextos/db::createDb`, returns `{ client, asInternalHandle() }`. `close()` is idempotent. A `_testOverrideInMemory` shorthand is reserved for the stdio-purity subprocess test.
+  - `auth.ts` — `createSoloAuthClient()` + `createAnonymousAuthClient()`. Solo returns a stable `SOLO_IDENTITY = { userId: 'user_dev_local', orgId: 'org_dev_local', source: 'solo-bypass' }`. The solo factory emits a WARN on construction so team-mode smoke deployments see the stand-in in every log. Clerk-backed factory lands in S7b behind the same interface.
+  - `policy.ts` — `createPolicyClientFromCheck(check)` wraps a `PolicyCheck` callback into a `PolicyClient`; `createDevNullPolicyClient()` is the S7a always-allow stand-in plus its WARN. The previous `framework/policy-wrapper.ts::devNullPolicyCheck` export was deleted; `policy-wrapper.ts` now holds only the shared vocabulary (`PolicyInput`, `PolicyResult`, `PolicyCheck`, `PolicyDenyError`).
+  - `feature-pack.ts`, `context-pack.ts`, `run-recorder.ts`, `sqlite-vec.ts`, `graphify.ts` — factories whose methods throw `NotImplementedError('<subsystem>.<method>')`. The signatures already honour the user-directive answers: `context-pack.write(pack, embedding: Float32Array | null)` (Q3 — the store never computes an embedding; Module 04 does); `run-recorder.record({ runId: string | null, ... })` (Q2 — PreToolUse may fire before a run exists; the nullable invariant lives inside the recorder, not at every call site); `sqlite-vec` exposes a domain API (`searchSimilarPacks`) not a raw query runner; `graphify` exposes `expandContext`, not a filesystem helper.
+- `apps/mcp-server/src/framework/tool-registry.ts` — constructor now takes `{ deps: ContextDeps, clock?: () => Date, mintRequestId?: () => string }`. Handlers receive the full frozen `ToolContext = ContextDeps & PerCallContext`. The registry is the **single location in `src/**`** that reads from a `Date` constructor (via the injected clock); every `ctx.now()` flows through it. Policy evaluation goes through `deps.policy.evaluate(...)` pre- and post-handler.
+- `apps/mcp-server/src/tools/ping/handler.ts` — updated to consume `ToolContext` and produce `serverTime = ctx.now().toISOString()`.
+- `apps/mcp-server/src/index.ts` — builds `ContextDeps` from the nine factories, hands it to `new ToolRegistry({ deps })`, registers `ping`, starts the stdio transport, and shuts down (transport + `dbClient.close()`) on SIGINT/SIGTERM. The boot comment is the map of the slice.
 
-`apps/mcp-server/src/lib/logger.ts` — thin wrapper that calls `@contextos/shared`'s `createLogger('mcp-server', { runId, sessionId })`. Re-exported so downstream lib modules import one place.
+**Tests:**
 
-`apps/mcp-server/src/lib/errors.ts` — adapters that translate `@contextos/shared`'s `AppError` hierarchy into MCP tool-return shapes (`{ content: [{ type: 'text', text: JSON.stringify({ ok: false, error }) }], isError: true }`). Unit test covers every `AppError` subclass.
+- `__tests__/unit/framework/tool-registry.test.ts` — 18 cases covering construction contract, register-time enforcement, pre/post policy, invalid input, unknown tool, clock injection (`ctx.now()`), and stable `requestId`.
+- `__tests__/unit/tools/_no-raw-date.test.ts` — **clock-discipline guard.** Walks `src/tools/**` and fails CI if any file contains a literal `new Date(` substring. The only legitimate `Date` constructor call in `src/**` is the registry's own injected clock.
+- `__tests__/unit/tools/ping.test.ts` — migrated to the new `ToolRegistry({ deps })` shape via the shared `makeFakeDeps` helper.
+- `__tests__/unit/transports/stdio-stdout-purity.test.ts` — spawns the real `src/index.ts` under `CONTEXTOS_SQLITE_PATH=:memory:` so S7a's newly-wired `createDbClient` does not touch the user's `~/.contextos/data.db`.
+- `__tests__/integration/lib/*.test.ts` — one file per factory (`db`, `auth`, `policy`, `feature-pack`, `context-pack`, `run-recorder`, `sqlite-vec`, `graphify`, `logger`, `errors`). 45 tests. Each pins construction contract + stub behaviour so the S7b/c replacements can swap the body without touching signatures.
+- `__tests__/helpers/fake-deps.ts` — `makeFakeDeps(overrides?)` for the unit suite.
+- `vitest.integration.config.ts` + `pnpm test:integration` script.
 
-**Env-shape regression test** (addition D): `apps/mcp-server/__tests__/unit/lib/env.test.ts` with four fixtures — **valid-solo** (all defaults; no Clerk keys), **valid-team** (real `sk_test_...` + `pk_test_...`), **missing-clerk-in-team** (must throw `ValidationError` with the Clerk error message), **malformed-port** (`MCP_SERVER_PORT=abc`, must throw). Locks the contract.
+**Biome:** `biome.json` now enables `suspicious/noImportCycles: 'error'` on `apps/mcp-server/src/lib/**` so the factory tree stays acyclic as it grows.
 
-**Files:** `apps/mcp-server/src/lib/db.ts`, `apps/mcp-server/src/lib/env.ts`, `apps/mcp-server/src/lib/logger.ts`, `apps/mcp-server/src/lib/errors.ts`, matching unit tests under `apps/mcp-server/__tests__/unit/lib/`.
+**Gate:** `pnpm install --frozen-lockfile` (clean), `check:migration-lock` (ok, 2 blocks), `pnpm lint` (0 errors), `pnpm typecheck` (all 3 packages), `pnpm --filter @contextos/mcp-server test:unit` (39/39), `pnpm --filter @contextos/mcp-server test:integration` (45/45), repo-wide `pnpm test:unit` (full turbo).
 
-**Commit:** `feat(mcp-server): lib infra — db, env (Clerk-strict), logger, errors`.
+**Commit:** `feat(mcp-server): S7a — freeze ToolContext + lib factories + clock-discipline guard`.
+
+**Deferred to later slices (per user directive):**
+
+- S7b lands the real `lib/auth.ts` (Clerk + local-hook-secret chain) and `lib/policy.ts` (cache-first evaluator, cockatiel breaker, async idempotent `policy_decisions` inserts). Swap is a single line in `src/index.ts`.
+- S7c lands the real bodies of `lib/feature-pack.ts`, `lib/context-pack.ts`, `lib/run-recorder.ts`, `lib/sqlite-vec.ts`, `lib/graphify.ts`. Each swap is a function-body change only — file tree, interfaces, and wiring are frozen.
+- `apps/mcp-server/src/lib/env.ts` — **not needed.** The env schema already lives at `apps/mcp-server/src/config/env.ts` (landed S6); moving it is unnecessary.
 
 ### S7b — Lib: auth + policy (security-critical, CODEOWNERS-friendly split)
 

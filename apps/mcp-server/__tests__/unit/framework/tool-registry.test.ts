@@ -3,7 +3,9 @@ import { z } from 'zod';
 
 import type { IdempotencyKeyBuilder } from '../../../src/framework/idempotency.js';
 import type { PolicyCheck } from '../../../src/framework/policy-wrapper.js';
+import type { ToolContext } from '../../../src/framework/tool-context.js';
 import { MIN_DESCRIPTION_LENGTH, type ToolRegistration, ToolRegistry } from '../../../src/framework/tool-registry.js';
+import { makeFakeDeps } from '../../helpers/fake-deps.js';
 
 /**
  * `ToolRegistry` enforces its contract synchronously at registration
@@ -31,12 +33,6 @@ import { MIN_DESCRIPTION_LENGTH, type ToolRegistration, ToolRegistry } from '../
 
 const DESC = 'x'.repeat(MIN_DESCRIPTION_LENGTH);
 
-const alwaysAllow: PolicyCheck = async () => ({
-  decision: 'allow',
-  reason: 'test',
-  matchedRuleId: null,
-});
-
 const okIdempotency: IdempotencyKeyBuilder<{ a: string }> = (input, ctx) => ({
   kind: 'readonly',
   key: `readonly:test:${ctx.sessionId}:${input.a ?? ''}`.slice(0, 200),
@@ -58,9 +54,32 @@ function makeValidReg(
   return { ...base, ...overrides } as typeof base;
 }
 
+function freshRegistry(policyCheck?: PolicyCheck) {
+  return new ToolRegistry({ deps: makeFakeDeps(policyCheck ? { policyCheck } : {}) });
+}
+
+describe('ToolRegistry — construction contract', () => {
+  it('throws when constructed without an options object', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
+    expect(() => new ToolRegistry(undefined as unknown as any)).toThrow(/options object/);
+  });
+
+  it('throws when options.deps is missing', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
+    expect(() => new ToolRegistry({ deps: undefined } as any)).toThrow(/ContextDeps/);
+  });
+
+  it('throws when options.deps.policy is not a PolicyClient', () => {
+    const deps = makeFakeDeps();
+    // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
+    const broken = { ...deps, policy: {} as any };
+    expect(() => new ToolRegistry({ deps: broken })).toThrow(/PolicyClient/);
+  });
+});
+
 describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   it('1. rejects a name that does not match the MCP shape', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     expect(() => registry.register(makeValidReg({ name: 'Invalid_Name' }))).toThrow(/invalid tool name/);
     expect(() => registry.register(makeValidReg({ name: 'a' }))).toThrow(/invalid tool name/);
     expect(() => registry.register(makeValidReg({ name: '9_starts_with_digit' }))).toThrow(/invalid tool name/);
@@ -68,13 +87,13 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('2. rejects duplicate registrations', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     registry.register(makeValidReg({ name: 'dup_tool' }));
     expect(() => registry.register(makeValidReg({ name: 'dup_tool' }))).toThrow(/already registered/);
   });
 
   it('3. rejects descriptions shorter than the minimum', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     expect(() => registry.register(makeValidReg({ description: 'too short' }))).toThrow(
       new RegExp(`at least ${MIN_DESCRIPTION_LENGTH} characters`),
     );
@@ -85,7 +104,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('4. rejects an inputSchema that is not a z.object', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const bad = makeValidReg();
     // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
     const broken = { ...bad, inputSchema: z.string() as unknown as any };
@@ -93,7 +112,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('5. rejects a registration missing outputSchema', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const bad = makeValidReg();
     // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
     const broken = { ...bad, outputSchema: undefined as unknown as any };
@@ -101,7 +120,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('6. rejects a handler whose arity is not exactly 2', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const bad = makeValidReg();
     const arityZero = { ...bad, handler: (async () => ({ b: 'x' })) as unknown as typeof bad.handler };
     const arityOne = { ...bad, handler: (async (_i: unknown) => ({ b: 'x' })) as unknown as typeof bad.handler };
@@ -110,7 +129,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('7. rejects a broken idempotency-key builder (wrong return shape)', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const bad = makeValidReg({
       // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
       idempotencyKey: ((_i: unknown, _c: unknown) => 'not-an-object') as unknown as any,
@@ -119,7 +138,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
   });
 
   it('7b. rejects an idempotency builder returning an empty key', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const bad = makeValidReg({
       // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
       idempotencyKey: ((_i: unknown, _c: unknown) => ({ kind: 'readonly', key: '' })) as unknown as any,
@@ -130,7 +149,7 @@ describe('ToolRegistry — register-time enforcement (negative cases)', () => {
 
 describe('ToolRegistry — happy path', () => {
   it('A. a valid registration appears in list(), sorted by name', () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     registry.register(makeValidReg({ name: 'zeta_tool' }));
     registry.register(makeValidReg({ name: 'alpha_tool' }));
     const list = registry.list();
@@ -147,7 +166,7 @@ describe('ToolRegistry — happy path', () => {
       policyCalls.push({ phase: req.phase, toolName: req.toolName });
       return { decision: 'allow', reason: 'test', matchedRuleId: null };
     };
-    const registry = new ToolRegistry(trackingPolicy);
+    const registry = freshRegistry(trackingPolicy);
     registry.register(makeValidReg({ name: 'traced_tool' }));
     const result = await registry.handleCall('traced_tool', { a: 'hi' }, 'sess_1');
     expect(result.isError).toBeUndefined();
@@ -167,7 +186,7 @@ describe('ToolRegistry — happy path', () => {
       matchedRuleId: 'rule_test_1',
     });
     const handlerSpy = vi.fn(async (_i: unknown, _c: unknown) => ({ b: 'should-not-appear' }));
-    const registry = new ToolRegistry(denyPolicy);
+    const registry = freshRegistry(denyPolicy);
     registry.register(
       makeValidReg({
         name: 'denied_tool',
@@ -184,7 +203,7 @@ describe('ToolRegistry — happy path', () => {
   });
 
   it('C. handleCall returns a structured refusal on invalid input', async () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     registry.register(makeValidReg({ name: 'input_validated_tool' }));
     const result = await registry.handleCall('input_validated_tool', { a: 123 }, 'sess_1');
     expect(result.isError).toBe(true);
@@ -192,9 +211,47 @@ describe('ToolRegistry — happy path', () => {
   });
 
   it('C2. handleCall returns tool_not_found for unknown tools', async () => {
-    const registry = new ToolRegistry(alwaysAllow);
+    const registry = freshRegistry();
     const result = await registry.handleCall('nope', {}, 'sess_1');
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/tool_not_found/);
+  });
+
+  it('D. injected clock drives ctx.now() — handler sees the frozen time', async () => {
+    const frozen = new Date('2026-04-23T12:34:56.000Z');
+    const deps = makeFakeDeps();
+    const registry = new ToolRegistry({ deps, clock: () => new Date(frozen) });
+    const observed: Array<string> = [];
+    registry.register(
+      makeValidReg({
+        name: 'clock_tool',
+        handler: (async (_input: { a: string }, ctx: ToolContext) => {
+          observed.push(ctx.now().toISOString());
+          return { b: 'ok' };
+        }) as unknown as ToolRegistration<z.ZodObject<{ a: z.ZodString }>, z.ZodObject<{ b: z.ZodString }>>['handler'],
+      }),
+    );
+    await registry.handleCall('clock_tool', { a: 'x' }, 'sess_1');
+    expect(observed).toEqual([frozen.toISOString()]);
+  });
+
+  it('E. ctx.requestId is populated and stable per call', async () => {
+    const deps = makeFakeDeps();
+    const registry = new ToolRegistry({
+      deps,
+      mintRequestId: () => 'req_fixed_42',
+    });
+    let seen: string | null = null;
+    registry.register(
+      makeValidReg({
+        name: 'reqid_tool',
+        handler: (async (_input: { a: string }, ctx: ToolContext) => {
+          seen = ctx.requestId;
+          return { b: 'ok' };
+        }) as unknown as ToolRegistration<z.ZodObject<{ a: z.ZodString }>, z.ZodObject<{ b: z.ZodString }>>['handler'],
+      }),
+    );
+    await registry.handleCall('reqid_tool', { a: 'x' }, 'sess_1');
+    expect(seen).toBe('req_fixed_42');
   });
 });

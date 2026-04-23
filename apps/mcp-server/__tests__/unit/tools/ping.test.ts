@@ -1,9 +1,9 @@
 import { assertManifestDescriptionValid } from '@contextos/shared/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import { devNullPolicyCheck } from '../../../src/framework/policy-wrapper.js';
 import { ToolRegistry } from '../../../src/framework/tool-registry.js';
 import { pingToolRegistration } from '../../../src/tools/ping/manifest.js';
+import { makeFakeDeps } from '../../helpers/fake-deps.js';
 
 describe('ping tool — manifest contract (via @contextos/shared/test-utils)', () => {
   it('satisfies every §24.3 rule (name shape, length, opening, word count, Returns)', () => {
@@ -17,7 +17,7 @@ describe('ping tool — manifest contract (via @contextos/shared/test-utils)', (
 
 describe('ping tool — end-to-end through the registry', () => {
   it('handleCall returns a well-formed pong envelope for an empty input', async () => {
-    const registry = new ToolRegistry(devNullPolicyCheck);
+    const registry = new ToolRegistry({ deps: makeFakeDeps() });
     registry.register(pingToolRegistration);
     const result = await registry.handleCall('ping', {}, 'sess_test');
     expect(result.isError).toBeUndefined();
@@ -32,7 +32,7 @@ describe('ping tool — end-to-end through the registry', () => {
   });
 
   it('echoes the input echo field back in the response', async () => {
-    const registry = new ToolRegistry(devNullPolicyCheck);
+    const registry = new ToolRegistry({ deps: makeFakeDeps() });
     registry.register(pingToolRegistration);
     const result = await registry.handleCall('ping', { echo: 'hello world' }, 'sess_test');
     const parsed = JSON.parse(result.content[0]?.text ?? '{}') as Record<string, unknown>;
@@ -41,7 +41,7 @@ describe('ping tool — end-to-end through the registry', () => {
   });
 
   it('rejects an oversized echo (>256 chars) via the input schema', async () => {
-    const registry = new ToolRegistry(devNullPolicyCheck);
+    const registry = new ToolRegistry({ deps: makeFakeDeps() });
     registry.register(pingToolRegistration);
     const result = await registry.handleCall('ping', { echo: 'x'.repeat(257) }, 'sess_test');
     expect(result.isError).toBe(true);
@@ -53,7 +53,7 @@ describe('ping tool — end-to-end through the registry', () => {
     // (sessionId, echo) must match across both calls even though the
     // receivedAt differs — confirming the builder is not reading
     // receivedAt.
-    const registry = new ToolRegistry(devNullPolicyCheck);
+    const registry = new ToolRegistry({ deps: makeFakeDeps() });
     registry.register(pingToolRegistration);
     const a = await registry.handleCall('ping', { echo: 'x' }, 'sess_test');
     const b = await registry.handleCall('ping', { echo: 'x' }, 'sess_test');

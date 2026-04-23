@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { createLogger } from '@contextos/shared';
 import type { z } from 'zod';
 
@@ -8,7 +10,8 @@ import {
   type IdempotencyKeyBuilder,
 } from './idempotency.js';
 import { type JsonSchemaObject, manifestFromZod } from './manifest-from-zod.js';
-import { type PolicyCheck, PolicyDenyError, type PolicyInput, type PolicyResult } from './policy-wrapper.js';
+import { PolicyDenyError, type PolicyResult } from './policy-wrapper.js';
+import type { ContextDeps, PerCallContext, ToolContext } from './tool-context.js';
 
 /**
  * Tool-registration framework. The single source of enforcement for
@@ -30,7 +33,7 @@ import { type PolicyCheck, PolicyDenyError, type PolicyInput, type PolicyResult 
  *      boundary — we want to fail CI rather than send a malformed
  *      result to the agent.
  *   5. `handler` takes exactly two args: the validated typed input
- *      and a `ToolCallContext`.
+ *      and the frozen `ToolContext` (see `tool-context.ts`).
  *   6. `idempotencyKey` is a builder matching
  *      `IdempotencyKeyBuilder<Input>` (see `idempotency.ts`).
  *      Required — there is no opt-out. Read-only tools return a key
@@ -58,17 +61,14 @@ const TOOL_NAME_RE = /^[a-z][a-z0-9_]{2,63}$/;
 /** Minimum description length enforced by the registration framework. */
 export const MIN_DESCRIPTION_LENGTH = 200 as const;
 
-export interface ToolCallContext {
-  readonly toolName: string;
-  readonly sessionId: string;
-  readonly receivedAt: Date;
-  readonly idempotencyKey: IdempotencyKey;
-}
-
 /**
  * What a tool author writes. Exported so `src/tools/<name>/manifest.ts`
  * files can `satisfies ToolRegistration<Input, Output>` for static
  * coverage of the contract even before `registerTool` is called.
+ *
+ * Handler receives the full frozen `ToolContext` (see `tool-context.ts`)
+ * — not a narrow `ToolCallContext` — so tools can reach every lib
+ * client (db, auth, policy, …) through `ctx` without hidden imports.
  */
 export interface ToolRegistration<InputSchema extends z.ZodType, OutputSchema extends z.ZodType> {
   readonly name: string;
@@ -77,7 +77,7 @@ export interface ToolRegistration<InputSchema extends z.ZodType, OutputSchema ex
   readonly inputSchema: InputSchema;
   readonly outputSchema: OutputSchema;
   readonly idempotencyKey: IdempotencyKeyBuilder<z.infer<InputSchema>>;
-  readonly handler: (input: z.infer<InputSchema>, ctx: ToolCallContext) => Promise<z.infer<OutputSchema>>;
+  readonly handler: (input: z.infer<InputSchema>, ctx: ToolContext) => Promise<z.infer<OutputSchema>>;
 }
 
 /**
@@ -93,7 +93,7 @@ export interface RegisteredTool {
   readonly outputSchema: z.ZodType;
   readonly inputJsonSchema: JsonSchemaObject;
   readonly idempotencyKey: IdempotencyKeyBuilder<unknown>;
-  readonly handler: (input: unknown, ctx: ToolCallContext) => Promise<unknown>;
+  readonly handler: (input: unknown, ctx: ToolContext) => Promise<unknown>;
 }
 
 /** MCP tool result envelope. Matches the SDK's `CallToolResult` shape. */
@@ -110,6 +110,32 @@ export interface ToolListEntry {
   readonly inputSchema: JsonSchemaObject;
 }
 
+export interface ToolRegistryOptions {
+  /**
+   * The frozen ContextDeps bag — db, logger, auth, policy, and every
+   * domain lib client. Built once at boot in `src/index.ts` by
+   * calling the `createXxxClient` factories in `src/lib/*`. The
+   * registry folds this bag into every per-call `ToolContext` so
+   * handlers receive the exact same instance for the lifetime of
+   * the process.
+   */
+  readonly deps: ContextDeps;
+  /**
+   * Injected clock. Every `ToolContext.now()` call that handlers
+   * make ultimately delegates here. Tests pass a frozen clock to
+   * assert deterministic output; production defaults to the global
+   * `Date` constructor (the ONLY place in `src/**` that calls
+   * `new Date()` for tool-facing time — see
+   * `__tests__/unit/tools/_no-raw-date.test.ts`).
+   */
+  readonly clock?: () => Date;
+  /**
+   * Per-call request-id minter. Defaults to `crypto.randomUUID()`.
+   * Exposed for tests that want predictable ids.
+   */
+  readonly mintRequestId?: () => string;
+}
+
 /**
  * The registry is a named class rather than a module-level Map so
  * tests can spin up isolated instances. Production wires exactly one
@@ -117,13 +143,24 @@ export interface ToolListEntry {
  */
 export class ToolRegistry {
   private readonly tools = new Map<string, RegisteredTool>();
-  private readonly policyCheck: PolicyCheck;
+  private readonly deps: ContextDeps;
+  private readonly clock: () => Date;
+  private readonly mintRequestId: () => string;
 
-  constructor(policyCheck: PolicyCheck) {
-    if (typeof policyCheck !== 'function') {
-      throw new TypeError('ToolRegistry requires a PolicyCheck function');
+  constructor(options: ToolRegistryOptions) {
+    if (!options || typeof options !== 'object') {
+      throw new TypeError('ToolRegistry requires an options object');
     }
-    this.policyCheck = policyCheck;
+    const { deps, clock, mintRequestId } = options;
+    if (!deps || typeof deps !== 'object') {
+      throw new TypeError('ToolRegistry options.deps (ContextDeps) is required');
+    }
+    if (!deps.policy || typeof deps.policy.evaluate !== 'function') {
+      throw new TypeError('ToolRegistry options.deps.policy must satisfy PolicyClient');
+    }
+    this.deps = deps;
+    this.clock = clock ?? (() => new Date());
+    this.mintRequestId = mintRequestId ?? (() => randomUUID());
   }
 
   /**
@@ -135,7 +172,7 @@ export class ToolRegistry {
     this.assertValid(reg);
     const inputJsonSchema = manifestFromZod(reg.inputSchema);
 
-    const handlerForUnknown = reg.handler as (input: unknown, ctx: ToolCallContext) => Promise<unknown>;
+    const handlerForUnknown = reg.handler as (input: unknown, ctx: ToolContext) => Promise<unknown>;
     const idempotencyForUnknown = reg.idempotencyKey as IdempotencyKeyBuilder<unknown>;
 
     this.tools.set(reg.name, {
@@ -191,7 +228,7 @@ export class ToolRegistry {
    * would leave the SDK to synthesise a generic error. We build the
    * envelope ourselves so clients see precise, actionable messages.
    */
-  public async handleCall(name: string, rawInput: unknown, sessionId: string): Promise<ToolResult> {
+  public async handleCall(name: string, rawInput: unknown, sessionId: string, requestId?: string): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -200,7 +237,12 @@ export class ToolRegistry {
       };
     }
 
-    const receivedAt = new Date();
+    // The registry is the ONE place in `src/**` that constructs a
+    // `Date` for tool-facing time. Handlers receive `ctx.now()` and
+    // `ctx.receivedAt`; both delegate to `this.clock`, never the
+    // global `Date` constructor. See
+    // `__tests__/unit/tools/_no-raw-date.test.ts` for enforcement.
+    const receivedAt = this.clock();
     const parsed = tool.inputSchema.safeParse(rawInput);
     if (!parsed.success) {
       return {
@@ -240,17 +282,17 @@ export class ToolRegistry {
       };
     }
 
-    const policyInputPre: PolicyInput = {
+    const policyInputPre = {
       toolName: name,
       sessionId,
       idempotencyKey,
       input,
-      phase: 'pre',
+      phase: 'pre' as const,
     };
 
     let pre: PolicyResult;
     try {
-      pre = await this.policyCheck(policyInputPre);
+      pre = await this.deps.policy.evaluate(policyInputPre);
     } catch (err) {
       // Fail-open per §7: policy evaluator outage must not block
       // tool calls. Log, proceed as 'allow'. S7b's real evaluator
@@ -288,12 +330,21 @@ export class ToolRegistry {
       };
     }
 
-    const ctx: ToolCallContext = {
+    const perCall: PerCallContext = {
       toolName: name,
       sessionId,
+      requestId: requestId ?? this.mintRequestId(),
       receivedAt,
       idempotencyKey,
+      // Freeze the `now()` closure over `this.clock` so a handler
+      // substituting its own clock at runtime has no effect — the
+      // injection point is the registry constructor, full stop.
+      now: () => this.clock(),
     };
+    const ctx: ToolContext = Object.freeze({
+      ...this.deps,
+      ...perCall,
+    });
 
     let handlerOutput: unknown;
     try {
@@ -354,7 +405,7 @@ export class ToolRegistry {
     // Post-phase policy check — for audit, not gating. The result is
     // logged but cannot override a successful handler. This matches
     // the Claude Code hook model where PostToolUse is observational.
-    this.policyCheck({ ...policyInputPre, phase: 'post' }).catch((err: unknown) => {
+    this.deps.policy.evaluate({ ...policyInputPre, phase: 'post' }).catch((err: unknown) => {
       registryLogger.warn(
         {
           event: 'policy_check_threw',

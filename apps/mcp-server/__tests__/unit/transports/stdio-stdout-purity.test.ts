@@ -61,6 +61,11 @@ describe('stdio transport — stdout purity', () => {
           // Defensive: keep LOG_LEVEL quiet so the subprocess does not
           // flood stderr with boot noise during this test.
           LOG_LEVEL: 'error',
+          // S7a wires `createDbClient` at boot. Point it at an in-
+          // memory SQLite so the test never touches the user's real
+          // ~/.contextos/data.db, and so the subprocess can tear
+          // down instantly on SIGTERM without leaving a WAL behind.
+          CONTEXTOS_SQLITE_PATH: ':memory:',
         },
       },
     );
@@ -74,17 +79,16 @@ describe('stdio transport — stdout purity', () => {
     // transport spec: single newline-terminated JSON, no Content-
     // Length headers (those are for the stream transport; the
     // @modelcontextprotocol/sdk stdio server uses newline framing).
-    const initializeFrame =
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2024-11-05',
-          capabilities: {},
-          clientInfo: { name: 'stdout-purity-test', version: '0.0.0' },
-        },
-      }) + '\n';
+    const initializeFrame = `${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'stdout-purity-test', version: '0.0.0' },
+      },
+    })}\n`;
 
     child.stdin.write(initializeFrame);
 
