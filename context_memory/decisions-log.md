@@ -208,3 +208,53 @@ Format:
 **Alternatives considered:** `m=32, ef_construction=128` (rejected — doubles index size and build time for a recall improvement we cannot currently measure; revisit in Module 05 if recall benchmarks motivate it). `m=8, ef_construction=32` (rejected — pgvector README warns that below the default, recall degrades noticeably beyond a few hundred thousand rows). Omit the WITH clause and rely on pgvector defaults (rejected — silent version coupling).
 
 **Reference:** user S4 approval, fourth refinement ("Record HNSW param choice via record_decision"); pgvector 0.8.x README → HNSW tuning; `packages/db/drizzle/postgres/0001_clean_rafael_vega.sql` preserve-block; `packages/db/__tests__/integration/postgres-migrate.test.ts` HNSW-index-exists assertion.
+
+## 2026-04-23 16:20 — Module 02 S5 is stdio-only; HTTP transport deferred to S16
+
+**Decision:** The S5 walking-skeleton scope — `@contextos/mcp-server` initial landing — ships **only** the stdio transport. The Streamable HTTP transport (Hono + @hono/node-server + the full Clerk/solo-bypass/LOCAL_HOOK_SECRET auth chain) is deferred to S16 of the Module 02 implementation plan. As a consequence, HTTP-transport dev deps (`hono`, `@hono/node-server`, `cockatiel`, `@clerk/backend`, `ajv`, `ajv-formats`) are NOT installed in S5; they land in S16 alongside the transport they serve.
+
+**Rationale:** The user's S5 directive was explicit — "S5 is stdio-only. HTTP transport deferred." Landing stdio first gives us a minimal, trusted parent-process channel through which the MCP client can exercise the tool-registration framework end-to-end before we add the auth surface area. Pulling the HTTP deps forward would bloat the dependency graph with code no S5 test exercises, and the Clerk middleware would become dead code carrying latent security expectations — both of which cut against the user's "no scope creep" reading of the plan.
+
+**Alternatives considered:** Land both transports in S5 with the devNullPolicyCheck allowing all HTTP calls (rejected — the auth chain is the harder half of Module 02 and deserves its own slice with real tests, not a walking-skeleton bypass). Land stdio + healthz-only HTTP endpoint in S5 (rejected — splits the transport code across slices with no proportional test coverage).
+
+**Reference:** user S5 approval directive 2026-04-23; `docs/feature-packs/02-mcp-server/implementation.md` S5 re-slice; `apps/mcp-server/README.md` "Current scope" section.
+
+## 2026-04-23 16:25 — `CONTEXTOS_LOG_DESTINATION` env contract + bootstrap side-effect module
+
+**Decision:** `packages/shared/src/logger.ts` is extended to honour the `CONTEXTOS_LOG_DESTINATION` env var at module load. Accepted values: unset (or `stdout`, any case) → pino default stdout; `stderr` → `pino.destination({ fd: 2, sync: true })`; anything else → `TypeError` at module load. `apps/mcp-server/src/bootstrap/ensure-stderr-logging.ts` is the side-effect module imported FIRST in `src/index.ts`; it normalises the env to `stderr` (or refuses to start if the env is explicitly set to anything but `stderr`). `apps/mcp-server/Dockerfile` and `.mcp.json` both set `CONTEXTOS_LOG_DESTINATION=stderr` as defence-in-depth.
+
+**Rationale:** The MCP stdio transport uses stdout EXCLUSIVELY for JSON-RPC frames. A single stray byte — a pino line from any transitive dependency such as `@contextos/db`'s sqlite-vec loader — corrupts the transport and the client disconnects. The fix has to survive ESM's import hoisting: env changes inside `index.ts`'s body would execute AFTER `@contextos/shared/logger` has already resolved its destination. A side-effect module imported at the very top of the import chain is the only reliable pattern for Node ESM. Three enforcement points (bootstrap module, env var, Dockerfile/.mcp.json env) make the invariant auditable and redundant in the right way.
+
+**Alternatives considered:** Call `pino.destination({ fd: 2 })` directly inside the mcp-server (rejected — would not affect transitively-imported `@contextos/db` logs, which use `@contextos/shared`'s `createLogger`). Monkey-patch `console.log`/`console.info` at boot (rejected — brittle, hides bugs, does not affect direct writes to `process.stdout`). Fork the shared logger for the mcp-server (rejected — duplicates the pino config across workspaces and creates two source-of-truth loggers).
+
+**Reference:** user S5 directive "all logs must go to stderr, never stdout — one stray console.log breaks the transport. If packages/shared/src/logger.ts defaults to stdout, override or wrap it in the mcp-server"; `packages/shared/src/logger.ts` docblock; `apps/mcp-server/src/bootstrap/ensure-stderr-logging.ts`; `apps/mcp-server/__tests__/unit/transports/stdio-stdout-purity.test.ts`.
+
+## 2026-04-23 16:28 — Use the SDK's low-level `Server`, not `McpServer.registerTool`
+
+**Decision:** `apps/mcp-server/src/transports/stdio.ts` uses `@modelcontextprotocol/sdk`'s low-level `Server` (`@modelcontextprotocol/sdk/server/index.js`) with `setRequestHandler` against the SDK's exported `ListToolsRequestSchema` and `CallToolRequestSchema`. We explicitly do **not** use the high-level `McpServer.registerTool` API. The SDK tags `Server` as `@deprecated` in favour of `McpServer`; we override that signal.
+
+**Rationale:** Our `ToolRegistry` (`src/framework/tool-registry.ts`) already owns input validation (author-supplied Zod schemas), output validation, the idempotency-key contract, and the automatic policy wrapper. Routing calls through `McpServer.registerTool` would either duplicate that work or split authority across two layers — both outcomes invalidate the "single source of truth for tool invariants" claim the registration framework makes. The SDK's `@deprecated` tag on `Server` means "use `McpServer` unless you have a reason to own the request lifecycle"; our custom registry is exactly that reason.
+
+**Alternatives considered:** Use `McpServer.registerTool` and delete our framework (rejected — we need the synchronous register-time enforcement and the uniform policy/idempotency wrapping; McpServer defers validation to call time and does not wire policy at all). Use `McpServer.registerTool` and have our framework delegate (rejected — layering violation; the framework would become a thin shell that reimplements what McpServer does one level down).
+
+**Reference:** user S5 directive "Tool registration framework must enforce at register time"; `apps/mcp-server/src/transports/stdio.ts` docblock; `External api and library reference.md` → `@modelcontextprotocol/sdk` → Server vs McpServer.
+
+## 2026-04-23 16:32 — Drop `zod-to-json-schema`; use Zod v4 native `z.toJSONSchema`
+
+**Decision:** `apps/mcp-server/src/framework/manifest-from-zod.ts` uses Zod v4's built-in `z.toJSONSchema(schema, { target: 'draft-2020-12', unrepresentable: 'throw' })`. The previously-pinned third-party `zod-to-json-schema@^3.25.2` (from `docs/feature-packs/02-mcp-server/techstack.md`) is dropped from `apps/mcp-server/package.json` and never installed.
+
+**Rationale:** The original techstack.md was authored when `@contextos/shared` was on Zod v3. Module 01's foundation commit bumped shared to Zod v4 (`^4.3.6`), which ships a native `z.toJSONSchema()` producing JSON Schema 2020-12 output. Keeping Zod and the JSON-Schema emitter under the same library removes a version-coupling hazard (zod-to-json-schema must track zod's internals on every minor release) and halves the install graph for `@contextos/mcp-server`. The native helper's output shape is equivalent to our MCP client expectations — the `manifestFromZod` wrapper enforces `type === 'object'` at runtime so any edge case surfaces loudly.
+
+**Alternatives considered:** Keep `zod-to-json-schema` and ignore Zod v4's native helper (rejected — two libraries doing the same job with different output defaults is a recipe for drift). Use an even-newer third-party like `@sinclair/typebox` (rejected — would require rewriting every schema and is unrelated to the approved techstack). Defer the decision and ship with `zod-to-json-schema` pinned (rejected — the user approved "pin @modelcontextprotocol/sdk exact" and deferring would still leave a stale pin in techstack.md for subsequent slices).
+
+**Reference:** `apps/mcp-server/src/framework/manifest-from-zod.ts` docblock; `apps/mcp-server/__tests__/unit/framework/manifest-from-zod.test.ts`; `External api and library reference.md` → `@modelcontextprotocol/sdk` → Zod v4 compatibility.
+
+## 2026-04-23 16:35 — Dockerfile base image is `node:22.16.0-bookworm-slim` (digest pinned)
+
+**Decision:** `apps/mcp-server/Dockerfile` pins its base image by digest to `node@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34`, resolved 2026-04-23 on the host via `docker pull node:22.16.0-bookworm-slim` + `docker inspect --format='{{index .RepoDigests 0}}'`. The version matches `.nvmrc` (22.16.0). The Dockerfile uses a four-stage build (deps → build → `pnpm deploy` → runtime) and carves out a minimal production tree via `pnpm deploy --prod --legacy` in the third stage.
+
+**Rationale:** Per the user's S5 directive "Do not use alpine — musl breaks native modules (better-sqlite3, sqlite-vec). Use the exact version from .nvmrc. Do not land a TODO on a supply-chain control." `better-sqlite3`'s prebuilt binaries and `sqlite-vec`'s per-platform binaries are both glibc-linked; Alpine's musl would force a source rebuild, adding build-essential + python to the runtime image and losing the binary pin. The Debian Bookworm slim variant is glibc, is actively maintained by the Node image team, and is ~130 MB vs ~900 MB for the full Bookworm image. Pinning by digest (rather than by tag) defends against silent upstream re-tagging — the digest moves only when we consciously re-pull and re-inspect.
+
+**Alternatives considered:** `node:22.16.0-alpine` (rejected — musl, per user). `node:22.16.0-slim` (defaults to Bookworm-slim; same result but less explicit — we prefer the named variant in the `FROM` line). `node:22.16.0-bullseye-slim` (rejected — older Debian release, no meaningful security benefit). Un-pinned `node:22` or `node:22.16.0` (rejected — tags move).
+
+**Reference:** user S5 directive "Do not use alpine…", "base image pinned by digest"; `apps/mcp-server/Dockerfile` FROM lines + docblock.

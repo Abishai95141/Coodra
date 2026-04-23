@@ -1,4 +1,4 @@
-import { type Logger, type LoggerOptions, pino } from 'pino';
+import { type DestinationStream, type Logger, type LoggerOptions, pino, destination as pinoDestination } from 'pino';
 
 /**
  * Structured JSON logger for ContextOS services.
@@ -15,6 +15,30 @@ import { type Logger, type LoggerOptions, pino } from 'pino';
  * transport worker thread is a dev-time ergonomic, not a production
  * dependency, and reaching for it silently in production would hide
  * the source of any formatting bug.
+ *
+ * ## Log destination (`CONTEXTOS_LOG_DESTINATION`)
+ *
+ * The base pino instance writes to stdout by default. Services that own
+ * stdout as a protocol channel — today: `@contextos/mcp-server` under the
+ * MCP stdio transport, where JSON-RPC frames occupy stdout exclusively
+ * and a single stray byte corrupts the transport — must set
+ * `CONTEXTOS_LOG_DESTINATION=stderr` before any module that imports this
+ * file is loaded. We intentionally make the flip env-driven rather than
+ * code-driven so that it survives transitive imports: every package that
+ * reaches `createLogger()` via `@contextos/db` or another dependency
+ * resolves to the same destination.
+ *
+ * Accepted values (case-insensitive):
+ *   - unset / `stdout` → default (fd 1)
+ *   - `stderr`         → fd 2, synchronous writes
+ *   - anything else    → throws a `TypeError` at module load — this is a
+ *     startup-time configuration error and the service must not start in
+ *     an ambiguous state.
+ *
+ * Synchronous mode for stderr is deliberate: under the stdio transport,
+ * shutdown ordering between stderr flushes and stdout protocol frames
+ * matters, and sync writes close that race at a negligible throughput
+ * cost for our log volume.
  */
 
 type PinoLevel = NonNullable<LoggerOptions['level']>;
@@ -28,6 +52,24 @@ function resolveLevel(envLevel: string | undefined): PinoLevel {
     return normalized as PinoLevel;
   }
   return DEFAULT_LEVEL;
+}
+
+/**
+ * Resolves `CONTEXTOS_LOG_DESTINATION` into a pino destination.
+ *
+ * Returns `undefined` for the default (pino's internal stdout sink) so
+ * that the resulting `pino(options)` call is identical to the pre-flag
+ * behaviour. Returns a `DestinationStream` for `stderr`. Throws for any
+ * other value to surface configuration mistakes at boot time rather
+ * than letting them silently degrade to the default.
+ */
+function resolveDestination(envDest: string | undefined): DestinationStream | undefined {
+  const normalized = envDest?.toLowerCase();
+  if (normalized === undefined || normalized === '' || normalized === 'stdout') return undefined;
+  if (normalized === 'stderr') return pinoDestination({ fd: 2, sync: true });
+  throw new TypeError(
+    `@contextos/shared/logger: CONTEXTOS_LOG_DESTINATION must be 'stdout' or 'stderr' (got: '${envDest}')`,
+  );
 }
 
 const baseOptions: LoggerOptions = {
@@ -44,7 +86,9 @@ const baseOptions: LoggerOptions = {
   },
 };
 
-export const logger: Logger = pino(baseOptions);
+const destination = resolveDestination(process.env.CONTEXTOS_LOG_DESTINATION);
+
+export const logger: Logger = destination ? pino(baseOptions, destination) : pino(baseOptions);
 
 /**
  * Returns a child logger bound to a service/module name and optional

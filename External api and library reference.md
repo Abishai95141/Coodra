@@ -731,6 +731,62 @@ The architecture’s MCP server implements both stdio and HTTP transports simult
 
 ***
 
+### `@modelcontextprotocol/sdk` (Node.js server)
+
+**Version:** `1.29.0` — pinned **exact** in `apps/mcp-server/package.json` (no caret). MCP is an active protocol; a minor-version bump can add required fields to tool-list entries and we want the ref implementation and our code to move together on a deliberate schedule, not auto-update.
+**Install:**
+
+```bash
+pnpm --filter @contextos/mcp-server add @modelcontextprotocol/sdk@1.29.0 --save-exact
+```
+
+**Docs:** <https://github.com/modelcontextprotocol/typescript-sdk> · <https://modelcontextprotocol.io/specification/2025-03-26>
+
+#### Server vs McpServer — we use the low-level `Server`
+
+The SDK exposes two Node server APIs:
+
+- **`McpServer`** (`@modelcontextprotocol/sdk/server/mcp.js`) — high-level, prescriptive. `McpServer.registerTool(name, { inputSchema, handler })` takes Zod *raw shapes*, validates inputs for you, and formats outputs.
+- **`Server`** (`@modelcontextprotocol/sdk/server/index.js`) — low-level. You register request handlers against the SDK's exported Zod schemas (`ListToolsRequestSchema`, `CallToolRequestSchema`) and own every byte of the response.
+
+ContextOS's `ToolRegistry` (`apps/mcp-server/src/framework/tool-registry.ts`) already owns input parsing, output validation, the idempotency-key contract, and the automatic policy wrapper. Routing calls through `McpServer.registerTool` would either duplicate that work or invalidate our single-source-of-truth claim. We therefore use `Server` + `setRequestHandler` directly. The SDK marks `Server` as `@deprecated` in favour of `McpServer`, but in context that annotation means "use `McpServer` unless you have a reason to take over the request lifecycle" — and our custom registry is exactly that reason.
+
+```ts
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+
+const server = new Server({ name, version }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: registry.list() }));
+server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  const { name, arguments: args } = req.params;
+  return registry.handleCall(name, args ?? {}, sessionId);
+});
+await server.connect(new StdioServerTransport());
+```
+
+#### Zod v4 compatibility
+
+`@modelcontextprotocol/sdk@1.29.0` supports Zod v4. Our workspace uses Zod v4 uniformly (both `@contextos/shared` and `@contextos/mcp-server`), which lets us drop the third-party `zod-to-json-schema` helper in favour of Zod v4's built-in `z.toJSONSchema(schema, { target: 'draft-2020-12' })` — see `apps/mcp-server/src/framework/manifest-from-zod.ts`.
+
+#### Stdio transport + logger contract (load-bearing)
+
+The stdio transport uses **stdout** exclusively for JSON-RPC frames. A single stray byte on stdout — a `console.log` from our code, a pino line from any transitive dependency — corrupts the transport. The ContextOS mcp-server enforces this invariant in three places:
+
+1. `apps/mcp-server/src/bootstrap/ensure-stderr-logging.ts` — side-effect module imported **first** in `src/index.ts`. Sets `CONTEXTOS_LOG_DESTINATION=stderr` before `@contextos/shared`'s logger module evaluates.
+2. `packages/shared/src/logger.ts` — reads `CONTEXTOS_LOG_DESTINATION` at module load; `'stderr'` routes pino to fd 2 via `pino.destination({ fd: 2, sync: true })`. Unknown values throw at boot rather than silently defaulting.
+3. `apps/mcp-server/__tests__/unit/transports/stdio-stdout-purity.test.ts` — spawns the real entrypoint, sends an `initialize` frame, and asserts every byte on stdout is a valid JSON-RPC frame and every line on stderr is a parseable pino JSON object.
+
+The Dockerfile and `.mcp.json` both set `CONTEXTOS_LOG_DESTINATION=stderr` as a defence-in-depth: even if the bootstrap module were accidentally removed, the env would still be correct.
+
+**Gotchas**
+
+- Do **not** use `console.log` anywhere in `apps/mcp-server/src/` — raw `console.log` writes to stdout regardless of our logger wiring. Biome's `suspicious/noConsole` rule (configured in `biome.json`) catches it at lint time. `console.error` / `console.warn` go to stderr and are safe.
+- The SDK's `setRequestHandler` return-type union includes a "task" branch we don't produce; narrow the return with `as unknown as CallToolResult` at the transport boundary (kept to that one file only).
+- Tool names are validated against `^[a-z][a-z0-9_]{2,63}$` — hyphens, uppercase letters, and leading digits are rejected by the `ToolRegistry` at registration time.
+
+***
+
 ### JSON-RPC 2.0
 
 **Docs:** <https://www.jsonrpc.org/specification> [jsonrpc](https://www.jsonrpc.org/specification)
@@ -1242,6 +1298,7 @@ logger.info({ sessionId, runId, orgId }, 'PreToolUse decision allow');
 
 - For pretty logs in dev, you can pipe through `pino-pretty`; do **not** use pretty transports in production hot path due to performance cost. [libraries](https://libraries.io/npm/pino-api-logger)
 - **Pino 10 is ESM-only.** Consumers must use `import pino from 'pino'` from an ESM context; `require('pino')` is no longer supported. ContextOS's `tsconfig.base.json` sets `module: NodeNext`, which matches Pino 10's expectations. Transitive consumers that still ship CJS will need to be updated or pinned.
+- **`CONTEXTOS_LOG_DESTINATION` env contract** (added 2026-04-23, S5): services that own stdout as a protocol channel — today only `@contextos/mcp-server` under the MCP stdio transport — set this env to `stderr` before any import of `@contextos/shared`. `packages/shared/src/logger.ts` reads it at module load and routes pino to fd 2 via `pino.destination({ fd: 2, sync: true })`. Accepted values: unset / `stdout` / `stderr`; anything else throws at boot. See the `@modelcontextprotocol/sdk` entry under Protocols & Transports for the full enforcement story.
 
 ***
 

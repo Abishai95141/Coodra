@@ -101,48 +101,72 @@ Extend `packages/db/__tests__/integration/postgres-migrate.test.ts` to verify th
 
 **Commit:** `feat(db): sqlite-vec virtual table + pgvector HNSW index for context_packs`.
 
-### S5 — Bootstrap `apps/mcp-server` package
+### S5 — Bootstrap `apps/mcp-server` + tool-registration framework + `ping` walking skeleton
 
-Create `apps/mcp-server/package.json` (private, `"type": "module"`, `main: dist/index.js`, bin `"contextos-mcp-server": "dist/index.js"`), `apps/mcp-server/tsconfig.json` (extends `../../tsconfig.base.json`, `rootDir: src`, `outDir: dist`, `types: ["node"]`), `apps/mcp-server/tsconfig.typecheck.json` (extends `./tsconfig.json`, `rootDir: .`, `noEmit`, includes `__tests__`), `apps/mcp-server/vitest.config.ts`, `apps/mcp-server/vitest.integration.config.ts`, `apps/mcp-server/README.md` (one-page pointer to `docs/DEVELOPMENT.md#mcp-server`).
+**Scope grew on 2026-04-23** per the user-approved S5 directive — S5 is now a full walking skeleton that proves every layer of the framework before S6+ ship the real tools. The previous S6 (tool-registration framework) and parts of S7a (env/logger infra) are folded into this slice, and a minimal `ping` tool lands to end-to-end-prove the pipeline.
 
-Install the Module-02 deps:
+**What lands in S5:**
 
-```bash
-pnpm --filter @contextos/mcp-server add @modelcontextprotocol/sdk@^1.29.0 hono@^4.12.14 @hono/node-server@^2.0.0 cockatiel@^3.2.1 zod-to-json-schema@^3.25.2 @clerk/backend@^3.2.13
-pnpm --filter @contextos/mcp-server add -D ajv@^8.18.0 ajv-formats@^3.0.1 testcontainers@^11.14.0 @testcontainers/postgresql@^11.14.0
-```
+- `apps/mcp-server/package.json` (private, `"type": "module"`, `bin`), `tsconfig.json` + `tsconfig.typecheck.json` (extends `../../tsconfig.base.json`), `vitest.config.ts`, `README.md`, `.env.example`, `.dockerignore`.
+- Runtime deps pinned EXACT where protocol stability demands it: `@modelcontextprotocol/sdk@1.29.0` (no caret — MCP minor bumps can add required fields), `zod@^4.3.6` (matches shared), `@contextos/shared` + `@contextos/db` as workspace deps. The HTTP-transport deps (`hono`, `@hono/node-server`, `cockatiel`, `@clerk/backend`, `ajv`, `ajv-formats`) are deferred to S16 (HTTP transport) per the directive's "stdio-only in S5" constraint — installing them now would bloat the dev graph with unused code.
+- `zod-to-json-schema` **dropped** in favour of Zod v4's built-in `z.toJSONSchema()`. Deviates from techstack.md's original `^3.25.2` pin; decision recorded in `decisions-log.md 2026-04-23`.
+- `src/bootstrap/ensure-stderr-logging.ts` — side-effect module imported first in `src/index.ts`. Sets `CONTEXTOS_LOG_DESTINATION=stderr` before `@contextos/shared`'s logger module evaluates, so every transitively-loaded log call (including db's sqlite-vec loader in future slices) routes to fd 2.
+- `src/config/env.ts` — zod-validated, typed `env` singleton, parsed once at module load via `@contextos/shared::parseEnv`. The ONE module in mcp-server allowed to read `process.env`. Strictness rules (team-mode Clerk requirements, LOCAL_HOOK_SECRET length floor, CONTEXTOS_LOG_DESTINATION enum) are enforced here and locked by 8 regression fixtures in `__tests__/unit/config/env.test.ts`.
+- `src/framework/manifest-from-zod.ts` — wraps `z.toJSONSchema` with ContextOS's target (`draft-2020-12`) and runtime `type: 'object'` check.
+- `src/framework/idempotency.ts` — `IdempotencyKeyBuilder<Input>` contract + `assertIdempotencyKeyBuilder` runtime probe. Read-only tools return `{ kind: 'readonly', key }`; mutating tools return `{ kind: 'mutating', key }` which the registry forwards into the handler's context for ON-CONFLICT dedupe in DB operations.
+- `src/framework/policy-wrapper.ts` — `PolicyCheck` abstraction, `PolicyDenyError`, plus `devNullPolicyCheck` always-allow stand-in for S5. S7b replaces it with the real cache-backed `lib/policy.ts::evaluatePolicy` as a single-file swap at `src/index.ts`. `logDevNullPolicyInUse()` writes a WARN at startup so the dev-null path cannot ship to production unnoticed.
+- `src/framework/tool-registry.ts` — the enforcement core. `ToolRegistry.register(reg)` validates, synchronously, at registration time:
+  1. name shape `^[a-z][a-z0-9_]{2,63}$`, no duplicates
+  2. description length ≥ 200 chars (the `MIN_DESCRIPTION_LENGTH` constant)
+  3. `inputSchema` is a z.object
+  4. `outputSchema` is present (Zod type)
+  5. handler arity is exactly 2
+  6. idempotencyKey builder returns a well-formed key when probed
+  Invalid registrations throw — the server refuses to start. `handleCall` routes every call through input validation → idempotency-key build → pre-phase policy check → handler → output validation → post-phase policy check. Handlers cannot opt out of policy evaluation because they never see an unwrapped call path.
+- `src/tools/ping/{schema,handler,manifest}.ts` — the walking-skeleton tool. Read-only, no filesystem/db/network side effects. Returns `{ ok, pong, serverTime, sessionId, idempotencyKey, echo? }`. Description is 666 chars and follows the §24.3 "Call this tool when…/Returns" recipe.
+- `src/transports/stdio.ts` — uses the SDK's low-level `Server` + `setRequestHandler` (not the high-level `McpServer.registerTool`) because our custom registry already owns input parsing, output validation, idempotency, and policy. Registers handlers against the SDK-exported `ListToolsRequestSchema` / `CallToolRequestSchema`. Bound to `StdioServerTransport`.
+- `src/index.ts` — entrypoint. First import is `./bootstrap/ensure-stderr-logging.js`. Constructs one `ToolRegistry`, registers `pingToolRegistration`, starts the stdio transport with a per-process `sessionId = stdio:<uuid>`. SIGINT/SIGTERM → graceful shutdown.
+- `Dockerfile` — four-stage build (deps → build → pnpm deploy → runtime). Base image pinned by digest `node@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34` (Node 22.16.0 bookworm-slim — glibc, required for better-sqlite3/sqlite-vec prebuilt binaries). Runtime stage: non-root `node` user, no build tools, `CONTEXTOS_LOG_DESTINATION=stderr` as defence-in-depth, `CMD ["node", "dist/index.js"]`.
+- `.mcp.json` — updated from the stub HTTP URL to a real stdio entry pointing at `apps/mcp-server/dist/index.js` with `env.CONTEXTOS_LOG_DESTINATION=stderr`.
+- **Logger change to `@contextos/shared`:** extended `packages/shared/src/logger.ts` to honour `CONTEXTOS_LOG_DESTINATION={unset,stdout,stderr}`. Unknown values throw at module load; `'stderr'` routes pino to fd 2 via `pino.destination({ fd: 2, sync: true })`. Four new tests in `packages/shared/__tests__/unit/logger.test.ts` lock the parse contract.
 
-Update `pnpm-workspace.yaml` is not needed — the `apps/*` glob is already in place from Module 01.
+**Unit tests added (34 new, all green):**
 
-Add `scripts.dev = "tsx watch src/index.ts"`, `scripts.build = "tsc -p tsconfig.json"`, `scripts.test:unit = "vitest run"`, `scripts.test:integration = "vitest run --config vitest.integration.config.ts"`, `scripts.lint = "biome check ."`, `scripts.typecheck = "tsc -p tsconfig.typecheck.json"`.
+- `__tests__/unit/framework/manifest-from-zod.test.ts` (4) — conversion, `.describe()` passthrough, non-object rejection, JSON-serialisable output.
+- `__tests__/unit/framework/tool-registry.test.ts` (13) — 8 negative cases pinning each enforcement rule, 5 happy-path cases including a handler-opt-out proof (deny blocks the handler).
+- `__tests__/unit/config/env.test.ts` (8) — four valid fixtures + four invalid fixtures; locks the exact env contract addition D requires.
+- `__tests__/unit/tools/ping.test.ts` (8) — manifest contract, roundtrip, echo, oversize rejection, idempotency-key purity.
+- `__tests__/unit/transports/stdio-stdout-purity.test.ts` (1) — spawns the real entrypoint via tsx, sends an `initialize` frame, asserts stdout is JSON-RPC-only and stderr is pino-JSON-only. This is the authoritative proof that the stderr-logging contract survives transitive imports.
 
 **Reference updates in the same commit** (amendment B):
 
-- `External api and library reference.md` — new **Model Context Protocol** subsection under Protocols & Transports: pin `@modelcontextprotocol/sdk@^1.29.0`; add server-registration snippet and stdio + Streamable HTTP setup snippet.
-- `External api and library reference.md` — Hono section: pin `^4.12.14` (replaces the "verify via npm view" placeholder).
-- `External api and library reference.md` — `@hono/node-server` section: pin `^2.0.0` (major bump from `1.19.3`; flag that `serve({ fetch, port })` signature is unchanged for our usage).
-- `External api and library reference.md` — cockatiel section: pin `^3.2.1` (minor bump from `3.1.3`).
-- `External api and library reference.md` — new **Clerk backend SDK** entry under Auth & Security: pin `@clerk/backend@^3.2.13`; add `authenticateRequest()` snippet.
-- `External api and library reference.md` — new **Ajv** entry under Validation/Schemas/Resilience: pin `ajv@^8.18.0`, `ajv-formats@^3.0.1`.
-- `External api and library reference.md` — new **Testing & Containers** section: pin `testcontainers@^11.14.0`, `@testcontainers/postgresql@^11.14.0`.
+- `External api and library reference.md` — new **`@modelcontextprotocol/sdk` (Node.js server)** subsection under Protocols & Transports: exact pin `1.29.0`, Server-vs-McpServer decision, Zod v4 compatibility note (no `zod-to-json-schema`), full stdio-transport stderr contract with links to the three enforcement points.
+- `External api and library reference.md` — Pino section amended with the `CONTEXTOS_LOG_DESTINATION` gotcha.
 
-**Files:** everything under `apps/mcp-server/` listed above, `External api and library reference.md`.
+**Deferred to S6+** (not in S5):
 
-**Commit:** `feat(mcp-server): bootstrap apps/mcp-server (deps, tsconfig, vitest)`.
+- `zod-to-json-schema` — dropped permanently; Zod v4's native helper replaces it.
+- `hono`, `@hono/node-server`, `cockatiel`, `@clerk/backend`, `ajv`, `ajv-formats` — added in S16 when the HTTP transport lands. Their pins stay pending in techstack.md until then.
+- `testcontainers`, `@testcontainers/postgresql` — added in S17 for integration tests.
+- Auth chain (Clerk + solo-bypass + LOCAL_HOOK_SECRET) — S7b only; stdio is a trusted local channel and needs no auth.
+- Real `lib/policy.ts::evaluatePolicy` — S7b; the registry's policy injection point is already the right abstraction boundary.
 
-### S6 — Tool-registration framework
+**Files:** `apps/mcp-server/package.json`, `apps/mcp-server/tsconfig.json`, `apps/mcp-server/tsconfig.typecheck.json`, `apps/mcp-server/vitest.config.ts`, `apps/mcp-server/README.md`, `apps/mcp-server/.env.example`, `apps/mcp-server/.dockerignore`, `apps/mcp-server/Dockerfile`, `apps/mcp-server/src/bootstrap/ensure-stderr-logging.ts`, `apps/mcp-server/src/config/env.ts`, `apps/mcp-server/src/framework/{manifest-from-zod,idempotency,policy-wrapper,tool-registry}.ts`, `apps/mcp-server/src/tools/ping/{schema,handler,manifest}.ts`, `apps/mcp-server/src/transports/stdio.ts`, `apps/mcp-server/src/index.ts`, `apps/mcp-server/__tests__/unit/**`, `packages/shared/src/logger.ts`, `packages/shared/__tests__/unit/logger.test.ts`, `.mcp.json`, `External api and library reference.md`.
 
-`apps/mcp-server/src/tools/index.ts` — pure reducer over the seven/eight `manifest.ts` exports, returns the sorted `tools/list` response; throws at module-load time if duplicate names are detected.
+**Commit:** `feat(mcp-server): scaffold @contextos/mcp-server — stdio transport, tool-registration framework, ping walking skeleton`.
 
-`apps/mcp-server/src/lib/manifest-from-zod.ts` — wraps `zodToJsonSchema` with ContextOS-specific options (`$refStrategy: 'none'`, `target: 'jsonSchema7'`) so MCP clients don't need to resolve `$ref`s. Unit test asserts round-trip Ajv validity on a few representative Zod schemas.
+### S6 — (absorbed into S5 on 2026-04-23)
 
-`apps/mcp-server/__tests__/helpers/manifest-assertions.ts` — shared §24.3 assertion helper used by per-tool `manifest.test.ts` files. Asserts: starts with "Call this" (case-insensitive), word count 40–120 (§24.3 soft-target 40–80 / hard-max 120 per Q-02-6), `length < 800`, contains "Returns" (or explicit return-shape tag), `name` matches the folder name (hyphen → underscore).
+The tool-registration framework and `manifest-from-zod` helper landed in S5 as part of the walking-skeleton scope expansion. What remains for a true S6 slice is the §24.3 description assertion helper + the `system-architecture.md` §24.3 amended-wording update (40–80 word soft target, 120-word hard maximum per Q-02-6).
 
-**Commit this commit also updates `system-architecture.md` §24.3** to the amended wording "40–80 word soft target, 120-word hard maximum" per Q-02-6. Per amendment B, the doc change and the test change land in the same commit.
+**Residual S6 work:**
 
-**Files:** `apps/mcp-server/src/tools/index.ts`, `apps/mcp-server/src/lib/manifest-from-zod.ts`, `apps/mcp-server/__tests__/unit/lib/manifest-from-zod.test.ts`, `apps/mcp-server/__tests__/helpers/manifest-assertions.ts`, `system-architecture.md` §24.3.
+- `apps/mcp-server/__tests__/helpers/manifest-assertions.ts` — shared §24.3 assertion helper used by per-tool `manifest.test.ts` files. Asserts: starts with "Call this" (case-insensitive), word count 40–120, `length < 800`, contains "Returns" (or explicit return-shape tag), `name` matches the folder name (hyphen → underscore).
+- `system-architecture.md` §24.3 amended to "40–80 word soft target, 120-word hard maximum" per Q-02-6.
 
-**Commit:** `feat(mcp-server): tool-registration framework + manifest-from-zod helper`.
+Per amendment B, the spec-text change and the assertion helper land in the same commit.
+
+**Commit:** `feat(mcp-server): §24.3 description assertion helper + system-architecture.md §24.3 amendment`.
 
 ### S7a — Lib: infra primitives
 
