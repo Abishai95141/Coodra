@@ -2219,7 +2219,7 @@ Anti-patterns banned:
 - *"Returns a feature pack."* — no trigger, no consequence.
 - *"This tool retrieves X."* — third-person; the planner is not a reader of docs, it is a caller.
 - *"Useful for..."* — hedging. If it's useful, say when.
-- Descriptions longer than ~80 words — too long to compete in the system-prompt budget.
+- Descriptions outside the word-count envelope — **40–80 words is the soft target, 120 is the hard maximum** (amended 2026-04-23 per Q-02-6; the old ~80-word cap was too tight for tools with structured outputs that need an extra sentence of shape documentation). Character length is additionally capped at < 800 as a belt-and-braces defence against the system-prompt budget.
 
 ### 24.4 Core Tool Manifest — 8 ContextOS Tools
 
@@ -2368,7 +2368,7 @@ The `tools/list` handler in `apps/mcp-server/src/handlers/tools-list.ts` is a pu
 
 Descriptions drift. The following safeguards exist:
 
-1. **Manifest unit tests.** Each `manifest.test.ts` asserts the description (a) starts with an imperative trigger phrase ("Call this"), (b) is between 40 and 80 words, (c) mentions the return shape. This is mechanical but catches the most common drift.
+1. **Manifest unit tests.** Each `manifest.test.ts` asserts the description via `assertManifestDescriptionValid` from `@contextos/shared/test-utils` — starts with an imperative trigger phrase ("Call this"), word count in 40–120 (soft target 40–80, hard max 120 per Q-02-6), char length in `[200, 800)`, mentions the return shape, and the manifest `name` matches the MCP pattern (and the folder name when supplied). Single helper, single source of truth for §24.3 — used by every ContextOS tool manifest in `apps/mcp-server/` and future `@contextos/tools-*` packages.
 2. **`tools/list` snapshot test.** `apps/mcp-server/__tests__/tools-list.snapshot.test.ts` snapshots the full `tools/list` response. A diff forces human review of every manifest change.
 3. **Description-PR checklist.** Any PR that changes a `manifest.ts` file triggers a CI bot comment asking the author to confirm `CLAUDE.md §5` is still correct. See `.github/workflows/tool-manifest-check.yml`.
 4. **Version stability.** Within a major version, descriptions may be clarified but not weakened. A tool's trigger phrase (the first sentence) is frozen for the major version. Adding a tool is always allowed; removing or renaming requires a major version bump.

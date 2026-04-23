@@ -1,24 +1,17 @@
+import { assertManifestDescriptionValid } from '@contextos/shared/test-utils';
 import { describe, expect, it } from 'vitest';
+
 import { devNullPolicyCheck } from '../../../src/framework/policy-wrapper.js';
-import { MIN_DESCRIPTION_LENGTH, ToolRegistry } from '../../../src/framework/tool-registry.js';
+import { ToolRegistry } from '../../../src/framework/tool-registry.js';
 import { pingToolRegistration } from '../../../src/tools/ping/manifest.js';
 
-describe('ping tool — manifest contract', () => {
-  it('description meets the §24.3 floor (>= MIN_DESCRIPTION_LENGTH)', () => {
-    expect(pingToolRegistration.description.length).toBeGreaterThanOrEqual(MIN_DESCRIPTION_LENGTH);
+describe('ping tool — manifest contract (via @contextos/shared/test-utils)', () => {
+  it('satisfies every §24.3 rule (name shape, length, opening, word count, Returns)', () => {
+    expect(() => assertManifestDescriptionValid(pingToolRegistration, { folderName: 'ping' })).not.toThrow();
   });
 
-  it('description starts with "Call this" per §24.3 description recipe', () => {
-    expect(pingToolRegistration.description).toMatch(/^Call this/i);
-  });
-
-  it('description mentions Returns to document the output shape', () => {
-    expect(pingToolRegistration.description).toMatch(/Returns/);
-  });
-
-  it('name matches the MCP shape and is exactly "ping"', () => {
+  it('name is exactly "ping"', () => {
     expect(pingToolRegistration.name).toBe('ping');
-    expect(pingToolRegistration.name).toMatch(/^[a-z][a-z0-9_]{2,63}$/);
   });
 });
 

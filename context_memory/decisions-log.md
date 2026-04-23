@@ -258,3 +258,13 @@ Format:
 **Alternatives considered:** `node:22.16.0-alpine` (rejected — musl, per user). `node:22.16.0-slim` (defaults to Bookworm-slim; same result but less explicit — we prefer the named variant in the `FROM` line). `node:22.16.0-bullseye-slim` (rejected — older Debian release, no meaningful security benefit). Un-pinned `node:22` or `node:22.16.0` (rejected — tags move).
 
 **Reference:** user S5 directive "Do not use alpine…", "base image pinned by digest"; `apps/mcp-server/Dockerfile` FROM lines + docblock.
+
+## 2026-04-23 18:40 — §24.3 manifest-assertions helper lives in `@contextos/shared/test-utils`
+
+**Decision:** `assertManifestDescriptionValid` and its supporting constants live in `packages/shared/src/test-utils/manifest-assertions.ts`, exposed through a new `./test-utils` subpath export in `@contextos/shared`. It is NOT placed inside `apps/mcp-server/__tests__/helpers/`, which was the original implementation-plan location.
+
+**Rationale:** §24.3 is a protocol-level rule about MCP tool descriptions — it applies equally to the eight `contextos__*` tools shipped inside `apps/mcp-server/` (Module 02 S7a+) and to any future standalone tool package (e.g. a hypothetical `@contextos/tools-github` or `@contextos/tools-jira`) that registers with the server. Placing the helper in the server app would force every downstream tool package to take a dev dep on the server, inverting the dependency arrow. The subpath export (rather than main export) keeps production consumers of `@contextos/shared` clean of test-only code in their bundle graph.
+
+**Alternatives considered:** A new `@contextos/test-utils` package (rejected — one additional publish surface for a single-function module; can be extracted later if test utilities grow substantially). Leaving the helper in `apps/mcp-server/__tests__/helpers/` and copying it to future packages (rejected — three copies means three points of drift when §24.3 evolves). Re-export from the shared package root (rejected — the package root is reserved for production code; test utilities should be explicitly opt-in via the subpath).
+
+**Reference:** `packages/shared/package.json` exports; `packages/shared/src/test-utils/manifest-assertions.ts`; `apps/mcp-server/__tests__/unit/tools/ping.test.ts` (first consumer); `system-architecture.md` §24.8 safeguard 1; user S6 directive 2026-04-23.

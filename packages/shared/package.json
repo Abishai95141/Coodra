@@ -31,6 +31,10 @@
     "./constants": {
       "types": "./dist/constants.d.ts",
       "import": "./dist/constants.js"
+    },
+    "./test-utils": {
+      "types": "./dist/test-utils/index.d.ts",
+      "import": "./dist/test-utils/index.js"
     }
   },
   "files": [

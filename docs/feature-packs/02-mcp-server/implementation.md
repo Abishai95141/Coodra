@@ -155,18 +155,24 @@ Extend `packages/db/__tests__/integration/postgres-migrate.test.ts` to verify th
 
 **Commit:** `feat(mcp-server): scaffold @contextos/mcp-server — stdio transport, tool-registration framework, ping walking skeleton`.
 
-### S6 — (absorbed into S5 on 2026-04-23)
+### S6 — §24.3 description assertion helper (shared) + §24.3 spec amendment
 
-The tool-registration framework and `manifest-from-zod` helper landed in S5 as part of the walking-skeleton scope expansion. What remains for a true S6 slice is the §24.3 description assertion helper + the `system-architecture.md` §24.3 amended-wording update (40–80 word soft target, 120-word hard maximum per Q-02-6).
+The tool-registration framework and `manifest-from-zod` helper landed in S5 as part of the walking-skeleton scope expansion. S6 is therefore narrow but essential: bake the §24.3 "tool descriptions are agent prompts" contract into a single shared helper that every ContextOS tool test — not just mcp-server's — routes through.
 
-**Residual S6 work:**
+**Landed 2026-04-23:**
 
-- `apps/mcp-server/__tests__/helpers/manifest-assertions.ts` — shared §24.3 assertion helper used by per-tool `manifest.test.ts` files. Asserts: starts with "Call this" (case-insensitive), word count 40–120, `length < 800`, contains "Returns" (or explicit return-shape tag), `name` matches the folder name (hyphen → underscore).
-- `system-architecture.md` §24.3 amended to "40–80 word soft target, 120-word hard maximum" per Q-02-6.
+- **New subpath `@contextos/shared/test-utils`** (see `packages/shared/package.json` `exports`): wired as a dedicated export so production consumers of `@contextos/shared` do not transitively pick up test-only code in their bundle graph.
+- `packages/shared/src/test-utils/manifest-assertions.ts` — `assertManifestDescriptionValid(manifest, { folderName? })`. Enforces: name matches `TOOL_NAME_PATTERN` (and folder when supplied, with hyphen → underscore translation), char length in `[200, 800)`, starts with "Call this" (case-insensitive), word count in `[40, 120]`, contains "Returns".
+- `packages/shared/src/test-utils/index.ts` — subpath entry re-exports.
+- `packages/shared/__tests__/unit/test-utils/manifest-assertions.test.ts` — 11 tests: 3 happy-path + 8 negative (one per rule) so a CI failure names exactly the rule that broke.
+- `apps/mcp-server/__tests__/unit/tools/ping.test.ts` — collapsed from 4 ad-hoc assertions to one call into the shared helper. Future tools in `apps/mcp-server/src/tools/<tool>/` and any downstream `@contextos/tools-*` package use the same helper.
+- `system-architecture.md` §24.3 amended to "40–80 word soft target, 120-word hard maximum" per Q-02-6. §24.8 safeguard 1 updated to reference the canonical shared helper.
 
-Per amendment B, the spec-text change and the assertion helper land in the same commit.
+**Decision recorded** (2026-04-23): the helper lives in `@contextos/shared/test-utils`, not `apps/mcp-server/__tests__/helpers/`, because future tool packages shipped outside the mcp-server will need the same assertion without taking a dev dep on the server package.
 
-**Commit:** `feat(mcp-server): §24.3 description assertion helper + system-architecture.md §24.3 amendment`.
+**Files:** `packages/shared/package.json` (new subpath export), `packages/shared/src/test-utils/{index,manifest-assertions}.ts`, `packages/shared/__tests__/unit/test-utils/manifest-assertions.test.ts`, `apps/mcp-server/__tests__/unit/tools/ping.test.ts`, `system-architecture.md` §24.3 + §24.8.
+
+**Commit:** `feat(shared): assertManifestDescriptionValid in @contextos/shared/test-utils + §24.3 amendment`.
 
 ### S7a — Lib: infra primitives
 
