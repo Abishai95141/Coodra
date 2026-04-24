@@ -10,7 +10,7 @@ import {
   timeout,
   wrap,
 } from 'cockatiel';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import picomatch from 'picomatch';
 
 import type { PolicyCheck, PolicyInput, PolicyResult } from '../framework/policy-wrapper.js';
@@ -110,6 +110,10 @@ export function createPolicyClientFromCheck(check: PolicyCheck): PolicyClient {
         idempotencyKey: input.idempotencyKey,
         input: input.input,
         phase: input.phase,
+        // S14 additive-optional — pass through when the caller supplies
+        // it so PolicyCheck stubs used by tests can branch on
+        // projectId without needing their own wiring.
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
       };
       const out: PolicyResult = await check(req);
       return {
@@ -278,9 +282,20 @@ export function evaluateRules(
   return null;
 }
 
-/** SELECT active rules from both dialects' schemas, ordered for first-match-wins. */
-async function loadRules(db: DbHandle): Promise<ReadonlyArray<CompiledRule>> {
+/**
+ * SELECT active rules from both dialects' schemas, ordered for
+ * first-match-wins. When `projectId` is supplied (S14 `check_policy`
+ * path), rules are filtered via `policies.project_id = ?`; when
+ * `null` (registry auto-wrap path prior to S14), the unfiltered
+ * union of all active rules is returned — preserves pre-S14
+ * behaviour for callers that still omit `projectId`.
+ */
+async function loadRules(db: DbHandle, projectId: string | null): Promise<ReadonlyArray<CompiledRule>> {
   if (db.kind === 'sqlite') {
+    const where =
+      projectId === null
+        ? eq(sqliteSchema.policies.isActive, true)
+        : and(eq(sqliteSchema.policies.isActive, true), eq(sqliteSchema.policies.projectId, projectId));
     const rows = await db.db
       .select({
         id: sqliteSchema.policyRules.id,
@@ -295,10 +310,14 @@ async function loadRules(db: DbHandle): Promise<ReadonlyArray<CompiledRule>> {
       })
       .from(sqliteSchema.policyRules)
       .innerJoin(sqliteSchema.policies, eq(sqliteSchema.policies.id, sqliteSchema.policyRules.policyId))
-      .where(eq(sqliteSchema.policies.isActive, true))
+      .where(where)
       .orderBy(sqliteSchema.policyRules.priority);
     return rows.map(compileRule);
   }
+  const where =
+    projectId === null
+      ? eq(postgresSchema.policies.isActive, true)
+      : and(eq(postgresSchema.policies.isActive, true), eq(postgresSchema.policies.projectId, projectId));
   const rows = await db.db
     .select({
       id: postgresSchema.policyRules.id,
@@ -313,7 +332,7 @@ async function loadRules(db: DbHandle): Promise<ReadonlyArray<CompiledRule>> {
     })
     .from(postgresSchema.policyRules)
     .innerJoin(postgresSchema.policies, eq(postgresSchema.policies.id, postgresSchema.policyRules.policyId))
-    .where(eq(postgresSchema.policies.isActive, true))
+    .where(where)
     .orderBy(postgresSchema.policyRules.priority);
   return rows.map(compileRule);
 }
@@ -356,10 +375,15 @@ export function createPolicyClient(options: CreatePolicyClientOptions): PolicyCl
   const fuse = timeout(timeoutMs, TimeoutStrategy.Aggressive);
   const policy = wrap(fuse, breaker);
 
-  // Module 02 solo-mode cache is keyed globally. S14's `check_policy`
-  // will introduce a per-project key when it lands; this `'all'`
-  // sentinel is the single entry for now.
-  const CACHE_KEY = 'all';
+  // Per-projectId cache (S14 upgrade — closes the S7b deferral at
+  // `lib/policy.ts`'s "cache keyed globally" comment). Callers that
+  // supply `input.projectId` key their own slot; the registry
+  // auto-wrap path (still projectId-less) falls back to the
+  // `__global__` slot with every-project rules loaded, preserving
+  // pre-S14 behaviour. Eviction is by TTL (60s) per §5; there is no
+  // per-project invalidation API — team-mode NL Assembly will publish
+  // one in Module 05.
+  const GLOBAL_CACHE_KEY = '__global__';
   const cache = new Map<string, CacheEntry>();
 
   policyLogger.info(
@@ -374,22 +398,24 @@ export function createPolicyClient(options: CreatePolicyClientOptions): PolicyCl
     'createPolicyClient: policy engine wired (cache-first + timeout + breaker + fail-open).',
   );
 
-  async function getRules(): Promise<ReadonlyArray<CompiledRule>> {
-    const cached = cache.get(CACHE_KEY);
+  async function getRules(projectId: string | null): Promise<ReadonlyArray<CompiledRule>> {
+    const key = projectId ?? GLOBAL_CACHE_KEY;
+    const cached = cache.get(key);
     if (cached && now() - cached.loadedAt < cacheTtlMs) {
       return cached.rules;
     }
-    const rules = await policy.execute(() => loadRules(options.db));
-    cache.set(CACHE_KEY, { rules, loadedAt: now() });
+    const rules = await policy.execute(() => loadRules(options.db, projectId));
+    cache.set(key, { rules, loadedAt: now() });
     return rules;
   }
 
   return {
     async evaluate(input) {
       const started = now();
+      const projectId = input.projectId ?? null;
       let rules: ReadonlyArray<CompiledRule>;
       try {
-        rules = await getRules();
+        rules = await getRules(projectId);
       } catch (err) {
         const durationMs = now() - started;
         if (isCockatielFailOpen(err)) {

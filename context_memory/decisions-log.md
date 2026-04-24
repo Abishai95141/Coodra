@@ -750,3 +750,86 @@ Empty-is-success (not soft-failure) parallels the S11 search_packs_nl convention
 **Alternatives considered:** Add a `runs.title` column via migration 0004 (rejected — requires a new write-site and either default-values dishonesty or a pre-save flow; the join is zero-migration and semantically accurate). ASC ordering (rejected — bad ergonomics for the primary session-start use case). Mutating idempotency key (rejected — reads have no side effects; readonly is correct). Return `title` as omitted-when-null rather than `null` (rejected — unstable output shape; callers then have to `in` check). Treat empty results as a `no_runs_yet` soft-failure (rejected — it's a valid success state; distinguishing "no data" from "project missing" is what `ok:false / error:project_not_found` already does).
 
 **Reference:** `apps/mcp-server/src/tools/query-run-history/handler.ts`; `apps/mcp-server/src/tools/query-run-history/schema.ts`; `apps/mcp-server/src/tools/query-run-history/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/query-run-history.test.ts` (9 cases: project_not_found + empty + DESC + status filter + limit + LEFT JOIN title + cross-project scoping + metadata passthrough + endedAt null); `system-architecture.md §24.4 query_run_history` (amended same-commit); `docs/feature-packs/02-mcp-server/implementation.md §S12` (rewritten in "what landed" style same-commit); user GO-recommendation-as-specified directive 2026-04-24 for S12.
+
+## 2026-04-24 19:00 — S14: `check_policy` is the first caller of `recordPolicyDecision` — S7b audit-write deferral closed
+
+**Decision:** S14's `check_policy` tool wires the full hook-event context (`projectId`, `agentType`, `eventType`, `runId`, `toolName`, `toolInputSnapshot`) into the S7b-exported `recordPolicyDecision` helper, dispatched via `setImmediate(...)` with `ON CONFLICT (idempotency_key) DO NOTHING` (already landed in S7b's `lib/policy.ts::recordPolicyDecision`). Handler returns the response synchronously; the audit row lands one event-loop tick later. Retries on the same `pd:{sessionId}:{toolName}:{eventType}` triple dedupe against the `policy_decisions.idempotency_key` UNIQUE constraint — exactly one row per logical call, regardless of retry count.
+
+The S7b deferral note in `apps/mcp-server/src/lib/policy.ts` ("S7b exports `recordPolicyDecision(db, context)` as the wire code for the audit write; S14's `check_policy` tool is the first call site that will invoke it") is now closed.
+
+**Rationale:** S7b deferred the audit-write call site because `PolicyInput` at the registry auto-wrap layer lacks `projectId` / `agentType` / `runId` — all required (NOT NULL FK) on `policy_decisions`. S14 is the first tool whose input carries those fields verbatim from the Hooks Bridge, so it's the first place the audit write can land without a synthetic projects row or made-up agentType default. Re-deferring past S14 would strand `recordPolicyDecision` permanently — the S7b decision was explicit about this: "do NOT re-defer."
+
+Async dispatch (setImmediate + fail-and-log) keeps the handler on the <10 ms hook-SLO path per §24.4. Audit durability is on the next tick; observability tools that scan `policy_decisions` see a ~1ms lag from decision-time to row-visible — acceptable for forensic use cases, unacceptable for real-time policy decisions, which is the whole point of the split.
+
+**Alternatives considered:** Synchronous audit write on the critical path (rejected — blows the <10 ms SLO; Write rates for a busy agent session would pile up 50+ ms of serialized audit IO). Background queue (BullMQ) for audit writes (rejected — over-engineered at M02 scale; setImmediate is native, durable under single-process assumption, and eliminates the queue as a failure mode). Defer to Module 03 (rejected — the Hooks Bridge doesn't own the policy evaluator, and splitting the decision across two services creates a consistency gap).
+
+**Reference:** `apps/mcp-server/src/tools/check-policy/handler.ts` (lines 130-156 = the setImmediate dispatch); `apps/mcp-server/src/lib/policy.ts::recordPolicyDecision` (S7b helper now has its first caller); `apps/mcp-server/__tests__/integration/tools/check-policy.test.ts` ("fire-and-forget" + "idempotent dedupe" + "runId threads" cases); `system-architecture.md §24.4 check_policy` (amended same-commit); user slice-kickoff directive 2026-04-24 ("Do not re-defer the audit write past S14").
+
+## 2026-04-24 19:05 — S14: per-projectId policy cache + `projectId?` additive-optional extension
+
+**Decision:** `lib/policy.ts`'s rule cache upgrades from the S7b-era `'all'` sentinel to a `Map<string, CacheEntry>` keyed by `projectId`. When `input.projectId` is supplied (S14 `check_policy` path), the cache keys that project's slot; when omitted (registry auto-wrap + pre-S14 callers), the cache falls back to a `__global__` slot with all-project rules loaded. `loadRules(db, projectId | null)` filters by `policies.project_id = ?` when scoped, runs unfiltered when global.
+
+`PolicyInput.projectId?: string` (`framework/policy-wrapper.ts`) and `PolicyClient.evaluate({ ..., projectId? })` (`framework/tool-context.ts`) are additive-optional extensions. `createPolicyClientFromCheck` propagates the field when supplied so test stubs can branch on `projectId` without per-test wiring.
+
+Frozen-interface discipline preserved: no rename, no required field added, no existing test broken. The change is strictly additive — pre-S14 callers continue working unchanged.
+
+**Rationale:** The S7b `'all'` cache key was a hardcoded stand-in flagged for upgrade at S14's arrival (see the "Module 02 solo-mode cache is keyed globally" comment in the S7b-era `lib/policy.ts`). At solo-mode M02 scale (<10 rules per project), per-project caching is essentially free; at team-mode scale (hundreds of projects, thousands of rules), global caching would force every policy check to evaluate every org's rules — a cross-tenant leak-by-default.
+
+Per-project caching also defends against a real failure mode: rule edits on project A propagating to project B via shared cache invalidation. With project-keyed slots, each project's cache refreshes on its own TTL clock.
+
+`projectId?: string` rather than `projectId: string` because the registry auto-wrap (still the dominant caller for every tool's pre/post evaluation) doesn't have a projectId. Making it required would have broken the auto-wrap contract or forced a synthetic project row. Additive-optional is the right shape.
+
+**Alternatives considered:** `evaluateForProject(projectId, input)` as a second method (rejected — grows the PolicyClient surface by one method for no benefit; the field-add is strictly simpler). Require `projectId` on every call (rejected — breaks registry auto-wrap; forces synthetic projects). Cache invalidation via push (rejected — over-engineered at M02 scale; TTL-based invalidation is sufficient until Module 05 introduces real rule editing workflows).
+
+**Reference:** `apps/mcp-server/src/lib/policy.ts` (cache = `Map<string, CacheEntry>`, `getRules(projectId | null)`, `loadRules(db, projectId | null)` scoped filter); `apps/mcp-server/src/framework/policy-wrapper.ts::PolicyInput.projectId`; `apps/mcp-server/src/framework/tool-context.ts::PolicyClient.evaluate({ projectId? })`; `apps/mcp-server/__tests__/integration/tools/check-policy.test.ts` ("per-projectId cache isolation" + "projectId threads through createPolicyClientFromCheck" cases); user Q1 sign-off directive 2026-04-24 ("the long-awaited closure of S7b's deferral note").
+
+## 2026-04-24 19:10 — S14: reason enum lock, `failOpen` derivation, `ruleReason` separation
+
+**Decision:** `check_policy`'s response `reason` is a locked enum of three values: `'no_rule_matched' | 'rule_matched' | 'policy_engine_unavailable'`. `failOpen: boolean` is derived (`failOpen === (reason === 'policy_engine_unavailable')`) — a unit test locks this derivation. `ruleReason: string | null` carries the matched rule's human text separately; populated when `reason === 'rule_matched'`, null otherwise.
+
+The evaluator's internal fail-open sentinel is `'policy_check_unavailable'` (S7b string, kept for backwards-compat with the evaluator's existing test suite); the handler maps it to the response enum `'policy_engine_unavailable'` at the boundary. Audit row stores the response-enum version, so `policy_decisions.reason` is consistent with the wire response.
+
+**`permissionDecision = 'ask'`** is reserved in the schema per §24.4 wording but never emitted by the S14 evaluator. Future CODEOWNERS / branch-protection integrations will populate it. A top-of-handler comment documents this reservation so future contributors don't mistakenly narrow the type.
+
+**Rationale:** S7b's evaluator returned `reason: string` with mixed semantics (rule text OR sentinel code). Observability tooling had to string-match `'policy_check_unavailable'` to detect fail-open — fragile and error-prone. Locking a three-value enum + a derived boolean gives downstream dashboards a stable axis; agents that need the human text read `ruleReason` (null-safe).
+
+`failOpen` being derived (not independently supplied) is important: observability dashboards can't have `reason` and `failOpen` disagree, because they're computed from the same source. Test locks the derivation.
+
+`ruleReason: string | null` rather than conflating with `reason` is a separation-of-concerns call: `reason` is a machine signal; `ruleReason` is a user-facing explanation. An agent that needs to display "why was I blocked?" reads `ruleReason`; a dashboard that counts fail-opens reads `reason === 'policy_engine_unavailable'`.
+
+**Alternatives considered:** Keep `reason` as free-text (rejected — observability fragility). Fold rule text into `reason` (rejected — conflates machine and human axes; downstream consumers can't cleanly branch). Derive `failOpen` by string-matching fail-open reasons (rejected — spec drift risk; derivation from enum is unambiguous). Remove `'ask'` from the output enum (rejected — §24.4 wording locks it for forward-compat with CODEOWNERS integration).
+
+**Reference:** `apps/mcp-server/src/tools/check-policy/schema.ts` (locked reason enum + required failOpen + ruleReason nullable); `apps/mcp-server/src/tools/check-policy/handler.ts` lines 108-125 (enum derivation from evaluator output); `apps/mcp-server/__tests__/unit/tools/check-policy.test.ts` (`'ask' stays reachable in schema` + `failOpen required` + `unknown reason rejected`); user Q4 sign-off directive 2026-04-24.
+
+## 2026-04-24 19:15 — S14: `toolInputSnapshot` 8 KiB truncation with size-preservation suffix
+
+**Decision:** The audit row's `toolInputSnapshot` column stores `JSON.stringify(toolInput)` truncated to 8192 characters with a `…[truncated:N]` suffix (where N is the original length). Serialisation errors (cyclic refs, etc.) collapse to the literal `'[unserialisable]'`.
+
+**Rationale:** Real-world tool inputs frequently exceed 8 KiB — a `Write` against a 500 KB file, a `Bash` call with a long heredoc, a multi-thousand-line patch body. Without a cap, every such call would write that full payload into `policy_decisions` forever. Table bloats fast, queries slow down, and forensic audit use cases only need path + command + first-chunk — the tail provides no additional signal.
+
+Adding truncation retroactively is strictly worse: pre-truncation rows stay disproportionately large forever, and migrating them requires a rewrite pass that's impossible on an append-only table (ADR-007). Truncation at the write boundary is the only cheap solution.
+
+8 KiB (8192 chars) is chosen because:
+- It's above the 99th percentile of real policy-check payloads (typical Write: `{ file_path, content }` where content is <2 KB for most edits).
+- It's below the 10 KB threshold where sqlite BLOB storage splits into overflow pages (concrete perf cliff).
+- It's a round power of 2, so a DBA reading the schema intuits the cap.
+
+The `…[truncated:N]` suffix preserves original-size forensics. Auditors asking "was this a large write?" read N without needing the full payload.
+
+**Alternatives considered:** No cap (rejected — table bloat is a real M02-to-M05 failure mode; postponing forces a lossy migration). Cap at 1 KiB (rejected — too aggressive; loses first-chunk-of-content that forensics actually uses). Cap at 64 KiB (rejected — defeats the purpose; most writes fit under 64 KiB so no real defence). Cap + drop rather than cap + suffix (rejected — suffix is ~20 bytes of overhead that preserves a crucial forensic signal). Store in a separate blob table with soft-link (rejected — over-engineered; `policy_decisions` is already a simple append-only audit log, not the place for a blob-storage split).
+
+**Reference:** `apps/mcp-server/src/tools/check-policy/handler.ts::truncateToolInputSnapshot`; `apps/mcp-server/__tests__/integration/tools/check-policy.test.ts` ("8 KiB truncation" case — 20 KB input → 8192+suffix, small input → verbatim); user Q4 push-back directive 2026-04-24 ("Add an 8KB truncation cap on toolInputSnapshot. Adding truncation retroactively is worse than doing it now.").
+
+## 2026-04-24 19:20 — S14 (for Module-03 consumption): `project_not_found` from `check_policy` must be treated as allow
+
+**Decision (for Module 03, not implemented in S14):** When the Hooks Bridge (Module 03) receives `{ ok: false, error: 'project_not_found' }` from `check_policy`, it SHOULD treat the response as `permissionDecision: 'allow'` for hook-dispatch purposes — NOT as a deny.
+
+**Rationale:** `project_not_found` is a caller-addressable error, not a policy decision. If Module 03 were to deny hook-dispatch on this response, a user with an unregistered project would silently have every `Write`, `Bash`, and destructive operation blocked — with no error surface to the agent beyond "policy denied". That's catastrophic UX: the user's setup is broken but the symptoms look like an aggressive policy. The correct failure is to allow the operation and let the tool itself surface the registration gap (via `get_run_id`'s `project_not_found` or the CLI's registration prompt).
+
+§7 fail-open policy — "if the policy engine is unreachable, fail open" — extends naturally here: a lookup miss is conceptually a narrower "policy scope is unreachable for this project" condition. Denying on policy-scope-miss would be more aggressive than denying on policy-engine-unreachable.
+
+S14 DOES NOT implement this Module-03-side behaviour — it only surfaces the structured soft-failure on the MCP wire. Module 03 picks it up when it lands. This decisions-log entry exists so the Module 03 author doesn't rediscover the reasoning.
+
+**Alternatives considered:** Have S14 itself fail-open on project lookup miss (rejected — conflates soft-failure with fail-open, violates §9.1.2 canonical shape, makes "project exists?" unobservable from the wire). Have Module 03 treat `project_not_found` as deny (rejected — silent breakage on misconfigured projects). Surface a third state ("registration_required") distinct from both (rejected — shape proliferation; `project_not_found` already carries `howToFix` which is the same signal).
+
+**Reference:** `system-architecture.md §24.4 check_policy` amendment (mentions Module 03 expectation); `apps/mcp-server/src/tools/check-policy/handler.ts::resolveProjectId` branch; `apps/mcp-server/__tests__/integration/tools/check-policy.test.ts` ("project_not_found" case asserts no audit row written); user Q3 directive 2026-04-24 ("This is caller-side (M03) policy; don't implement in S14, just flag in the decisions-log so M03 picks it up.").

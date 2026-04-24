@@ -613,34 +613,72 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S13 — tool record_decision (new decisions table + 0003 migration) + §24.4 amendment`.
 
-### S14 — Tool `check_policy`
+### S14 — Tool `check_policy` (landed 2026-04-24)
 
-Delegates to `lib/policy.ts`. Returns `{ permissionDecision, reason, policyId? }` synchronously. Fires the policy_decisions insert asynchronously via `setImmediate`. Latency target < 10 ms — unit test with a timing assertion.
+**Scope:** seventh real MCP tool, and the load-bearing S7b closure. S14 is the first caller of `recordPolicyDecision` (exported from `lib/policy.ts` since S7b, uncalled through S7c / S8 / S9 / S10 / S11 / S13 / S12 — the audit-write deferral is now closed). Factory-shaped handler closes over `DbHandle` for the projects-slug resolve + `recordPolicyDecision` audit write. §24.4 amended same-commit with the locked reason enum + `failOpen` boolean + `ruleReason` field + cache-upgrade note + `project_not_found`-as-soft-failure rule + 8 KiB `toolInputSnapshot` truncation.
 
-**S14 is the first caller of `recordPolicyDecision`** — the audit-write helper exported from `apps/mcp-server/src/lib/policy.ts` in S7b (2026-04-24 decisions-log). S7b landed the wire code with unit coverage against `:memory:` SQLite (ON CONFLICT DO NOTHING on the locked idempotency key `pd:{sessionId}:{toolName}:{eventType}`, null-runId accepted per §4.3) specifically so S14 is a call-site add, not a new-code task. The S14 handler's implementation is literally:
+**Three noteworthy slice-wide decisions (locked this commit):**
 
-```ts
-const decision = await ctx.policy.evaluate(policyInput); // cached rule lookup
-setImmediate(() => {
-  recordPolicyDecision(ctx.db /* as InternalDbHandle */, {
-    projectId: toolInput.projectSlug,   // resolved to projectId before this line
-    sessionId: toolInput.sessionId,
-    agentType: toolInput.agentType,     // the Hooks Bridge threads the real value
-    eventType: toolInput.eventType,
-    toolName: toolInput.toolName,
-    toolInputSnapshot: JSON.stringify(toolInput.toolInput),
-    permissionDecision: decision.decision,
-    matchedRuleId: decision.matchedRuleId,
-    reason: decision.reason,
-    runId: toolInput.runId ?? null,
-  }).catch((err) => policyLogger.warn({ event: 'policy_audit_write_failed', err }, '...'));
-});
-return decision;
-```
+1. **Reason enum locked** (user Q4 sign-off 2026-04-24): output `reason` is one of `no_rule_matched | rule_matched | policy_engine_unavailable`. `failOpen` is computed (`reason === 'policy_engine_unavailable'`), not independently supplied — a unit test locks this derivation. `ruleReason: string | null` carries the matched rule's human text separately; agents that need "why was I blocked?" read `ruleReason`, observability systems read `reason`.
+2. **Per-projectId cache upgrade** (closes S7b deferral): `lib/policy.ts`'s rule cache upgrades from the `'all'` sentinel to `Map<string, CacheEntry>` keyed by projectId. `PolicyInput.projectId?: string` + `PolicyClient.evaluate({ ..., projectId? })` are additive-optional extensions (user Q1 explicit sign-off — "the long-awaited closure of S7b's deferral note"). Auto-wrap callers that omit `projectId` still hit a `__global__` slot with unfiltered rules, preserving backwards compat for the registry's pre/post auto-evaluation path.
+3. **Async audit ordering** (§24.4's "dispatched via setImmediate" contract made operational): the handler's response returns BEFORE the `policy_decisions` row is visible. Latency stays on the <10 ms hook-SLO path; audit durability lives one tick later. Idempotent dedupe via the locked `pd:{sessionId}:{toolName}:{eventType}` key + ON CONFLICT DO NOTHING.
 
-Do NOT re-defer the audit write past S14 — S7b deferred it here precisely because this is the first call site with the right context (`projectId`, `agentType`, `eventType`, `runId` all threaded from the Hooks Bridge input).
+**`project_not_found` is NOT fail-open.** §7 fail-open covers evaluator faults (breaker / timeout / throw) — a well-formed call against an unregistered project is a caller-addressable error, surfaced as `{ ok: false, error: 'project_not_found', howToFix }`. Module 03 (Hooks Bridge) must treat this response as `allow` for hook-dispatch (see decisions-log 2026-04-24 S14 entry) — otherwise a missing project registration would silently block all work.
 
-**Commit:** `feat(mcp-server): tool check_policy (fail-open, async policy_decisions write)`.
+**`toolInputSnapshot` 8 KiB truncation** (user Q4 push-back): the audit row's snapshot is JSON-serialised and truncated to 8 KiB with a `…[truncated:N]` suffix. Prevents unbounded `policy_decisions` row growth from agent-supplied large bodies (a `Write` tool with a 500 KB file body would otherwise bloat the audit table permanently). Suffix preserves original-size forensics for "this was a big write" audits.
+
+**Flow:**
+
+1. Resolve `projectSlug → projects.id`. Missing → `{ ok: false, error: 'project_not_found', howToFix }` soft-failure per §9.1.2. No auto-create. No audit row written.
+2. Build `PolicyInput` with the real `projectId` threaded through. Evaluator keys the cache per-project and filters rules via `policies.project_id = ?`.
+3. `ctx.policy.evaluate(input)` — cache-first, cockatiel-fused (`timeout(100, Aggressive) + circuitBreaker(5, halfOpenAfter: 30_000ms)`), fail-open on every error path.
+4. Map evaluator result → response:
+   - `permissionDecision = evalResult.decision` (evaluator emits `'allow' | 'deny'`; `'ask'` stays reserved).
+   - `reason` = locked enum, derived from evaluator's reason + matchedRuleId presence.
+   - `ruleReason` = evaluator's reason text when `'rule_matched'`, else `null`.
+   - `matchedRuleId` = evaluator passthrough.
+   - `failOpen` = derived (`reason === 'policy_engine_unavailable'`).
+5. Dispatch `recordPolicyDecision({ projectId, sessionId, agentType, eventType, toolName, toolInputSnapshot, permissionDecision, matchedRuleId, reason: ruleReason ?? reason, runId })` via `setImmediate(...)` with `.catch(err => policyLogger.warn(...))`. Handler returns the response synchronously (before the audit write completes).
+
+**Audit-row reason column** gets the human rule text when matched (so a DBA reading `policy_decisions` sees actionable info), and the enum code otherwise — consistent with the response but richer for matched rules.
+
+**`PolicyInput` + `PolicyClient.evaluate()` extensions** (additive-only, user Q1 sign-off): `projectId?: string` added to both. `PolicyCheck` (the stub type used in tests) receives `projectId` through unchanged. `createPolicyClientFromCheck` propagates the field when supplied. Frozen-interface discipline preserved — no rename, no required field added.
+
+**Tests added (+32 total; unit 192→211, integration 140→154):**
+
+- `__tests__/unit/tools/check-policy.test.ts` (NEW, 19 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key shape (mutating + matches audit key `pd:{sessionId}:{toolName}:{eventType}` + same-triple-same-key regardless of toolInput + Pre vs Post distinct + truncation + probe-safe empty), input schema (minimal valid, PostToolUse accepted, unknown eventType rejected, empty required fields rejected, non-object toolInput rejected, optional runId, strict-unknown-fields), output schema (`'ask'` remains reachable, unknown reason rejected, `failOpen` required), factory construction.
+- `__tests__/integration/tools/check-policy.test.ts` (NEW, 14 tests):
+  1. `project_not_found` soft-failure; no audit row written.
+  2. `no_rule_matched` → allow + audit row persisted (all columns verified).
+  3. Deny via `Write + **/secrets.json` glob → deny response + audit row captures `matched_rule_id` + rule's human reason. Non-matching path → allow.
+  4. Async audit ordering — DB empty immediately after `await handler`, 1 row after `setImmediate` flush.
+  5. Idempotent dedupe — two calls with same `(sessionId, toolName, eventType)` → exactly 1 row. Different sessionIds → 2 rows.
+  6. Fail-open via breaker (closed DB handle trips breaker) → allow + `reason='policy_engine_unavailable'` + `failOpen=true`.
+  7. Fail-open via evaluator sentinel `'policy_check_unavailable'` mapping → response enum `'policy_engine_unavailable'` + audit row stores the enum code.
+  8. Per-projectId cache isolation — project A (deny rule) and project B (no rules) served correctly by the same `createPolicyClient` instance; order-independent (A-then-B AND B-then-A both produce correct decisions).
+  9. `runId` threads into the audit row (supplied → FK value; omitted → NULL).
+  10. 8 KiB truncation — 20 KB toolInput → audit row has 8192-char prefix + `…[truncated:N]` suffix. Small toolInput → verbatim.
+  11. `projectId` propagation — `createPolicyClientFromCheck` stub receives `req.projectId` matching the resolved `projects.id` (auto-wrap calls with `undefined` also observed per the additive-optional contract).
+
+**Decisions-log entries (4, timestamped 2026-04-24):**
+
+1. S7b deferral closure — `recordPolicyDecision` first caller lands.
+2. Per-projectId cache upgrade + `projectId?` additive-optional extension.
+3. Reason enum lock + `failOpen` derivation + `ruleReason` separation.
+4. 8 KiB `toolInputSnapshot` truncation decision.
+
+Plus a Module-03-consumption note: Hooks Bridge must treat `check_policy → project_not_found` as allow-for-hook-dispatch; otherwise a missing project registration silently blocks all work.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (idempotency.ts:77:3).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 328/328 repo-wide (shared 75 + db 42 + mcp-server 211).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 154/154.
+
+**Commit:** `feat(mcp-server): S14 — tool check_policy (fail-open + async policy_decisions write + per-projectId cache upgrade) + §24.4 amendment`.
 
 ### S15 — Tool `query_codebase_graph` with graphify-missing fallback
 

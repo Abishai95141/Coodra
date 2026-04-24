@@ -33,6 +33,17 @@ export interface PolicyInput {
   readonly input: unknown;
   /** `'pre'` or `'post'` — mirrors the Claude Code hook phase. */
   readonly phase: 'pre' | 'post';
+  /**
+   * Project scope for the evaluation, if known. Additive-optional slot
+   * landed in S14 (user sign-off 2026-04-24) — closes the S7b deferral
+   * note at `lib/policy.ts` that flagged the cache-key upgrade from the
+   * `'all'` sentinel to `Map<projectId, …>` as "awaits the first caller
+   * that has a real projectId". Existing auto-wrap callers (registry
+   * pre/post hooks) omit this field and fall back to a `__global__`
+   * cache entry; S14's `check_policy` tool supplies the real value.
+   * Additive-only edit — no behavioural change for existing callers.
+   */
+  readonly projectId?: string;
 }
 
 export interface PolicyResult {

@@ -2269,12 +2269,27 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 **When NOT to call:** for trivial mechanical choices (variable names, local loop structure). Reserve for choices a future agent could reasonably re-open.
 
 #### `check_policy`
-> Call this BEFORE every file write, shell command, or destructive operation. Returns "allow" (proceed), "ask" (surface to the user), or "deny" (stop). Consults CODEOWNERS, branch protection rules, project policy rules, and agent-type permissions. If the response is "deny", DO NOT proceed under any circumstance — report the reason to the user and stop. This is the one check that must never be skipped on the file-write or bash path.
+> Call this BEFORE every file write, shell command, or destructive operation. Returns "allow" (proceed), "ask" (surface to the user), or "deny" (stop). Consults project policy rules and agent-type permissions (CODEOWNERS + branch-protection integrations are future slices). If the response is "deny", DO NOT proceed under any circumstance — report the reason to the user and stop. This is the one check that must never be skipped on the file-write or bash path.
 
-**Input:** `{ projectSlug: string, sessionId: string, agentType: string, eventType: 'PreToolUse', toolName: string, toolInput: object }`
-**Returns:** `{ permissionDecision: 'allow' | 'ask' | 'deny', reason?: string, policyId?: string }`
-**Latency target:** <10 ms (must not sit in the 150 ms hook SLO).
-**Failure mode:** if the policy engine is unreachable, returns `allow` (fail-open) and logs a `policy_check_unavailable` event. See §16 pattern 2.
+**Input:** `{ projectSlug: string, sessionId: string, agentType: string, eventType: 'PreToolUse' | 'PostToolUse', toolName: string, toolInput: object, runId?: string }`
+**Returns (success):** `{ ok: true, permissionDecision: 'allow' | 'ask' | 'deny', reason: 'no_rule_matched' | 'rule_matched' | 'policy_engine_unavailable', ruleReason: string | null, matchedRuleId: string | null, failOpen: boolean }`
+
+**Reason enum (locked in S14):**
+- `no_rule_matched` — no policy rule fired; default allow (`failOpen: false`).
+- `rule_matched` — an explicit policy rule decided the call; `matchedRuleId` populated, `ruleReason` is the rule's human text (`policy_rules.reason`). `failOpen: false`.
+- `policy_engine_unavailable` — evaluator fault (breaker open, per-call timeout, or DB throw). Returns `allow` per §7 fail-open. `failOpen: true`.
+
+`failOpen` is computed from `reason` (`failOpen === (reason === 'policy_engine_unavailable')`). A unit test locks the enum values — observability can rely on either axis.
+
+**`permissionDecision = 'ask'`** is reserved for future higher-layer integrations (CODEOWNERS, branch protection). The S14 evaluator never emits `'ask'`; the schema keeps it for forward compatibility.
+
+**Returns (soft-failure):** `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered. **Project lookup miss is NOT fail-open** — §7 fail-open covers evaluator faults, not caller-addressable errors. Module 03 (Hooks Bridge) should treat a `project_not_found` response as `allow` for hook-dispatch; otherwise a missing project registration would silently block all work (see `context_memory/decisions-log.md` 2026-04-24 S14 entry).
+
+**Latency target:** <10 ms on the critical path. The audit-row INSERT is dispatched via `setImmediate(...)` and fires AFTER the handler returns — `policy_decisions` visibility lags the response. Retries on the same `(sessionId, toolName, eventType)` triple dedupe on the `policy_decisions.idempotency_key` UNIQUE index via `ON CONFLICT DO NOTHING`.
+
+**Storage:** audit row written to `policy_decisions` (key format `pd:{sessionId}:{toolName}:{eventType}` per §4.3). `toolInputSnapshot` is JSON-serialised and truncated to 8 KiB with a `…[truncated:N]` suffix — prevents audit-table bloat from large-body tool inputs while preserving original-size forensics.
+
+**Cache (S14 upgrade):** rule cache is keyed per-projectId (`Map<projectId, …>`) — one project's cached rules don't mask another's. TTL unchanged at 60s. The S7b-era `'all'` sentinel is retained as a `__global__` fallback for pre-S14 callers (registry auto-wrap) that omit `projectId`.
 
 #### `query_run_history`
 > Call this when you need to understand recent work on this project — which runs have been executed, their status, their associated PRs or JIRA issues, and the context-pack title for each completed run. Returns a chronological (most-recent-first) list of runs with metadata. Use alongside `search_packs_nl` when answering "what happened recently?" questions, and at session start to see whether there is an `in_progress` run to resume.

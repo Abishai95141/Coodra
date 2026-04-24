@@ -1,6 +1,7 @@
 import type { DbHandle } from '@contextos/db';
 
 import type { ToolRegistry } from '../framework/tool-registry.js';
+import { createCheckPolicyToolRegistration } from './check-policy/manifest.js';
 import { getFeaturePackToolRegistration } from './get-feature-pack/manifest.js';
 import { createGetRunIdToolRegistration } from './get-run-id/manifest.js';
 import { pingToolRegistration } from './ping/manifest.js';
@@ -42,4 +43,5 @@ export function registerAllTools(registry: ToolRegistry, deps: RegisterAllToolsD
   registry.register(createSearchPacksNlToolRegistration({ db: deps.db }));
   registry.register(createRecordDecisionToolRegistration({ db: deps.db }));
   registry.register(createQueryRunHistoryToolRegistration({ db: deps.db }));
+  registry.register(createCheckPolicyToolRegistration({ db: deps.db }));
 }

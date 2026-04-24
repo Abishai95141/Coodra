@@ -106,6 +106,16 @@ export interface PolicyClient {
     readonly sessionId: string;
     readonly input: unknown;
     readonly idempotencyKey: IdempotencyKey;
+    /**
+     * Project scope for the evaluation. Additive-optional in S14
+     * (user sign-off 2026-04-24) to close the S7b deferral note at
+     * `lib/policy.ts`'s cache-key comment. Auto-wrap callers omit
+     * this and hit the `__global__` cache slot with every-project
+     * rules loaded; `check_policy` supplies the real projectId so
+     * the cache keys per project and `loadRules` filters by
+     * `policies.project_id`. See also `PolicyInput.projectId`.
+     */
+    readonly projectId?: string;
   }): Promise<{ decision: 'allow' | 'deny'; reason: string; matchedRuleId: string | null }>;
 }
 
