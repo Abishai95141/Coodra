@@ -672,3 +672,17 @@ This is a third branch of the output schema, distinct from `pack_not_found`. Str
 **Alternatives considered:** (a) let it propagate to `handler_threw` (rejected — loses the chain). (c) drop the `chain` field and put it all in `howToFix` (rejected — the chain is structured data, agents and users consume it differently).
 
 **Reference:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts::parseCycleChain`; `apps/mcp-server/src/lib/feature-pack.ts::walkAncestors` (error source); `apps/mcp-server/__tests__/integration/tools/get-feature-pack.test.ts` (cycle soft-failure case); user ruling Q5 S9 2026-04-24.
+
+## 2026-04-24 15:30 — S10: `save_context_pack` resolution pattern — pre-SELECT runs.projectId, soft-failure on missing; mark completed idempotently
+
+**Decision:** `apps/mcp-server/src/tools/save-context-pack/handler.ts` factory closes over a `DbHandle`. Flow is (1) SELECT `runs.projectId` for the supplied `runId` → on miss return `{ ok: false, error: 'run_not_found', howToFix }`; (2) `ctx.contextPack.write({ runId, projectId, title, content, featurePackId? }, null)` — embedding is always `null` in Module 02, Module 05 backfills later; (3) `UPDATE runs SET status='completed', endedAt=unixepoch() WHERE id=runId AND status != 'completed'` — idempotent no-op on already-completed runs; (4) return `{ ok: true, contextPackId, savedAt, contentExcerpt }`.
+
+`featurePackId` is accepted on the wire per §24.4 but is silently discarded by the current `context_packs` schema (no FK column). Retained for M05/M07 schema growth.
+
+Append-only per ADR-007 — same `runId` + different content returns the ORIGINAL row (store's idempotency path). Integration test locks this against a `content = 'v2 DIFFERENT'` second call. FS-failure degradation (read-only `contextPacksRoot`) still returns `ok: true` with the durable DB row.
+
+**Rationale:** S10 is the first write-side context-pack tool. Pre-SELECT vs. relying on FK violation is a direct follow-through on the S8/S9 soft-failure convention — `run_not_found` is a user-recoverable state, not a programming bug. Embedding null preserves the Module-02/Module-05 boundary; forcing an embedding parameter now would either require a stub or leak the NL Assembly dependency backwards. Marking the run completed inside this handler (rather than via a separate `complete_run` tool) matches §24.4's "side-effect" wording and reduces round-trips for the agent.
+
+**Alternatives considered:** let the `context_packs.run_id` FK throw on missing runs and rely on `handler_threw` (rejected — opaque to the agent, violates §9.1.2). Accept `embedding?: number[]` in the tool input (rejected — no M02 caller has one; fake-null pass-through is dishonest). Split run completion into a separate tool (rejected — extra round-trip; §24.4 bakes the side-effect into this tool).
+
+**Reference:** `apps/mcp-server/src/tools/save-context-pack/handler.ts`; `apps/mcp-server/src/tools/save-context-pack/schema.ts`; `apps/mcp-server/src/tools/save-context-pack/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/save-context-pack.test.ts`; `system-architecture.md §24.4 save_context_pack` (amended same-commit); user autonomous-mode directive 2026-04-24 for S10.

@@ -2239,9 +2239,11 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 > Call this when a feature, bug fix, or refactor is complete — not per small edit, once per completed task. Persists a markdown summary of what was built, decisions made, files modified, test results, and open TODOs to the project's context archive. This is the ONLY mechanism by which the next session (possibly a different agent) can know what was done. Skipping this leaves the run as dead weight in the history table.
 
 **Input:** `{ runId: string, title: string, content: string, featurePackId?: string }`
-**Returns:** `{ contextPackId: string, savedAt: string }`
-**Side-effect:** marks the run as `completed`, optionally triggers a Context Pack → JIRA/PR comment worker (§22.8, §23.11).
-**Failure mode:** if the run is already marked `completed` with a pack, returns the existing pack (idempotent).
+**Returns:** `{ ok: true, contextPackId: string, savedAt: string, contentExcerpt: string }` on success. `contentExcerpt` is the first 500 Unicode code points of `content` with trailing whitespace trimmed (Q-02-3), returned for caller confirmation without a second read.
+**Side-effect:** flips `runs.status` to `'completed'` and sets `runs.endedAt` (idempotent — no-op if the run is already completed). Optionally triggers a Context Pack → JIRA/PR comment worker (§22.8, §23.11).
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'run_not_found', howToFix: string }` — the `runId` does not match a `runs` row. Caller should call `get_run_id` first, then retry.
+- Append-only re-call: if a `context_packs` row already exists for `runId`, the store returns the existing row unchanged (same `contextPackId`, same `savedAt`, original content preserved per ADR-007) — the tool responds `{ ok: true, ... }` with the original values. This is NOT a failure; it is the idempotent happy path.
 
 #### `search_packs_nl`
 > Call this when the user asks "what was done before?", "has X been tried?", or "what is the current state of Y?" — or when you are unsure whether work on a topic already exists. Natural-language search across all prior Context Packs in this project, ranked by relevance. ALWAYS call this before answering questions about prior state from memory.

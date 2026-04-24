@@ -416,11 +416,51 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S9 — tool get_feature_pack + §9.1.2 soft-failure canonical shape + §24.4 amendment`.
 
-### S10 — Tool `save_context_pack`
+### S10 — Tool `save_context_pack` (landed 2026-04-24)
 
-Handler delegates to `lib/context-pack.ts`. Idempotent per `runId` (existence check before insert; duplicate returns the existing `contextPackId` per §24.4). Marks the run as `completed`. Writes `content_excerpt` at insert time.
+**Scope:** third real MCP tool. Factory-shaped registration (`createSaveContextPackToolRegistration({ db })`) because the handler closes over a `DbHandle` for the `runs` SELECT + UPDATE; the `context_packs` write itself goes through `ctx.contextPack` (S7c store, already wired into `ContextDeps`). §24.4 description verbatim; failure-mode block amended same-commit with the `run_not_found` branch + append-only re-call documentation per §9.1.2 canonical shape.
 
-**Commit:** `feat(mcp-server): tool save_context_pack`.
+**Flow:**
+
+1. SELECT `runs.projectId` for the supplied `runId`. Missing → `{ ok: false, error: 'run_not_found', howToFix: 'Call get_run_id first...' }` soft-failure. No solo auto-create — `save_context_pack` writes against an existing run, different from `get_run_id` which bootstraps sessions.
+2. Delegate to `ctx.contextPack.write({ runId, projectId, title, content, featurePackId? }, null)`. Embedding is `null` in Module 02 (Module 05 NL Assembly backfills later per decisions-log 2026-04-24 12:30; `SqliteVecClient` stays read-only).
+3. `UPDATE runs SET status='completed', endedAt=unixepoch() WHERE id=runId AND status != 'completed'` — idempotent no-op on already-completed runs.
+4. Return `{ ok: true, contextPackId, savedAt, contentExcerpt }`.
+
+**Append-only (ADR-007):** same `runId` + different content returns the ORIGINAL row unchanged (`contextPackId`, `savedAt`, `contentExcerpt` all from the first call; store's idempotency path skips the second insert and the second FS write). Integration test locks this against `content = 'v2 DIFFERENT'` confirming DB row's `content === 'v1'`.
+
+**FS-failure degradation:** the S7c store is DB-first; FS materialisation runs AFTER the DB insert succeeds, and an FS write failure logs WARN and returns success. Integration test wires `contextPacksRoot` to a `chmod 0555` tmpdir and asserts `ok: true` + DB row exists.
+
+**`featurePackId` semantics:** accepted in the tool input per §24.4, passed through to the store, silently discarded today (`context_packs` has no `featurePackId` FK column yet). Retained on the wire for M05/M07 schema growth without tool-contract change.
+
+**Not wired (per standing rules):**
+- `recordPolicyDecision` — S14 (`check_policy`) remains the first caller.
+- JIRA/PR comment worker (§22.8/§23.11) — post-Module-02 integration module.
+- Embedding write — Module 05 owns.
+
+**Tests added (+19 total; unit 128→141, integration 108→114):**
+
+- **`__tests__/unit/tools/save-context-pack.test.ts`** (NEW, 13 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key (mutating, `save_context_pack:<runId>`, truncation), input schema boundaries (valid, featurePackId supplied, missing runId, empty title, title > 512, content > 1 MiB, strict-unknown fields), factory construction contract.
+- **`__tests__/integration/tools/save-context-pack.test.ts`** (NEW, 6 tests):
+  1. Happy path (DB row + FS file + runs completed).
+  2. `run_not_found` soft-failure (no context_packs row inserted).
+  3. Append-only re-call: same runId + different content returns original; DB content unchanged.
+  4. runs UPDATE idempotent when already completed.
+  5. FS-failure degradation: `chmod 0555` `contextPacksRoot`, still ok + DB row durable.
+  6. `featurePackId` accepted (no break).
+
+**Decisions-log entry (1 timestamped 2026-04-24 15:30):** S10 resolution pattern — pre-SELECT runs for projectId + soft-failure on missing; runs UPDATE marks completed idempotently after store.write; embedding stays null until Module 05; featurePackId pass-through without FK (M02-scope schema).
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (`idempotency.ts:77:3`, documented leave-as-is since `dfaefe9`).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 258/258 repo-wide (shared 75 + db 42 + mcp-server 141).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 114/114.
+
+**Commit:** `feat(mcp-server): S10 — tool save_context_pack + §24.4 failure-mode amendment`.
 
 ### S11 — Tool `search_packs_nl` with LIKE fallback
 
