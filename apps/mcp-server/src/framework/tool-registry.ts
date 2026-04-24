@@ -228,7 +228,13 @@ export class ToolRegistry {
    * would leave the SDK to synthesise a generic error. We build the
    * envelope ourselves so clients see precise, actionable messages.
    */
-  public async handleCall(name: string, rawInput: unknown, sessionId: string, requestId?: string): Promise<ToolResult> {
+  public async handleCall(
+    name: string,
+    rawInput: unknown,
+    sessionId: string,
+    options: { readonly requestId?: string; readonly agentType?: string } = {},
+  ): Promise<ToolResult> {
+    const { requestId, agentType = 'unknown' } = options;
     const tool = this.tools.get(name);
     if (!tool) {
       return {
@@ -336,6 +342,7 @@ export class ToolRegistry {
       requestId: requestId ?? this.mintRequestId(),
       receivedAt,
       idempotencyKey,
+      agentType,
       // Freeze the `now()` closure over `this.clock` so a handler
       // substituting its own clock at runtime has no effect — the
       // injection point is the registry constructor, full stop.

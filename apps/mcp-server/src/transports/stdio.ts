@@ -2,8 +2,8 @@ import { createLogger } from '@contextos/shared';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, type CallToolResult, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-
 import type { ToolRegistry } from '../framework/tool-registry.js';
+import { mapAgentType } from '../lib/agent-type.js';
 
 /**
  * Stdio transport bootstrap.
@@ -86,9 +86,20 @@ export async function startStdioTransport(opts: StdioStartOptions): Promise<{
   // idempotency-key build, pre-phase policy check, the handler, output
   // validation, and post-phase policy check. Returns the MCP-shaped
   // envelope directly.
+  //
+  // agentType is resolved from the MCP client's initialize handshake:
+  // `server.getClientVersion()` returns `{ name, version } | undefined`
+  // after the client has finished `initialize`. `mapAgentType` maps
+  // the name string (`claude-code`, `cursor`, …) to the canonical
+  // `runs.agent_type` value (`claude_code`, `cursor`, …). If the client
+  // did not supply a name or the mapping is absent, the value is
+  // `'unknown'` — see `src/lib/agent-type.ts` for the mapping table
+  // and the S8 decisions-log entry for the rationale.
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { name, arguments: args } = req.params;
-    const result = await registry.handleCall(name, args ?? {}, sessionId);
+    const clientName = server.getClientVersion()?.name;
+    const agentType = mapAgentType(clientName);
+    const result = await registry.handleCall(name, args ?? {}, sessionId, { agentType });
     // Our ToolResult is shape-compatible with the SDK's CallToolResult
     // ({ content, isError?, structuredContent? }); the cast narrows the
     // SDK's ServerResult union to the branch we actually produce.

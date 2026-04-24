@@ -259,6 +259,16 @@ export interface PerCallContext {
   readonly receivedAt: Date;
   readonly idempotencyKey: IdempotencyKey;
   /**
+   * Canonical `runs.agent_type` for the caller. Populated by the
+   * transport from the MCP `initialize.clientInfo.name` handshake
+   * value (via `src/lib/agent-type.ts::mapAgentType`). Additive slot
+   * landed in S8 (user directive Q2 2026-04-24) — same "reserved
+   * future-transport-metadata" pattern as S7c's
+   * `GraphifyClient.getIndexStatus`. Tests inject `'unknown'` via
+   * `makeFakeDeps` when they don't care about the value.
+   */
+  readonly agentType: string;
+  /**
    * Clock injection. Tool handlers call this instead of `new Date()`
    * so tests can inject a frozen clock and the tool code is entirely
    * clock-agnostic. Enforced by `__tests__/unit/tools/_no-raw-date.test.ts`.

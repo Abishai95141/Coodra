@@ -24,7 +24,7 @@ import { createMcpLogger } from './lib/logger.js';
 import { createPolicyClient } from './lib/policy.js';
 import { createRunRecorder } from './lib/run-recorder.js';
 import { createSqliteVecClient } from './lib/sqlite-vec.js';
-import { pingToolRegistration } from './tools/ping/manifest.js';
+import { registerAllTools } from './tools/index.js';
 import { startStdioTransport } from './transports/stdio.js';
 
 const bootLogger = createLogger('mcp-server.boot');
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   });
 
   const registry = new ToolRegistry({ deps });
-  registry.register(pingToolRegistration);
+  registerAllTools(registry, { db: dbHandle, mode: env.CONTEXTOS_MODE });
 
   const sessionId = `stdio:${randomUUID()}`;
   const transport = await startStdioTransport({

@@ -315,11 +315,54 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S7c — domain lib bodies + schema migration 0002 (run_events.run_id nullable + ON DELETE SET NULL)`.
 
-### S8 — Tool `get_run_id`
+### S8 — Tool `get_run_id` (landed 2026-04-24)
 
-`apps/mcp-server/src/tools/get-run-id/{handler,schema,manifest}.ts` + unit tests + `manifest.test.ts`. Handler: reads the most recent `runs` row where `status = 'in_progress'` and `session_id` matches the caller's `sessionId` (from MCP request context). If none exists, creates one with `idempotency_key = run:{projectId}:{sessionId}:{uuid}` and returns `{ runId, startedAt }`. Description verbatim from §24.4.
+**Scope:** the first real MCP tool (`ping` was the walking skeleton in S5). Lands the `get_run_id` handler/schema/manifest trio, the `ALL_TOOLS` registration barrel at `src/tools/index.ts`, a pure agent-type mapping module, an additive `PerCallContext.agentType` slot on the frozen `ToolContext`, and stdio-transport capture of the MCP `initialize.clientInfo.name` handshake value.
 
-**Commit:** `feat(mcp-server): tool get_run_id`.
+**Asymmetric resolution (user directive Q1):** solo mode auto-creates the `projects` row on an unknown slug; team mode returns a structured soft-failure `{ ok: false, error: 'project_not_found', howToFix }` so the agent surfaces actionable guidance instead of a generic tool-failure envelope. Decisions-log 2026-04-24 14:30 records the rationale.
+
+**What landed:**
+
+- **`src/tools/get-run-id/schema.ts`** — Zod input `{ projectSlug }` (1–128 chars, strict). Output is a **discriminated union on `ok`** — success branch `{ ok: true, runId, startedAt }`, soft-failure branch `{ ok: false, error: 'project_not_found', howToFix }`. The discriminated union is the honest shape: a failed lookup is a user-recoverable state, not a programming bug, so modeling it as data keeps the agent-reading contract clean (no `handler_threw` envelope for this case).
+
+- **`src/tools/get-run-id/handler.ts`** — factory `createGetRunIdHandler({ db: DbHandle, mode: 'solo' | 'team' })` closes over the process's boot-time deps. Flow:
+  1. `SELECT id FROM projects WHERE slug = ?` — resolve slug → projectId.
+  2. Missing: solo auto-creates (orgId from `SOLO_IDENTITY.orgId`); team returns the structured soft-failure.
+  3. `SELECT id, status, started_at FROM runs WHERE project_id = ? AND session_id = ? ORDER BY started_at DESC LIMIT 1` — latest existing run for the session.
+  4. Found: return `{ runId, startedAt }`. WARN when `status !== 'in_progress'` (Q3 escalation trigger for a future migration 0003 that relaxes the unique index to `(project_id, session_id, status)` if the WARN grows common).
+  5. Missing: `INSERT INTO runs ... RETURNING` with `id = generateRunKey({ projectId, sessionId })` (from `@contextos/shared`, pattern `run:{projectId}:{sessionId}:{uuid}` per §4.3). `onConflictDoNothing({ target: [projectId, sessionId] })` resolves concurrent-insert races. If 0 rows return, re-SELECT to fetch the winner.
+
+- **`src/tools/get-run-id/manifest.ts`** — factory `createGetRunIdToolRegistration(deps)` returns a `ToolRegistration`. Description is §24.4 verbatim + a 2-line tail naming the solo/team asymmetry so callers reading the manifest see the soft-failure branch exists. Idempotency builder: `{ kind: 'mutating', key: 'get_run_id:${projectSlug}:${sessionId}' }` — uses caller-supplied `projectSlug` (not internal-resolved `projectId`) per user directive Q5 so retries with the same input dedupe regardless of whether the solo-auto-create branch ran.
+
+- **`src/tools/index.ts`** — NEW registration barrel. Exports `registerAllTools(registry, { db, mode })` which calls `registry.register(...)` for every tool. `src/index.ts` is now a single-line wire-up. Future tools (S9–S15) are additive to this barrel. Guard test `__tests__/unit/tools/_no-unregistered-tools.test.ts` walks `src/tools/` directory entries and asserts each folder's canonical name (`hyphen-to-underscore`) is registered — this is the "tools/list returns empty" failure-mode guard named in `essentialsforclaude/10-troubleshooting.md`.
+
+- **`src/lib/agent-type.ts`** — NEW pure mapping module. `KnownAgentType` union + `AGENT_TYPE_MAPPING` frozen table + `mapAgentType(clientName)` resolver. Single source of truth for the `clientInfo.name → runs.agent_type` translation; adding a new client is one entry here. Case-insensitive lookup; unknown/missing → `'unknown'`.
+
+- **`src/framework/tool-context.ts`** — additive edit to `PerCallContext`: `readonly agentType: string`. Approved under user directive Q2 as the same "reserved future-transport-metadata" slot pattern as S7c's `GraphifyClient.getIndexStatus`. `makeFakeDeps` / `ToolRegistry` default to `'unknown'` when tests or transports don't supply one. Decisions-log 2026-04-24 14:30 records the additive-edit rationale.
+
+- **`src/framework/tool-registry.ts`** — `handleCall(name, rawInput, sessionId, options?: { requestId?, agentType? })`. Options object replaces the prior `requestId?` positional arg; `agentType` defaults to `'unknown'`. Populates `PerCallContext.agentType`. Unit tests updated.
+
+- **`src/transports/stdio.ts`** — CallToolRequestSchema handler calls `server.getClientVersion()?.name`, runs it through `mapAgentType`, and passes the result to `registry.handleCall(...)`. The MCP SDK's `Server` exposes `clientInfo` after the initialize handshake completes; stdio captures per call so HTTP's per-connection model (Module 03+) can follow the same pattern without refactor.
+
+- **`src/index.ts`** — swap: `registerAllTools(registry, { db: dbHandle, mode: env.CONTEXTOS_MODE })` replaces the direct `pingToolRegistration` import + `registry.register(...)` pair.
+
+**Tests added (+40 total; unit 84→116, integration 90→98):**
+
+- **`__tests__/unit/lib/agent-type.test.ts`** (NEW, 9 tests) — mapping table round-trip lock, undefined/null/empty guards, case-insensitive, unknown client default, Object.isFrozen assertion on the table.
+- **`__tests__/unit/tools/get-run-id.test.ts`** (NEW, 11 tests) — manifest contract via `@contextos/shared/test-utils::assertManifestDescriptionValid` (§24.3 rules), name lock, idempotency-key shape, input schema boundaries (valid, empty, too long, strict, missing), factory construction contract (missing options, non-DbHandle, invalid mode).
+- **`__tests__/unit/tools/_no-unregistered-tools.test.ts`** (NEW, 5 tests) — self-sanity of the folder-to-name translation (samples locked), every `src/tools/<folder>/` has a registration, inverse (no dangling registrations without a folder), folder-discovery locks.
+- **`__tests__/integration/tools/get-run-id.test.ts`** (NEW, 7 tests) — real `:memory:` SQLite with migrations applied; solo auto-create (projects row + runs row, agentType stamped); agentType=unknown default; project re-use across sessions; team-mode `project_not_found` soft-failure (no projects row written); idempotent re-call; non-in-progress return (WARN-adjacent behaviour); concurrent `Promise.all` race resolution.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (`idempotency.ts:77:3`, documented leave-as-is since S7b).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 233/233 repo-wide (shared 75 + db 42 + mcp-server 116).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 98/98.
+
+**Commit:** `feat(mcp-server): S8 — tool get_run_id + PerCallContext.agentType + ALL_TOOLS barrel`.
 
 ### S9 — Tool `get_feature_pack`
 

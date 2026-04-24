@@ -480,3 +480,125 @@ Same-commit asks all satisfied: schema files edited; migration regenerated via `
 **Alternatives considered:** Leave the guard catching only `new Date(` (rejected — `Date.now()` is unambiguously a wall-clock read and the more frequent pattern in real codebases). Add an eslint-plugin-ban-date rule instead (rejected — would require biome/eslint plugin overhead for a single-file grep that is less than 30 LOC). Switch to an AST-based matcher (rejected — adds a TypeScript parser dep to the unit-test path for negligible precision gain; the lexical regex already catches every real case and the sanity test locks the intent).
 
 **Reference:** `apps/mcp-server/__tests__/unit/tools/_no-raw-date.test.ts`; `apps/mcp-server/src/framework/tool-registry.ts::handleCall` (the only legitimate clock read in `src/**`); user S7a review question 1 (2026-04-23).
+
+## 2026-04-24 14:00 — Distribution scope: CLI only, no marketing site, no Module 08b
+
+**Decision:** A new Module 08a (`@contextos/cli`) is inserted between Module 03 and Module 04 in the implementation order. There is no Module 08b. Marketing site, landing page, npm-publish flag-day automation, and Anthropic MCP marketplace submission are user-side operational tasks tracked in `pending-user-actions.md`, not feature-pack work in this repo.
+**Rationale:** User directive 2026-04-24 — "we are not making the landing page here, only the system, if landing page and marketing is in the scope, remove it." The CLI is the necessary install surface for Modules 04 and 07 to function as designed (Module 04's onboarding flow refers to `contextos init`; Module 07's VS Code extension shells out to `contextos start`/`stop`/`status` for daemon lifecycle). The marketing surface is not part of the system being built.
+**Alternatives considered:** Keep Module 08b for marketing site (rejected — explicit user removal). Defer 08a to the end of the sequence (rejected — Module 04 and Module 07 specs would either invent a CLI surface or hand-wave the install path).
+**Reference:** `docs/feature-packs/08a-cli/{spec,implementation,techstack,meta}.md`; `essentialsforclaude/08-implementation-order.md` §8.1 amendment.
+
+## 2026-04-24 14:00 — Team mode is hosted by us; no BYO-cloud variant in v1
+
+**Decision:** Team mode runs on a single managed stack owned by the project lead (Supabase Postgres + pgvector, Upstash Redis, Railway or Fly.io for stateless services, Clerk for auth). Multi-tenant isolation via `org_id` on every team-scoped table + Supabase Row-Level Security policies — closes the §21 "Security: RLS and local secret permissions" open decision. There is no documented path for a customer to bring their own Postgres / Redis / deploy target in v1; that is a post-launch Enterprise variant.
+**Rationale:** User directive 2026-04-24 — "make the team service hosted by us." This simplifies Module 04's web-app onboarding (no "paste your Postgres URL" path) and lets Modules 05/06's managed-LLM path use a single set of API keys. Trade-off: we operate the stack (uptime, backups, secret rotation) — acknowledged operational burden, accepted because the architecture's local-first SQLite (ADR-008) keeps each developer's primary data on their machine even in team mode, so the hosted layer is a sync/audit target, not a customer-data store.
+**Alternatives considered:** BYO-cloud as the only path (rejected — every team would need its own Supabase + Upstash + deploy account, killing the "easy setup" goal). Both paths supported in v1 (rejected — doubles M04's onboarding surface for a Day-1 use case nobody has).
+**Reference:** `system-architecture.md` §21 close-out; `essentialsforclaude/08-implementation-order.md` §8.1 "scope items deliberately out".
+
+## 2026-04-24 14:00 — Pricing / billing entirely out of scope for the project
+
+**Decision:** No pricing tier definitions, no Stripe integration, no `subscriptions` / `usage_quotas` / `usage_events` tables, no metering pipeline, no per-seat license keys appear in any module spec. Module 04 (Web App) is dashboard / admin / team-management only. If/when monetization becomes relevant, it lands as a separate workstream after the working product is shipped.
+**Rationale:** User directive 2026-04-24 — "forget about monetary setup, only focus on building the working product." Solo mode is free with no restrictions. Team mode (when it opens) is also free at the architectural level; commercial licensing is a future business decision that does not constrain the technical surface today.
+**Alternatives considered:** Ship Stripe in M04 from day one (rejected — not in scope). Reserve table slots / surfaces for billing without implementation (rejected — violates §1.1 "no shallow proxies"; reserved-but-empty surfaces are a stub pattern).
+**Reference:** `essentialsforclaude/08-implementation-order.md` §8.1 "scope items deliberately out".
+
+## 2026-04-24 14:00 — Solo mode has no feature restrictions
+
+**Decision:** Solo mode (the local-only configuration shipped from Module 01 onward) has full feature parity for everything that is technically possible without a hosted backend. No features are gated behind team-mode or a future paid tier as a marketing funnel.
+**Rationale:** User directive 2026-04-24 — "no restrictions" on solo. The technical features that solo cannot offer (cross-developer audit, GitHub App integration that needs a stable webhook URL, managed Gemini access without a per-developer key) are absent because of architectural constraints, not because of a paywall.
+**Alternatives considered:** Gate the web app's policy-rule editor behind team mode (rejected — the local web app at `localhost:3000` is part of solo and editing policies is part of using ContextOS). Gate Graphify / Feature Pack inheritance behind team (rejected — these are core features).
+**Reference:** This decisions-log entry; `docs/feature-packs/08a-cli/spec.md` §2 (no flag-gating in `init`).
+
+## 2026-04-24 14:00 — Managed LLM in team mode is Gemini, not Anthropic
+
+**Decision:** Module 05's NL Assembly tier-2 (managed-LLM-with-our-key path) calls Gemini, not Anthropic Claude. Solo mode continues to support Ollama as the local-LLM default. The provider-selection logic in `system-architecture.md` §18 simplifies: Ollama (solo) → Gemini (team-managed) → none (skip enrichment, AST-only mode). The `ANTHROPIC_API_KEY` branch is removed from the §18 selection logic; it can stay in the env schema as an "advanced override" but is not the documented path.
+**Rationale:** User directive 2026-04-24 — "we will be using gemini instead." Free tier is generous; cost per token is lower than Anthropic's Haiku at the volume Module 05 expects. Single managed-key path keeps the team-mode infra simpler.
+**Alternatives considered:** Keep Anthropic as primary (rejected — explicit user reversal). Support both with runtime selection (rejected — two key types double the secret-management surface for marginal benefit).
+**Reference:** `system-architecture.md` §18 amendment (pending in next architecture-touching commit); `pending-user-actions.md` 2026-04-24 — `GEMINI_API_KEY` entry.
+
+## 2026-04-24 14:00 — Clerk OAuth providers: Google + GitHub + Microsoft + email/password
+
+**Decision:** Clerk projects (dev and prod) enable Google OAuth, GitHub OAuth, Microsoft OAuth, and email/password as authentication providers. SAML SSO and other enterprise providers are deferred until an Enterprise variant exists.
+**Rationale:** User directive 2026-04-24 — "yes" to Google + GitHub + Microsoft + email/password. Google + GitHub cover the developer-tool standard; Microsoft covers enterprise procurement comfort; email/password is the universal fallback when OAuth round-trips fail or when a user has no preferred provider.
+**Alternatives considered:** Google + GitHub only (rejected — Microsoft is table-stakes for enterprise sales conversations even pre-Enterprise-variant). Add Apple Sign-In (rejected — developer-tool users almost never need it; can add later non-breakingly).
+**Reference:** `pending-user-actions.md` 2026-04-24 — "Provision team-mode hosted infra" entry, step 4.
+
+## 2026-04-24 14:30 — S8: `get_run_id` solo auto-creates projects row; team returns structured `project_not_found` soft-failure
+
+**Decision:** `apps/mcp-server/src/tools/get-run-id/handler.ts` resolves an unknown `projectSlug` asymmetrically by `CONTEXTOS_MODE`:
+
+- Solo: insert a new `projects` row with `{ id: uuid, slug, orgId: SOLO_IDENTITY.orgId, name: slug }` and proceed to the runs-row creation step.
+- Team: return the `{ ok: false, error: 'project_not_found', howToFix: 'Register this project via the Web App or run \`contextos init\` in the project root before retrying.' }` output-schema branch. No `projects` row is inserted.
+
+The output schema is a Zod `discriminatedUnion('ok', [successBranch, softFailureBranch])` — a failed lookup is a user-recoverable state, not a programming bug, so modeling it as data keeps the agent-reading contract clean.
+
+**Rationale:** User ruling 2026-04-24 Q1. Throwing `NotFoundError` would have Claude Code surface "tool failed" with no context — a dead-end for the user. The structured soft-failure lets the agent read `howToFix` and surface it, pointing at the Web App (Module 04) or the CLI (Module 08a) — both future entry points that team-mode operators will know about. Solo-mode auto-create matches the zero-config promise: a developer running ContextOS locally should never have to "register a project" before the first tool call works.
+
+Asymmetric-by-design is the precedent captured here. Solo-mode tools trade strictness for ergonomics; team-mode tools trade ergonomics for governance. Future tools should follow the same axis.
+
+**Alternatives considered:** Pure (a) auto-create in both modes (rejected — would hide configuration errors in team deployments). Pure (c) throw `NotFoundError` in both modes (rejected — surfaces as generic tool-failure). Ship a single soft-failure branch that always returns `project_not_found` and force solo users to run `contextos init` too (rejected — Module 08a CLI hasn't shipped; forcing it pre-release breaks the demo path).
+
+**Follow-up (if the WARN volume grows):** Module 04 Web App and Module 08a CLI will both teach users to call their project-registration flow before the first tool call; at that point the team-mode soft-failure should be rare. If solo-mode auto-creates are being triggered by typos rather than fresh projects, add a Levenshtein-distance nag that suggests existing slugs — no plan for this yet, tracking as a "watch the logs" item.
+
+**Reference:** `apps/mcp-server/src/tools/get-run-id/handler.ts::createGetRunIdHandler`; `apps/mcp-server/src/tools/get-run-id/schema.ts::getRunIdOutputSchema`; `apps/mcp-server/__tests__/integration/tools/get-run-id.test.ts` (team-mode soft-failure block); user ruling Q1 S8 2026-04-24.
+
+## 2026-04-24 14:30 — S8: Additive edit — `PerCallContext.agentType: string` on the frozen `ToolContext`
+
+**Decision:** `apps/mcp-server/src/framework/tool-context.ts::PerCallContext` grows a new required field `agentType: string`. The `ToolRegistry.handleCall` signature changes from `(name, input, sessionId, requestId?)` to `(name, input, sessionId, options?: { requestId?, agentType? })` — the options object absorbs the prior `requestId` and adds `agentType`, defaulting to `'unknown'` when not supplied. The transport layer (today stdio; Module 03 hooks bridge for HTTP) is responsible for populating `agentType` from `server.getClientVersion()?.name` via `mapAgentType(...)`.
+
+**Rationale:** User ruling 2026-04-24 Q2. `runs.agent_type` is NOT NULL and needed from the first tool that writes to `runs` (`get_run_id`, this slice). The three non-edit alternatives fail:
+
+1. Hardcode `'unknown'` — bakes bad data into every row permanently, makes policy `match_agent_type` useless.
+2. Optional input field on each tool — pushes self-identification onto callers that don't naturally do it.
+3. Env var — doesn't scale to HTTP where many clients share one process.
+
+Option 4 (additive edit) reads the value from where it actually lives in the MCP protocol: `initialize.clientInfo.name`. This uses the same "reserved future-transport-metadata slot" pattern set by S7c's `GraphifyClient.getIndexStatus` (under user Q9 2026-04-24 12:15). Both changes are strictly additive — no existing caller breaks, the new field just arrives populated.
+
+**Alternatives considered:** See above + keep the handler signature 4-positional-arg (rejected — further positional parameters are readability-poor; the options object scales for the next few fields). Read `clientInfo` only at initialize and stash in the registry (rejected — couples the registry to the MCP protocol lifecycle; per-call lookup via `server.getClientVersion()` is free because the SDK caches).
+
+**Reference:** `apps/mcp-server/src/framework/tool-context.ts::PerCallContext`; `apps/mcp-server/src/framework/tool-registry.ts::handleCall`; `apps/mcp-server/src/transports/stdio.ts` (capture site); `apps/mcp-server/__tests__/unit/lib/agent-type.test.ts`; user ruling Q2 S8 2026-04-24.
+
+## 2026-04-24 14:30 — S8: agent-type mapping table in `src/lib/agent-type.ts` (single source of truth)
+
+**Decision:** `apps/mcp-server/src/lib/agent-type.ts::AGENT_TYPE_MAPPING` is the one place `clientInfo.name` strings are translated to canonical `runs.agent_type` values. Current entries (case-insensitive keys):
+
+```
+claude-code, claude-ai              → claude_code
+cursor, cursor-vscode               → cursor
+windsurf                            → windsurf
+github-copilot-chat-vscode          → vscode_copilot
+mcp-inspector                       → mcp_inspector
+<anything else / missing / empty>   → unknown
+```
+
+The table is frozen with `Object.freeze` so runtime mutation can't alter the mapping; a unit test asserts this.
+
+**Rationale:** Module 02's stdio transport is the first consumer; Module 03's HTTP transport will be the second. Centralising the translation here means "how do we know what agent this is?" has exactly one answer across the repo. Adding a new client (when Anthropic rebrands, when a fourth IDE ships MCP support) is one entry — the unit tests in `agent-type.test.ts` round-trip every entry so an accidental deletion is a CI failure. Lowercase-snake canonical form mirrors the GitHub/JIRA event `agent_type` enum in `system-architecture.md` §22/§23.
+
+**Alternatives considered:** Inline the mapping in the stdio handler (rejected — code duplication when HTTP lands). Make every tool responsible for its own mapping (rejected — duplication across 8+ tools). Use the policy engine's `match_agent_type` wildcards as the storage form (rejected — conflates policy-rule glob semantics with the underlying enum).
+
+**Reference:** `apps/mcp-server/src/lib/agent-type.ts`; `apps/mcp-server/__tests__/unit/lib/agent-type.test.ts`; user ruling Q2 S8 2026-04-24.
+
+## 2026-04-24 14:30 — S8: `get_run_id` returns any existing run for (projectId, sessionId); WARN on non-in-progress status
+
+**Decision:** When a `runs` row already exists for the `(projectId, sessionId)` pair, `get_run_id` returns its `runId` regardless of `status`. When the returned row's `status !== 'in_progress'`, the handler emits a WARN log: `{ event: 'get_run_id_returning_non_in_progress', runId, sessionId, status }`. No migration 0003 today; the WARN is the escalation trigger.
+
+**Rationale:** User ruling 2026-04-24 Q3. The schema's `uniqueIndex('runs_project_session_idx').on(projectId, sessionId)` is the hard contract — one `runs` row per (project, session) — and the §24.4 wording "most recent in-progress" is aspirational against that. The typical case (session just created, status is `in_progress`) is satisfied; the edge case (session had `save_context_pack` called on it earlier, status is `completed`) is rare because IDEs typically mint fresh session IDs for fresh conversations. Forcing the caller to mint a new sessionId (option c) doesn't work — sessionId comes from the IDE, not the agent. Migration 0003 (option b) to relax the unique index to `(projectId, sessionId, status)` + partial index on `status = 'in_progress'` is possible but premature before the WARN volume says it's needed.
+
+**Escalation criterion:** if the `get_run_id_returning_non_in_progress` WARN becomes a regular signal in ops logs (measured against the `get_run_id_created` INFO at, say, 5% frequency or higher), schedule migration 0003 in a future slice. Log grep is cheap; schema churn is not.
+
+**Alternatives considered:** Migration 0003 now (rejected — scope creep, no data). Soft-failure `{ ok: false, error: 'session_already_completed' }` (rejected — caller can't act on it without minting a new sessionId, which it can't). Soft-update the row's status back to `in_progress` (rejected — violates the append-only spirit even though `runs` is technically mutable).
+
+**Reference:** `apps/mcp-server/src/tools/get-run-id/handler.ts` (WARN site); `apps/mcp-server/__tests__/integration/tools/get-run-id.test.ts` (non-in-progress assertion); `packages/db/src/schema/sqlite.ts::runs` (unique index); user ruling Q3 S8 2026-04-24.
+
+## 2026-04-24 14:30 — S8: `tools/index.ts` ALL_TOOLS barrel + `_no-unregistered-tools.test.ts` guard convention
+
+**Decision:** `apps/mcp-server/src/tools/index.ts` exports `registerAllTools(registry, { db, mode })` — the single place tool registrations are called. `src/index.ts` now has a one-line wire-up: `registerAllTools(registry, { db: dbHandle, mode: env.CONTEXTOS_MODE })`. Tools whose handlers need process-level config (DB handle, mode) expose factory exports (`createGetRunIdToolRegistration(deps)`); tools whose handlers are pure (like `ping`) expose a static constant (`pingToolRegistration`). The barrel calls both shapes uniformly.
+
+The guard test `apps/mcp-server/__tests__/unit/tools/_no-unregistered-tools.test.ts` walks `src/tools/` directory entries, converts each folder name to its canonical tool name via `hyphen-to-underscore` (e.g. `get-run-id` → `get_run_id`), and asserts that name appears in the registry after `registerAllTools` runs. Self-sanity tests lock the folder-to-name translation against a sample fixture so a future refactor that loosens the glob fails on that line, not silently in production.
+
+**Rationale:** The "tools/list returns empty" failure mode is already documented in `essentialsforclaude/10-troubleshooting.md`. The guard test turns that runtime surprise into a CI error. The barrel also keeps `src/index.ts` small across S9–S15 (6 more tools land without touching the entrypoint). The factory-vs-static split mirrors the S7b/S7c pattern for lib modules — pure code exports a constant, env-dependent code exports a factory.
+
+**Alternatives considered:** Keep direct imports in `src/index.ts` and add tools one-by-one (rejected — six edits over S9–S15 vs one). A registration decorator / auto-discovery via `glob import` (rejected — too magic; silent breakage if a tool folder is added without a corresponding export). Put `ALL_TOOLS` as a const array rather than `registerAllTools` function (rejected — tools that need DB/mode deps can't be in a static const).
+
+**Reference:** `apps/mcp-server/src/tools/index.ts`; `apps/mcp-server/__tests__/unit/tools/_no-unregistered-tools.test.ts`; `apps/mcp-server/src/index.ts` (wire-up); `essentialsforclaude/10-troubleshooting.md` (failure-mode source); user ruling Q8 S8 2026-04-24.
