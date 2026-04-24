@@ -52,9 +52,13 @@ export const runEvents = pgTable(
   'run_events',
   {
     id: text('id').primaryKey(),
-    runId: text('run_id')
-      .notNull()
-      .references(() => runs.id),
+    // run_id is nullable + ON DELETE SET NULL: the `RunRecorder.record()`
+    // contract (see apps/mcp-server/src/framework/tool-context.ts) accepts
+    // `runId: string | null` so PreToolUse events that fire before a
+    // `runs` row exists still land in the trace (system-architecture.md
+    // §4.3 rationale). Widened from NOT NULL in Module-02 migration 0002
+    // — see context_memory/decisions-log.md 2026-04-24.
+    runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
     phase: text('phase').notNull(),
     toolName: text('tool_name').notNull(),
     toolUseId: text('tool_use_id').notNull(),

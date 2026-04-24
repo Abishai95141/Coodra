@@ -79,13 +79,14 @@ async function main(): Promise<void> {
   // line change here.
   const sharedLogger = createMcpLogger('root');
   const dbClient = createDbClient({});
+  const dbHandle = dbClient.asInternalHandle();
   const auth = createAuthClient(env);
-  const policy = createPolicyClient({ db: dbClient.asInternalHandle() });
-  const featurePack = createFeaturePackStore({ db: dbClient.client });
-  const contextPack = createContextPackStore({ db: dbClient.client });
-  const runRecorder = createRunRecorder({ db: dbClient.client });
-  const sqliteVec = createSqliteVecClient({ db: dbClient.client });
-  const graphify = createGraphifyClient();
+  const policy = createPolicyClient({ db: dbHandle });
+  const featurePack = createFeaturePackStore({ db: dbHandle });
+  const contextPack = createContextPackStore({ db: dbHandle });
+  const runRecorder = createRunRecorder({ db: dbHandle });
+  const sqliteVec = createSqliteVecClient({ db: dbHandle });
+  const graphify = createGraphifyClient({ db: dbHandle });
 
   const deps: ContextDeps = Object.freeze({
     db: dbClient.client,

@@ -132,13 +132,28 @@ export interface ContextPackStore {
 }
 
 /**
- * Run-recorder. Implemented (stub) in `lib/run-recorder.ts`.
+ * Run-recorder. Implemented in `lib/run-recorder.ts` (S7c).
  *
  * Design note (user S7a directive Q2): the `runId: string | null`
  * nullable invariant (§4.3 — PreToolUse can fire before a run
  * exists) is handled INSIDE this module. Tool code passes whatever
  * it has; the recorder's internals translate `null` → SQL NULL on
  * insert. Call sites never branch on `if (runId)`.
+ *
+ * Schema backing (`packages/db/src/schema/{sqlite,postgres}.ts`):
+ *   `run_events.run_id` is `text references(() => runs.id, { onDelete:
+ *   'set null' })` — nullable + cascade-to-NULL. Widened in Module-02
+ *   migration 0002 from the initial NOT NULL shape so the
+ *   `RunRecorder.record({ runId: null, ... })` contract is truthful
+ *   (see context_memory/decisions-log.md 2026-04-24 — the original
+ *   S7a docblock's reference to `ON DELETE SET NULL` was aspirational
+ *   against a schema that hadn't yet been updated; this entry
+ *   references the real, landed clause).
+ *
+ * Scope (S7c): this recorder writes ONLY `run_events`. `runs` rows
+ * are owned by the `get_run_id` tool (§S8) which has the full
+ * project/agentType/mode context to populate that table's NOT NULL
+ * columns.
  */
 export interface RunRecorder {
   record(args: {
@@ -176,17 +191,41 @@ export interface SqliteVecClient {
 }
 
 /**
- * graphify client. Implemented (stub) in `lib/graphify.ts`.
+ * graphify client. Implemented in `lib/graphify.ts` (S7c).
  *
  * User constraint: expose domain-shaped ops, not query executors.
- * Module 05 defines the full graph surface; S7c lands the first
- * domain method as a stub so the ctx slot is reserved.
+ * Module 05 defines the full graph surface; today S15's
+ * `query_codebase_graph` is the only consumer.
+ *
+ * Interface growth policy (reserved at S7a as "future domain
+ * methods slot in here in later modules"):
+ *   - S7c added `getIndexStatus(slug)` for S15's graphify-missing
+ *     fallback — approved by user directive Q9 as the correct home
+ *     for the "is the index present?" signal rather than growing a
+ *     side-channel module export. See decisions-log 2026-04-24.
  */
 export interface GraphifyClient {
+  /**
+   * Load the community subgraph for the project associated with the
+   * given `runId`, expanding `depth` hops around the pack's own
+   * seed nodes. The runId is resolved to its project slug via the
+   * `runs` + `projects` tables inside this client. Missing graph.json
+   * → returns `{ nodes: [], edges: [] }`; callers that need to
+   * distinguish "missing" from "empty" must query `getIndexStatus`
+   * first.
+   */
   expandContext(args: { readonly runId: string; readonly depth: number }): Promise<{
     readonly nodes: ReadonlyArray<unknown>;
     readonly edges: ReadonlyArray<unknown>;
   }>;
+  /**
+   * Check whether `<graphifyRoot>/<slug>/graph.json` exists on disk.
+   * Returns `{ present: true }` when the file is readable, or
+   * `{ present: false, howToFix }` with the documented remediation
+   * string from §S15 so the tool handler can surface it verbatim
+   * without re-deriving the message.
+   */
+  getIndexStatus(slug: string): Promise<{ readonly present: boolean; readonly howToFix?: string }>;
 }
 
 // ---------------------------------------------------------------------------

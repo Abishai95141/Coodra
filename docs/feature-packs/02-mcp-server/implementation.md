@@ -268,21 +268,52 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 - S14's `check_policy` MCP tool lands the first caller of `recordPolicyDecision`, threading `projectId` / `agentType` / `eventType` / `runId` through from the Hooks Bridge input. At that point the policy cache key upgrades from global `'all'` to per-`projectId`.
 - S16 HTTP transport lands the Clerk + local-hook middleware that calls `verifyClerkJwt` / `verifyLocalHookSecret` on inbound Bearer tokens / `X-Local-Hook-Secret` headers.
 
-### S7c — Lib: domain services
+### S7c — Lib: domain services (landed 2026-04-24)
 
-`apps/mcp-server/src/lib/feature-pack.ts` — filesystem-first loader for `docs/feature-packs/<slug>/{spec,implementation,techstack}.md`. Computes checksum = sha256 of the three files concatenated in that fixed order (per Q-02-4). On read, compares against the DB row in `feature_packs`; mismatch drops the in-process cache entry and updates the row. Inheritance resolver: scalar override + array concat, root → leaf, cycle detection (per §16 pattern 9).
+**Scope:** real bodies for the five remaining lib slots — `feature-pack`, `context-pack`, `run-recorder`, `sqlite-vec`, `graphify` — plus a same-commit schema migration 0002 that widens `run_events.run_id` to nullable + ON DELETE SET NULL so the frozen `RunRecorder.record({ runId: string | null })` contract is truthful against the DB.
 
-`apps/mcp-server/src/lib/context-pack.ts` — writes `docs/context-packs/YYYY-MM-DD-<slug>.md` AND inserts a `context_packs` row. `content_excerpt` = first 500 Unicode **code points** of `content` with trailing whitespace trimmed, computed via `Array.from(content).slice(0, 500).join('')` (code-point-safe; multi-byte chars preserved). Unit test asserts multi-byte-safe truncation with an emoji at position 499.
+**Reconciliations vs. the original plan (not deviations — doc-level fixes):**
+- Filename: the original plan said `src/lib/sqlite-vec-client.ts`; S7a landed it as `src/lib/sqlite-vec.ts`. S7c keeps the actual filename; the S7a contract "file tree is frozen" governs.
+- Run recorder scope: the original plan said "writes `runs` and `run_events`"; the frozen `RunRecorder.record()` signature does not carry `projectId`/`agentType`/`mode` (all NOT NULL on `runs`). The §S8 `get_run_id` handler owns `runs` row creation; S7c's recorder is `run_events`-only. Spec.md §68 and techstack.md §85 already reflect this; the doc drift was confined to this file.
+- Outbox worker: the original plan's "in-process worker polled on 500ms" was superseded by spec.md §68 + techstack.md §85's "`setImmediate` + ON CONFLICT DO NOTHING, durable `pending_jobs` outbox deferred post-Module-03". S7c mirrors spec/techstack.
 
-`apps/mcp-server/src/lib/run-recorder.ts` — writes `runs` and `run_events` via the outbox pattern described in §16 pattern 3: insert into `pending_jobs` first, return; a background worker drains. In Module 02 the worker is in-process and polled on a 500 ms interval (§4.1).
+**What landed:**
 
-`apps/mcp-server/src/lib/graphify.ts` — reads `~/.contextos/graphify/<slug>/graph.json`. If absent → returns `{ present: false, notice: 'graphify_index_missing', howToFix: 'run `graphify scan` at repo root' }`. If present → parses, caches, returns `{ present: true, nodes, edges, communities }`.
+- **`apps/mcp-server/src/lib/feature-pack.ts`** — filesystem-first loader. Reads `docs/feature-packs/<slug>/{spec,implementation,techstack}.md` + `meta.json` (a new per-pack file carrying `{ slug, parentSlug?, sourceFiles? }`); computes checksum = sha256 of the three markdown bodies concatenated in fixed (spec, implementation, techstack) order; compares against `feature_packs` row on read and upserts on mismatch (Q-02-4). 60s per-slug TTL cache keyed on load time; checksum mismatch drops the entry. Inheritance walks `parentSlug` root-first (no in-file merge per user Q3 — downstream S9 handler renders the chain); cycle detection via visited-set throws `InternalError('feature_pack_cycle', { chain })`. `upsert(pack)` writes FS + DB atomically from the caller's side; tests seed both the filesystem and the DB. `projectSlug === featurePackSlug` is documented in the store's docblock (Q1 confirmation; decisions-log 2026-04-24).
 
-`apps/mcp-server/src/lib/sqlite-vec-client.ts` — thin helper on top of `@contextos/db`'s SQLite client. `insertEmbedding(contextPackId, vector)` and `knn(vector, k)` functions. Unit test uses an in-memory SQLite with the extension loaded.
+- **`apps/mcp-server/src/lib/context-pack.ts`** — DB-first writer with FS as a reconcilable view (Q4). Validates `pack` as `{ runId, projectId, title, content, featurePackId? }` via a local Zod schema; computes `contentExcerpt` = first 500 Unicode **code points** of `content` with trailing whitespace trimmed, via `Array.from(content).slice(0, 500).join('').replace(/\s+$/u, '')` (Q-02-3); idempotent per `runId` (existing row → returned shape, no second insert); inserts the `context_packs` row, then the `context_packs_vec` row for non-null embeddings (sqlite) or writes `summary_embedding` via pgvector for postgres; finally materialises `docs/context-packs/YYYY-MM-DD-<runId-first-8>.md`. Filesystem failure AFTER a successful DB insert logs WARN and returns success — DB is durable, FS is reconcilable. Non-null embeddings MUST have `length === EMBEDDING_DIM` (384); mismatch → `ValidationError` before any DB work. Exports `computeContentExcerpt` as a pure function so the unit test locks the Q-02-3 contract with emoji and CJK at code point 499.
 
-**Files:** the five `src/lib/*.ts` files + matching unit tests under `__tests__/unit/lib/`.
+- **`apps/mcp-server/src/lib/run-recorder.ts`** — async, idempotent `run_events` writer (Q6). `record()` validates args synchronously (so invalid phase / missing toolName throws BEFORE the setImmediate) and then fires an `INSERT ... ON CONFLICT (id) DO NOTHING` via `setImmediate`. Row id binds the caller's `idempotencyKey.key` + `phase`, so retries with the same key collide cleanly. `runId: null` is passed through as SQL NULL (requires migration 0002 — see below).
 
-**Commit:** `feat(mcp-server): lib domain — feature-pack, context-pack, run-recorder, graphify, sqlite-vec-client`.
+- **Migration 0002** — `packages/db/drizzle/{sqlite,postgres}/0002_*.sql` widens `run_events.run_id` from NOT NULL + `references(runs.id)` to nullable + `references(runs.id, { onDelete: 'set null' })`. Both schema files (`packages/db/src/schema/{sqlite,postgres}.ts`) move together; the schema-parity test still passes. User ruling 2026-04-24 rejected skip-and-WARN and synthetic-placeholder options — (b) schema fix is the honest shape because the frozen interface accepts null and the schema was the stale side. No new preserve-block, so `migrations.lock.json` is unchanged. Decisions-log 2026-04-24 records the doc reconciliation and the three-rejection reasoning.
+
+- **`apps/mcp-server/src/lib/sqlite-vec.ts`** — dual-path semantic search (Q8). sqlite path uses the `context_packs_vec` vec0 virtual table with `vec_distance_cosine` brute-force ordering (sqlite-vec 0.1.9 doesn't accept `distance_metric=cosine` in the vec0 DDL — see External reference gotchas). postgres path uses pgvector's `<=>` cosine operator backed by the HNSW index from migration 0001. Both paths accept `filter.projectSlug` and resolve it to `projectId` via a `projects` row lookup before scoping the KNN. Domain surface stays narrow — only `searchSimilarPacks` is exposed; the context-pack store writes embeddings directly via the raw handle because `SqliteVecClient`'s interface was reserved for read-side domain methods (an additive `insertEmbedding` slot can land later without breaking anything).
+
+- **`apps/mcp-server/src/lib/graphify.ts`** — filesystem-backed Graphify index reader. `expandContext({ runId, depth })` resolves `runId → projects.slug` via a single `runs INNER JOIN projects` query, then loads `<graphifyRoot>/<slug>/graph.json`. Missing file → empty `{ nodes: [], edges: [] }`; malformed JSON → empty with a WARN log; runId that doesn't resolve → empty. Per-slug in-memory cache (no TTL — graph.json only changes when an operator runs `graphify scan`, which is manual). `getIndexStatus(slug)` returns `{ present: true }` or `{ present: false, howToFix: 'run ' + '`graphify scan` at repo root' }` — the remediation string that S15's tool handler surfaces verbatim. `getIndexStatus` is a NEW method on the `GraphifyClient` interface (additive edit approved under user Q9; the slot was reserved by the S7a docblock for "future domain methods slot in here in later modules"). The `expandContext` method's `depth` argument is accepted for forward-compat with Module 05's n-hop expansion — S7c returns the full parsed subgraph regardless.
+
+- **`apps/mcp-server/src/framework/tool-context.ts`** — docblock fix on `RunRecorder` to cite the real `references(runs.id, { onDelete: 'set null' })` clause landed by migration 0002 (the S7a docblock cited an aspirational clause that didn't exist in schema code). Additive interface edit: `GraphifyClient.getIndexStatus(slug)` added, documented as the reserved forward slot.
+
+- **`apps/mcp-server/src/index.ts`** — five factory call-sites swap from passing `DbClient` to `dbClient.asInternalHandle()` (DbHandle). `createGraphifyClient` also receives `db`. Otherwise unchanged.
+
+- **`docs/feature-packs/01-foundation/meta.json`** + **`docs/feature-packs/02-mcp-server/meta.json`** — bootstrap per-pack metadata for the two existing feature packs so the real `feature-pack.ts` has real inputs. `02-mcp-server` has `parentSlug: '01-foundation'`; `01-foundation` has `parentSlug: null`. `sourceFiles` populated per each pack's actual governance.
+
+**Tests added / rewritten:**
+
+- **Unit (2 new):** `__tests__/unit/lib/context-pack-excerpt.test.ts` — 7 tests pinning the Q-02-3 Unicode truncation contract (emoji at 499, CJK at 499, string.slice would break, optional `max` parameter). `__tests__/unit/lib/feature-pack-cycle.test.ts` — 1 test building an a→b→c→a cycle on tmpfs and asserting `InternalError` with chain naming.
+- **Integration (5 rewritten, +24 tests):** `feature-pack.test.ts` (+11 — bootstrap, ghost-slug, checksum drift, meta-slug mismatch, inheritance chain, list root-first, missing-parent throw, cache-within-TTL + refresh, upsert files + DB, upsert validation). `context-pack.test.ts` (+9 — insert-with-embedding, insert-with-null, idempotent-per-runId, dim mismatch, missing-runId, missing-title, read, list by projectSlug, list returns [] for unknown slug, FS content matches DB). `run-recorder.test.ts` (+7 — ctor rejects, arg validation, insert with runId, insert with null runId, retry dedupe, ON DELETE SET NULL cascade). `sqlite-vec.test.ts` (+9 — ctor rejects, domain-surface narrow, input validation 3 cases, KNN ordering, k cap, project scoping). `graphify.test.ts` (+11 — ctor rejects, getIndexStatus 3 cases, expandContext 5 cases including cache).
+- **Sanity (1 deleted, 0 skipped):** the S7a "throws NotImplementedError" tests are all gone — real bodies mean real behaviour is what's tested now.
+
+**Gate (all green):**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm --filter @contextos/db run test:unit` — 42/42 (schema parity test still passes — both dialects widened together).
+- `pnpm lint` — 0 errors, 1 pre-existing info (`idempotency.ts:77:3` `useShorthandFunctionType`, documented leave-as-is in the chore-commit `dfaefe9` from S7b).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm --filter @contextos/mcp-server run test:unit` — 84/84 (was 75; +9).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 90/90 (was 61; +29).
+
+**Commit:** `feat(mcp-server): S7c — domain lib bodies + schema migration 0002 (run_events.run_id nullable + ON DELETE SET NULL)`.
 
 ### S8 — Tool `get_run_id`
 
@@ -359,7 +390,7 @@ Do NOT re-defer the audit write past S14 — S7b deferred it here precisely beca
 
 ### S15 — Tool `query_codebase_graph` with graphify-missing fallback
 
-Handler delegates to `lib/graphify.ts`. If `graph.json` missing → return `{ ok: true, nodes: [], edges: [], notice: 'graphify_index_missing', howToFix: 'run `graphify scan` at repo root' }`. Else → returns the matching subgraph for the `query` symbol (exact-name first, then substring, then neighbourhood by 1 hop).
+Handler delegates to `lib/graphify.ts`. Calls `ctx.graphify.getIndexStatus(slug)` first (method landed in S7c under user directive Q9, reserved slot on `GraphifyClient`). When the status is `{ present: false, howToFix }`, the handler returns `{ ok: true, nodes: [], edges: [], notice: 'graphify_index_missing', howToFix }` verbatim from the status — the `howToFix` string is authored once in `lib/graphify.ts` (`'run ' + '`graphify scan` at repo root'`) and surfaced by the handler without rederivation. When present, calls `ctx.graphify.expandContext({ runId, depth })` and returns the matching subgraph for the `query` symbol (exact-name first, then substring, then neighbourhood by 1 hop).
 
 **Commit:** `feat(mcp-server): tool query_codebase_graph with graphify-missing fallback`.
 
