@@ -602,3 +602,73 @@ The guard test `apps/mcp-server/__tests__/unit/tools/_no-unregistered-tools.test
 **Alternatives considered:** Keep direct imports in `src/index.ts` and add tools one-by-one (rejected — six edits over S9–S15 vs one). A registration decorator / auto-discovery via `glob import` (rejected — too magic; silent breakage if a tool folder is added without a corresponding export). Put `ALL_TOOLS` as a const array rather than `registerAllTools` function (rejected — tools that need DB/mode deps can't be in a static const).
 
 **Reference:** `apps/mcp-server/src/tools/index.ts`; `apps/mcp-server/__tests__/unit/tools/_no-unregistered-tools.test.ts`; `apps/mcp-server/src/index.ts` (wire-up); `essentialsforclaude/10-troubleshooting.md` (failure-mode source); user ruling Q8 S8 2026-04-24.
+
+## 2026-04-24 15:00 — S9: `get_feature_pack` returns pack = deepest-match; `subPack` reserved for Module 07+ folder-nested sub-packs
+
+**Decision:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts` reads §24.4's *"Returns the Feature Pack for the module that owns the given path"* as owner-centric and singular. Concretely:
+
+- `pack` = the deepest pack in the inheritance chain whose `sourceFiles` globs match `filePath` (walked leaf-first via `picomatch`), OR the slug's own pack when `filePath` is absent / no glob matches.
+- `inherited` = ancestors of `pack`, root-first, NOT including `pack` itself.
+- `subPack` = always `null` in Module 02. Reserved for Module 07+ folder-nested sub-feature-packs (e.g., `docs/feature-packs/02-mcp-server/sub/transport/` inside the same pack directory) — a DIFFERENT scoping axis from inheritance.
+
+§24.4 is amended same-commit to make these semantics explicit in the return-shape line.
+
+**Rationale:** User ruling 2026-04-24 Q1 S9. Three readings were on the table; (a) "deepest-match primary" won because it matches §24.4's owner-centric wording, matches the S9 spec's "resolves the deepest pack whose `sourceFiles` matches (inheritance-aware)", and makes `pack` self-contained so the agent sees its governing conventions without joining `inherited` first.
+
+`subPack`'s reservation is explicit to prevent the next tool author from mis-reading it as "the deeper match in the inheritance chain" — folder-nested sub-packs and ancestral inheritance are separate axes. Module 07's sub-pack surface will populate `subPack` with a pack nested inside the same slug directory; Module 02 always emits `null`.
+
+**Alternatives considered:** (b) `pack` = slug's own pack + `subPack` = deepest match in chain (rejected — muddles `subPack`'s future semantics). (c) `pack` + `subPack` both refer to nested sub-packs within the same slug (rejected — no such thing in Module 02; would make `pack` always the slug's pack even when filePath matches an ancestor).
+
+**Reference:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts::findDeepestMatchIndex`; `apps/mcp-server/src/tools/get-feature-pack/schema.ts::successBranch`; `system-architecture.md §24.4 get_feature_pack` (amended same-commit); `apps/mcp-server/__tests__/integration/tools/get-feature-pack.test.ts` (5 filePath-match cases); user ruling Q1 S9 2026-04-24.
+
+## 2026-04-24 15:00 — S9: Canonical soft-failure shape is `{ ok: false, error, howToFix }` for every tool in the server
+
+**Decision:** Every tool's output schema that includes a soft-failure branch MUST have both `error: z.literal('<stable-code>')` and `howToFix: z.string().min(1)`. Tool-specific fields (`chain` for a cycle, `notice` for a fallback-with-advisory, etc.) are additive on top. The two-field floor is non-negotiable — agents must always have a stable error code they can branch on AND a user-surfaceable remediation string.
+
+`essentialsforclaude/09-common-patterns.md §9.1.2` is tightened same-commit to state this as a rule. `system-architecture.md §24.4 get_feature_pack` failure-mode line is amended to include `howToFix` for `pack_not_found` and a new `feature_pack_cycle` branch with `chain` + `howToFix`.
+
+**Rationale:** User ruling 2026-04-24 Q2 S9. Cross-tool consistency beats §24.4-verbatim on this axis — §24.4's "do NOT block, proceed with default conventions" becomes the `howToFix` value for `pack_not_found`, so the extension is additive-over-verbatim rather than a replacement. S11 (`search_packs_nl`) and S15 (`query_codebase_graph`) both inherit this shape when they add their respective fallback branches (`no_embeddings_yet`, `graphify_index_missing`). Documenting it as a rule at the §9.1.2 layer rather than a §24.4-local convention means the next tool author sees it immediately.
+
+**Alternatives considered:** Keep §24.4-verbatim and treat S8's `howToFix` as tool-local (rejected — sets up drift). Drop `howToFix` entirely and rely on `error` code + external documentation (rejected — forces the agent to look up every error code rather than surfacing the remediation inline; defeats the whole point of the soft-failure pattern).
+
+**Reference:** `essentialsforclaude/09-common-patterns.md §9.1.2` (canonical-shape paragraph); `system-architecture.md §24.4 get_feature_pack` (failure-mode amendment); `apps/mcp-server/src/tools/get-feature-pack/schema.ts::packNotFoundBranch + cycleBranch`; user ruling Q2 S9 2026-04-24.
+
+## 2026-04-24 15:00 — S9: `filePath` with no `sourceFiles` match silently falls back to the slug's pack + logs DEBUG
+
+**Decision:** When `get_feature_pack` is called with a `filePath` that does NOT match any `sourceFiles` glob in the inheritance chain (leaf + all ancestors), the handler silently returns the slug's own pack and its ancestor chain — no `notice`/`warning` field in the success branch. A DEBUG-level log fires `{ event: 'feature_pack_filepath_no_match', projectSlug, filePath }` for operator observability. Default log level (`info`) does NOT emit this; operators set `LOG_LEVEL=debug` to see it.
+
+**Rationale:** User ruling 2026-04-24 Q3 S9. A caller-supplied advisory `filePath` that doesn't resolve isn't a misbehavior — it's a hint that didn't apply to the chain. Surfacing a `notice` field would force every caller to branch on it even when the hint was wrong; silent fallback matches §24.4's "do NOT block, proceed with default conventions" spirit. WARN level would add noise for a non-error; DEBUG lets operators who want observability opt in without polluting the default log stream.
+
+**Future escalation:** if the DEBUG-log volume crosses a threshold in production (say, >5% of `get_feature_pack` calls have filePath-no-match), consider adding an optional `warning: 'no_sourceFiles_match_for_filePath'` success-branch field in a future slice — additive schema edit, no breaking change.
+
+**Alternatives considered:** (b) add `notice` field with `howToFix` to the success branch (rejected — every caller has to branch on it). (c) return `{ ok: false, error: 'path_not_governed' }` soft-failure (rejected — it's an advisory, not a failure).
+
+**Reference:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts` (silent-fallback branch); `apps/mcp-server/__tests__/integration/tools/get-feature-pack.test.ts` ("filePath with no match" case asserting no notice field); user ruling Q3 S9 2026-04-24.
+
+## 2026-04-24 15:00 — S9: `inherited[]` is root-first (ancestors, not including pack) — locked by both unit and integration test
+
+**Decision:** `get_feature_pack`'s `inherited` array returns ancestors of `pack` in root-first order. For a 3-deep chain `root ← middle ← leaf` with `pack = leaf`, the response is `{ pack: leaf, inherited: [root, middle] }`. `inherited[0]` is always the root; `inherited[inherited.length - 1]` is the parent of `pack`. `pack` itself is NOT in `inherited`.
+
+**Rationale:** User ruling 2026-04-24 Q4 S9. Reading order for an agent consuming the response is least-specific → most-specific: render `inherited[0]` (root), then `inherited[1]`, …, then `pack`. Matches the S7c `FeaturePackStore.walkAncestors` internal ordering so there's no transposition between store and handler. Two lock sites — unit test on `evaluateRules` (wait, that's policy; for S9 it's the schema test) AND integration test on a real 3-deep chain — because this is a contract future tools will consume and the ordering is easy to invert silently.
+
+**Alternatives considered:** Leaf-first ordering (rejected — reading order would be most-specific → least-specific, unnatural for agent consumption). Pack itself included at the end of `inherited` (rejected — duplicates data; the response already has `pack` as a separate field).
+
+**Reference:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts` (chain construction); `apps/mcp-server/__tests__/integration/tools/get-feature-pack.test.ts` ("inherited[] ordering lock" block); `apps/mcp-server/src/lib/feature-pack.ts::walkAncestors` (store-side ordering source); user ruling Q4 S9 2026-04-24.
+
+## 2026-04-24 15:00 — S9: `feature_pack_cycle` surfaces as a structured soft-failure with `chain` payload
+
+**Decision:** When the S7c `FeaturePackStore.walkAncestors` detects a cycle and throws `InternalError('feature_pack_cycle: a → b → c → a')`, the `get_feature_pack` handler catches the throw, parses the `a → b → c → a` chain from the message, and returns:
+
+```
+{ ok: false, error: 'feature_pack_cycle', chain: ['a','b','c','a'], howToFix: 'Remove the parentSlug cycle in meta.json: a → b → c → a. Pick one parent and stop.' }
+```
+
+This is a third branch of the output schema, distinct from `pack_not_found`. Structured with `chain: string[]` so the caller doesn't have to re-parse the human-readable `howToFix` string to surface the cycle to the user.
+
+**Rationale:** User ruling 2026-04-24 Q5 S9. Cycles are user-recoverable configuration bugs (someone wrote a cyclic `parentSlug` in `meta.json`) — the registry's generic `handler_threw` envelope treats them as programming bugs and loses the chain information. A structured soft-failure keeps the chain accessible to the agent and matches the §9.1.2 canonical soft-failure shape.
+
+**Coupling note:** the handler parses the chain from the error message's human-readable body (`feature_pack_cycle: a → b → c → a`). This couples S9's error handling to the S7c error-message shape. Follow-up — if this coupling grows (more error codes, chain shapes), consider adding structured `details: { chain: [...] }` to `InternalError` at the store level so the handler inspects `err.details` instead of parsing. Not a blocker today; the message format is stable and owned by the same team.
+
+**Alternatives considered:** (a) let it propagate to `handler_threw` (rejected — loses the chain). (c) drop the `chain` field and put it all in `howToFix` (rejected — the chain is structured data, agents and users consume it differently).
+
+**Reference:** `apps/mcp-server/src/tools/get-feature-pack/handler.ts::parseCycleChain`; `apps/mcp-server/src/lib/feature-pack.ts::walkAncestors` (error source); `apps/mcp-server/__tests__/integration/tools/get-feature-pack.test.ts` (cycle soft-failure case); user ruling Q5 S9 2026-04-24.

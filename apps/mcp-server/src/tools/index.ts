@@ -1,6 +1,7 @@
 import type { DbHandle } from '@contextos/db';
 
 import type { ToolRegistry } from '../framework/tool-registry.js';
+import { getFeaturePackToolRegistration } from './get-feature-pack/manifest.js';
 import { createGetRunIdToolRegistration } from './get-run-id/manifest.js';
 import { pingToolRegistration } from './ping/manifest.js';
 
@@ -32,4 +33,5 @@ export interface RegisterAllToolsDeps {
 export function registerAllTools(registry: ToolRegistry, deps: RegisterAllToolsDeps): void {
   registry.register(pingToolRegistration);
   registry.register(createGetRunIdToolRegistration({ db: deps.db, mode: deps.mode }));
+  registry.register(getFeaturePackToolRegistration);
 }

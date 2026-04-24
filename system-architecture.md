@@ -2229,9 +2229,11 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 > Call this BEFORE editing, creating, or refactoring any file in this project. Returns the Feature Pack for the module that owns the given path: architectural constraints, coding conventions, permitted files, known gotchas, and the tech lead's guidelines. Always call on the first tool use of a session and whenever switching to a new area of the codebase. Without this, your changes will probably violate conventions the team has already recorded.
 
 **Input:** `{ projectSlug: string, filePath?: string }`
-**Returns:** `{ pack: FeaturePack, subPack?: FeaturePack, inherited: FeaturePack[] }`
+**Returns:** `{ pack: FeaturePack, subPack?: FeaturePack, inherited: FeaturePack[] }` — `pack` is the deepest pack whose `sourceFiles` matches the given `filePath` (or the slug's own pack when `filePath` is absent / no glob matches); `inherited` is the ancestor chain of `pack`, root-first (see Module 02 S9, decisions-log 2026-04-24 15:00). `subPack` is reserved for Module 07+ folder-nested sub-feature-packs and is always `undefined`/omitted in Module 02.
 **Latency target:** <50 ms (SQLite-local) or <200 ms (team mode, pgvector).
-**Failure mode:** returns `{ ok: false, error: 'pack_not_found' }` if no pack is registered — do NOT block, proceed with default conventions.
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'pack_not_found', howToFix: string }` — the slug is not registered on disk + DB. Caller should NOT block; proceed with default conventions.
+- `{ ok: false, error: 'feature_pack_cycle', chain: string[], howToFix: string }` — the `parentSlug` references in `meta.json` form a cycle. `chain` names the cyclic sequence so the user can fix the offending `meta.json`.
 
 #### `save_context_pack`
 > Call this when a feature, bug fix, or refactor is complete — not per small edit, once per completed task. Persists a markdown summary of what was built, decisions made, files modified, test results, and open TODOs to the project's context archive. This is the ONLY mechanism by which the next session (possibly a different agent) can know what was done. Skipping this leaves the run as dead weight in the history table.

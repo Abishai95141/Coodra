@@ -364,11 +364,57 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S8 — tool get_run_id + PerCallContext.agentType + ALL_TOOLS barrel`.
 
-### S9 — Tool `get_feature_pack`
+### S9 — Tool `get_feature_pack` (landed 2026-04-24)
 
-Handler delegates to `lib/feature-pack.ts`. Returns `{ pack, subPack?, inherited: [] }` per §24.4. `filePath` is optional — when supplied, resolves the deepest pack whose `sourceFiles` matches (inheritance-aware).
+**Scope:** second real MCP tool. Lands `get_feature_pack` handler/schema/manifest as a static-const registration (no factory — handler consumes `ctx.featurePack` which is already wired at boot). Amends `system-architecture.md §24.4` with the canonical soft-failure shape per the §9.1.2 rule the S8 review tightened. No interface edits; no new deps.
 
-**Commit:** `feat(mcp-server): tool get_feature_pack`.
+**Return shape semantics (user directive Q1 2026-04-24 15:00):** `pack` is the deepest pack in the inheritance chain whose `sourceFiles` globs match `filePath` (or the slug's own pack when `filePath` is absent or no glob matches). `inherited` is the ancestor chain of `pack`, root-first. `subPack` is always `null` in Module 02; reserved for Module 07+ folder-nested sub-feature-packs (a different scoping axis from inheritance).
+
+**What landed:**
+
+- **`src/tools/get-feature-pack/schema.ts`** — Zod input `{ projectSlug, filePath? }` strict. Output is a `z.union` of three branches: success `{ ok: true, pack, subPack: null, inherited }`; `pack_not_found` `{ ok: false, error, howToFix }`; `feature_pack_cycle` `{ ok: false, error, chain, howToFix }`. Wire shape for each `FeaturePack` is `{ metadata: {id, slug, parentSlug, isActive, checksum, updatedAt: ISO-8601 string}, content: {spec, implementation, techstack, sourceFiles} }`. Handler converts the store's `Date` `updatedAt` to an ISO string at the boundary.
+
+- **`src/tools/get-feature-pack/handler.ts`** — delegates to `ctx.featurePack.get({ projectSlug, filePath })`. Error mapping from the store's `InternalError` throws:
+  - `feature_pack_cycle: a → b → c → a` → `feature_pack_cycle` branch with `chain` parsed from the message.
+  - `slug '<x>' not found on disk + DB` or `feature_pack_parent_missing: ...` → `pack_not_found` branch.
+  - anything else → re-throw (registry wraps in generic `handler_threw`).
+  Successful path builds the full chain `[root, ..., leaf]`, walks from leaf backwards calling `picomatch(pattern, { dot: false, nobrace: true })` against each level's `sourceFiles`, and returns the deepest match. `filePath` with no match falls back silently to the slug's own pack with a DEBUG log `{ event: 'feature_pack_filepath_no_match', projectSlug, filePath }` for observability per Q3 — default log level (`info`) does NOT emit this, operators who care set `LOG_LEVEL=debug`. No second cache layer — the store's 60 s TTL with checksum-mismatch invalidation is the single cache surface.
+
+- **`src/tools/get-feature-pack/manifest.ts`** — static const `getFeaturePackToolRegistration` (not a factory, per §9.1.1: handler consumes `ctx.featurePack` directly). §24.4 description landed verbatim (80 words). Idempotency builder is `{ kind: 'readonly', key: 'readonly:get_feature_pack:{slug}:{filePath ?? '*'}'}` truncated to 200 chars — caller-supplied inputs in the key so retries with the same input dedupe in the registry's logs.
+
+- **`src/tools/index.ts`** — one-line addition: `registry.register(getFeaturePackToolRegistration)`. The `_no-unregistered-tools.test.ts` guard from S8 now sees `ping`, `get-run-id`, `get-feature-pack` folders and asserts all three are registered.
+
+- **`system-architecture.md §24.4` (Amendment-B same-commit)** — `get_feature_pack` return-shape line extended with the `pack`/`subPack`/`inherited` semantics + the canonical soft-failure shape with both error codes (`pack_not_found`, `feature_pack_cycle`), each carrying `howToFix`, plus `chain` for the cycle branch.
+
+- **`essentialsforclaude/09-common-patterns.md §9.1.2`** — one-line tightening adding *"Canonical soft-failure shape — every soft-failure branch MUST include BOTH `error` AND `howToFix`. Tool-specific fields (e.g. `chain` for a cycle, `notice` for a fallback) are additive."* Pairs with §24.4's extension; locks the convention for S11/S15 to inherit.
+
+**Tests added (+22 total; unit 116→128, integration 98→108):**
+
+- **`__tests__/unit/tools/get-feature-pack.test.ts`** (NEW, 12 tests) — manifest contract via `@contextos/shared/test-utils::assertManifestDescriptionValid`, name lock, idempotency-key readonly + truncation, input schema boundaries (accept slug alone, accept slug+filePath, reject empty, reject oversized, reject strict-unknown fields, reject missing slug).
+- **`__tests__/integration/tools/get-feature-pack.test.ts`** (NEW, 10 tests — 2 more than the original Q9 7 per user directive Q11):
+  1. Simple root-only pack, no filePath.
+  2. 3-deep chain, no filePath — locks `inherited` root-first.
+  3. filePath matches leaf's own sourceFiles → pack = leaf.
+  4. filePath matches a mid ancestor only → pack = mid, inherited = [root]. *(Q11 ancestor-glob match lock.)*
+  5. filePath matches root sourceFiles only → pack = root, inherited = [].
+  6. filePath with no match → silent fallback to leaf, no `notice`/`warning` field leaks into the response.
+  7. `pack_not_found` soft-failure for unknown slug.
+  8. `pack_not_found` soft-failure when a parent slug is missing from disk.
+  9. `feature_pack_cycle` soft-failure with chain for a cyclic parentSlug graph.
+  10. Explicit 3-deep inherited ordering lock — asserts `out.inherited.map(p => p.metadata.slug) === ['root', 'middle']`. *(Q11 inheritance ordering lock.)*
+
+**Decisions-log entries (5 timestamped 2026-04-24 15:00):** pack = deepest match + subPack M07-reserved; canonical soft-failure shape as the cross-tool rule; DEBUG log on filePath-no-match; inherited[] root-first locked; feature_pack_cycle structured soft-failure with chain.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (`idempotency.ts:77:3`, documented leave-as-is since `dfaefe9`).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 245/245 repo-wide (shared 75 + db 42 + mcp-server 128).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 108/108.
+
+**Commit:** `feat(mcp-server): S9 — tool get_feature_pack + §9.1.2 soft-failure canonical shape + §24.4 amendment`.
 
 ### S10 — Tool `save_context_pack`
 

@@ -126,6 +126,10 @@ export const myToolOutputSchema = z.discriminatedUnion('ok', [successBranch, sof
 - **Throw** when the state is a programming bug or system fault (DB unreachable, unexpected null, invariant violated). The registry's generic `handler_threw` envelope is the right shape.
 - **Soft-failure** when the state is a user-recoverable misconfiguration (slug not registered, feature-pack parent missing from disk, OAuth token expired). The agent reads `howToFix` and surfaces it to the user.
 
+**Canonical soft-failure shape — required fields (landed S9):**
+
+Every soft-failure branch MUST include BOTH `error: z.literal('<stable-code>')` AND `howToFix: z.string().min(1)`. Tool-specific fields (e.g. `chain` for a cycle error, `notice` for a fallback) are additive on top, but the two-field floor is non-negotiable — agents must always have an error code they can branch on AND a user-surfaceable remediation string. This rule applies across every tool in the server; don't invent a soft-failure shape without `howToFix`.
+
 **Agent-caller contract — BOTH `ok` fields must be checked:**
 
 The registry wraps every handler result as `{ ok: true, data: <handler_output> }`. The outer `ok` is transport success. The inner `data.ok` (present because the handler's output schema uses the discriminated union) is the domain success signal. Missing the inner check silently treats a soft-failure as success.
