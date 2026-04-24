@@ -2304,12 +2304,19 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 - `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered.
 
 #### `query_codebase_graph`
-> Call this BEFORE making significant structural changes to understand the code's dependency graph. Returns symbol-level relationships (who calls what, who depends on what) from the Graphify-indexed codebase. Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer "where is X defined?" without reading every file.
+> Call this BEFORE making significant structural changes to understand the code's dependency graph. Returns the community subgraph (nodes + edges) from the Graphify-indexed codebase. Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer "where is X defined?" without reading every file.
 
 **Input:** `{ projectSlug: string, query: string }`
-**Returns:** `{ symbols: Array<{ name, kind, file, callers, callees, community }> }`
-**Mechanism:** reads `graph.json` nodes/edges loaded by §17.
-**Failure mode:** if no Graphify import exists for the project, returns `{ symbols: [], warning: 'no_graph_available' }` — proceed without it.
+**Returns (success, M02):** `{ ok: true, nodes: ReadonlyArray<unknown>, edges: ReadonlyArray<unknown>, indexed: true, notice?: 'query_filtering_deferred_to_m05' }`
+- `nodes` / `edges` are typed `unknown` at M02 — Module 05 owns the rich `{ name, kind, file, callers, callees, community }` projection and replaces this handler with a typed-filtering version.
+- `indexed: true` is an observability primitive — locked `true` on success (the handler only returns success after `getIndexStatus` confirms the file exists). Distinct from `ok`: a success with `nodes: []` is legitimate empty state; the same outer shape with `ok: false` is a soft-failure.
+- `notice: 'query_filtering_deferred_to_m05'` is present whenever M02 returns the full subgraph without applying `query` filtering — same advisory-marker pattern as `search_packs_nl`'s `no_embeddings_yet`. Module 05 drops this marker when it lands typed filtering.
+**Mechanism:** reads `graph.json` nodes/edges loaded by §17. At M02 the handler calls `ctx.graphify.getIndexStatus(slug)` BEFORE `ctx.graphify.expandContextBySlug(slug)`; the ordering is load-bearing — without the status probe, a missing index would silently fall through to `{ nodes: [], edges: [] }` and callers could not distinguish "no results" from "no index".
+**Soft-failures (two distinct shapes — distinct remediations):**
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered in the `projects` table. Remediation: `contextos init`.
+- `{ ok: false, error: 'codebase_graph_not_indexed', howToFix: string }` — the project exists but no `graph.json` is present on disk at `<graphifyRoot>/<slug>/graph.json`. Remediation: ``run `graphify scan` at repo root``.
+**Empty result** (index present, graph.json parses to `{ nodes: [], edges: [] }`) → `{ ok: true, nodes: [], edges: [], indexed: true, notice: 'query_filtering_deferred_to_m05' }` — NOT a soft-failure. Same rule as `search_packs_nl` / `query_run_history`.
+**Fail-open (§7):** lib-internal read / parse failures (graph.json exists but is truncated or malformed) collapse to `{ nodes: [], edges: [] }` at the lib layer with `indexed` still `true` — distinct from `codebase_graph_not_indexed` which is caller-addressable.
 
 #### `get_run_id`
 > Call this at the START of any session that will write code, if the current `runId` is not already in context from a session-start hook. Returns the current in-progress session's runId (UUID) which binds all subsequent tool calls, decisions, and context packs to a single durable record. Most other tools accept this runId as an argument. Call once per session and reuse the value.

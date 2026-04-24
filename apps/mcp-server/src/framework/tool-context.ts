@@ -213,6 +213,12 @@ export interface SqliteVecClient {
  *     fallback — approved by user directive Q9 as the correct home
  *     for the "is the index present?" signal rather than growing a
  *     side-channel module export. See decisions-log 2026-04-24.
+ *   - S15 added `expandContextBySlug(slug)` for `query_codebase_graph`
+ *     which has a `projectSlug` input but no `runId` — approved by
+ *     user directive Q2 (2026-04-24) as the same additive-method
+ *     pattern that landed Q9. The existing `expandContext({ runId })`
+ *     surface is preserved for future `runId`-aware callers; both
+ *     paths share the per-slug cache in the implementation.
  */
 export interface GraphifyClient {
   /**
@@ -225,6 +231,20 @@ export interface GraphifyClient {
    * first.
    */
   expandContext(args: { readonly runId: string; readonly depth: number }): Promise<{
+    readonly nodes: ReadonlyArray<unknown>;
+    readonly edges: ReadonlyArray<unknown>;
+  }>;
+  /**
+   * Slug-addressed variant of `expandContext` landed in S15 (user
+   * directive Q2 2026-04-24). Intended for callers that already
+   * have the project slug and do not have a runId — the
+   * `query_codebase_graph` tool is the first consumer. Shares the
+   * per-slug cache with `expandContext`; a missing graph.json
+   * returns `{ nodes: [], edges: [] }` (callers that need to
+   * distinguish "missing" from "empty" must call `getIndexStatus`
+   * BEFORE this method, per §S15 flow).
+   */
+  expandContextBySlug(slug: string): Promise<{
     readonly nodes: ReadonlyArray<unknown>;
     readonly edges: ReadonlyArray<unknown>;
   }>;

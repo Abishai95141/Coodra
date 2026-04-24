@@ -169,6 +169,20 @@ export function createGraphifyClient(deps: CreateGraphifyClientDeps): GraphifyCl
       return { nodes: entry.nodes, edges: entry.edges };
     },
 
+    async expandContextBySlug(slug) {
+      // Additive method landed in S15 (user Q2 sign-off 2026-04-24)
+      // for callers with a projectSlug but no runId — the
+      // `query_codebase_graph` tool is the first consumer. Shares
+      // the per-slug cache with `expandContext`. Missing file → empty
+      // arrays (callers distinguish via `getIndexStatus` first).
+      if (typeof slug !== 'string' || slug.length === 0) {
+        return { nodes: [], edges: [] };
+      }
+      const entry = await loadForSlug(slug);
+      if (!entry) return { nodes: [], edges: [] };
+      return { nodes: entry.nodes, edges: entry.edges };
+    },
+
     async getIndexStatus(slug) {
       if (typeof slug !== 'string' || slug.length === 0) {
         return { present: false, howToFix: GRAPHIFY_MISSING_HOWTO };

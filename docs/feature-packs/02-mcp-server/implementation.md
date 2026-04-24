@@ -680,11 +680,69 @@ Plus a Module-03-consumption note: Hooks Bridge must treat `check_policy → pro
 
 **Commit:** `feat(mcp-server): S14 — tool check_policy (fail-open + async policy_decisions write + per-projectId cache upgrade) + §24.4 amendment`.
 
-### S15 — Tool `query_codebase_graph` with graphify-missing fallback
+### S15 — Tool `query_codebase_graph` (landed 2026-04-24)
 
-Handler delegates to `lib/graphify.ts`. Calls `ctx.graphify.getIndexStatus(slug)` first (method landed in S7c under user directive Q9, reserved slot on `GraphifyClient`). When the status is `{ present: false, howToFix }`, the handler returns `{ ok: true, nodes: [], edges: [], notice: 'graphify_index_missing', howToFix }` verbatim from the status — the `howToFix` string is authored once in `lib/graphify.ts` (`'run ' + '`graphify scan` at repo root'`) and surfaced by the handler without rederivation. When present, calls `ctx.graphify.expandContext({ runId, depth })` and returns the matching subgraph for the `query` symbol (exact-name first, then substring, then neighbourhood by 1 hop).
+**Scope:** eighth real MCP tool — closes the pure-tool-set for Module 02. Factory-shaped registration (user Q1 sign-off) closing over `DbHandle` for projects-slug resolution. §24.4 amended same-commit: output shape migrated from `{ symbols: [...] }` (Module-05 typed projection) to the M02-accurate `{ ok: true, nodes, edges, indexed: true, notice? }`. Two distinct soft-failure shapes.
 
-**Commit:** `feat(mcp-server): tool query_codebase_graph with graphify-missing fallback`.
+**Four noteworthy decisions (all user-approved pre-code):**
+
+1. **Factory over static-const** (Q1). Static-const handler could not distinguish `project_not_found` from `codebase_graph_not_indexed` because `ctx.db.db` is `unknown`-typed at the ToolContext boundary. Factory-close-over-`DbHandle` matches every other project-resolving tool (S11, S12, S14).
+2. **`GraphifyClient.expandContextBySlug(slug)` additive method landed** (Q2). `expandContext({ runId })` doesn't fit S15's input (no runId on `{ projectSlug, query }`). Same additive-method pattern as S7c's `getIndexStatus(slug)` — Q9 sign-off precedent. Both paths share the per-slug cache in the implementation.
+3. **Output shape amended from `{ symbols }` to `{ nodes, edges, indexed, notice? }`** (Q3). M02 treats graphify nodes as `unknown` (Module 05 owns the rich schema). Shipping a typed-`symbols` shape would require either duck-type casts (structural dishonesty) or a full type system that doesn't exist yet. The M02-accurate shape matches what the lib actually delivers; Module 05 replaces this handler with typed filtering.
+4. **`query` accepted but not applied at M02** (Q4). Nodes are `unknown` — any filter would be imprecise (stringify+substring) or dishonest (cast). The M02 shim returns the full subgraph with `notice: 'query_filtering_deferred_to_m05'` so agents detect the shim explicitly. Same advisory-notice pattern as `search_packs_nl`'s `no_embeddings_yet`.
+
+**First caller of two S7c/S15 additive methods:**
+- **`getIndexStatus(slug)`** — landed in S7c (user Q9 sign-off) reserved for exactly this slice. S15 is its first caller, closing the S7c deferral.
+- **`expandContextBySlug(slug)`** — landed in S15 (user Q2 sign-off this commit). First caller is S15 itself.
+
+**Flow (order-critical — the spy-based integration test locks this):**
+
+1. Resolve `projectSlug → projects.id`. Missing → `{ ok: false, error: 'project_not_found', howToFix }` soft-failure per §9.1.2. No graphify call.
+2. `ctx.graphify.getIndexStatus(slug)` BEFORE `ctx.graphify.expandContextBySlug(slug)`. If `{ present: false, howToFix }`, return `{ ok: false, error: 'codebase_graph_not_indexed', howToFix }` soft-failure. The `howToFix` string is the lib-authored ``'run `graphify scan` at repo root'`` — surfaced verbatim.
+3. `ctx.graphify.expandContextBySlug(slug)` → `{ nodes, edges }`. Empty arrays on lib-internal fail-open (parse failure / read failure) — these still return success with `indexed: true`, NOT collapsed with `codebase_graph_not_indexed`.
+4. Return `{ ok: true, nodes, edges, indexed: true, notice: 'query_filtering_deferred_to_m05' }`.
+
+**Output shape:**
+
+- Success: `{ ok: true, nodes: unknown[], edges: unknown[], indexed: true, notice?: 'query_filtering_deferred_to_m05' }`.
+- Soft-failure 1: `{ ok: false, error: 'project_not_found', howToFix }`. Remediation: `contextos init`.
+- Soft-failure 2: `{ ok: false, error: 'codebase_graph_not_indexed', howToFix }`. Remediation: ``run `graphify scan` at repo root``.
+
+Empty results (index present, graph.json parses to empty arrays) → `{ ok: true, nodes: [], edges: [], indexed: true, notice }` — NOT a soft-failure.
+
+**Read-only tool:** idempotency key is kind `readonly`. Shape: `readonly:query_codebase_graph:{slug}:{query.slice(0,60)}` truncated to 200. No DB dedupe; log correlator only.
+
+**Zod bounds:** `projectSlug` min 1 max 256; `query` min 1 max 2048 (empty query is a caller bug, rejected at schema layer). `.strict()`.
+
+**Tests added (+30 total; unit 211→231, integration 154→164):**
+
+- `__tests__/unit/tools/query-codebase-graph.test.ts` (NEW, 20 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key readonly + (slug, query) combos distinct + 200-char truncation + probe-safe empty input, input schema (minimal valid, empty slug/query rejects, oversize query, strict-unknown-fields), output schema (success with/without notice, indexed: false reject, each soft-failure branch accepted, unknown error code rejected, unknown notice rejected), factory construction.
+- `__tests__/integration/tools/query-codebase-graph.test.ts` (NEW, 10 tests):
+  1. `project_not_found` soft-failure (slug not registered).
+  2. `codebase_graph_not_indexed` soft-failure (project exists, no `graph.json`).
+  3. Success — graph.json present → nodes + edges + indexed:true + notice.
+  4. Empty graph.json (zero nodes) is success-with-empty, NOT soft-failure.
+  5. Malformed graph.json → lib fail-open → success with empty arrays + indexed:true (does NOT collapse with `codebase_graph_not_indexed`).
+  6. Order spy — `getIndexStatus` called BEFORE `expandContextBySlug` on the present-index path; only `getIndexStatus` called on the missing-index path. `expandContext` (runId-variant) never invoked by S15.
+  7. Order spy — `project_not_found` short-circuits BEFORE any graphify call.
+  8. Per-slug cache (lib) — second call returns cached version; disk change while cache warm is NOT observed.
+  9. `query` accepted but NOT applied at M02 — different query values return identical nodes; notice present in both.
+
+**Decisions-log entries (2, timestamped 2026-04-24):**
+
+1. S15 four-decision rollup — factory/expandContextBySlug/output-shape/query-deferred.
+2. S7c deferral closure — `getIndexStatus` first caller lands (parallels S14's `recordPolicyDecision` closure).
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (idempotency.ts:77:3).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 348/348 repo-wide (shared 75 + db 42 + mcp-server 231).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 164/164.
+
+**Commit:** `feat(mcp-server): S15 — tool query_codebase_graph (two soft-failures + GraphifyClient.expandContextBySlug) + §24.4 amendment`.
 
 ### S16 — Transports + server entrypoint
 

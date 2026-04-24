@@ -5,6 +5,7 @@ import { createCheckPolicyToolRegistration } from './check-policy/manifest.js';
 import { getFeaturePackToolRegistration } from './get-feature-pack/manifest.js';
 import { createGetRunIdToolRegistration } from './get-run-id/manifest.js';
 import { pingToolRegistration } from './ping/manifest.js';
+import { createQueryCodebaseGraphToolRegistration } from './query-codebase-graph/manifest.js';
 import { createQueryRunHistoryToolRegistration } from './query-run-history/manifest.js';
 import { createRecordDecisionToolRegistration } from './record-decision/manifest.js';
 import { createSaveContextPackToolRegistration } from './save-context-pack/manifest.js';
@@ -44,4 +45,5 @@ export function registerAllTools(registry: ToolRegistry, deps: RegisterAllToolsD
   registry.register(createRecordDecisionToolRegistration({ db: deps.db }));
   registry.register(createQueryRunHistoryToolRegistration({ db: deps.db }));
   registry.register(createCheckPolicyToolRegistration({ db: deps.db }));
+  registry.register(createQueryCodebaseGraphToolRegistration({ db: deps.db }));
 }
