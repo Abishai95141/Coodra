@@ -5,6 +5,7 @@ import { getFeaturePackToolRegistration } from './get-feature-pack/manifest.js';
 import { createGetRunIdToolRegistration } from './get-run-id/manifest.js';
 import { pingToolRegistration } from './ping/manifest.js';
 import { createSaveContextPackToolRegistration } from './save-context-pack/manifest.js';
+import { createSearchPacksNlToolRegistration } from './search-packs-nl/manifest.js';
 
 /**
  * `apps/mcp-server/src/tools/index.ts` — registration barrel.
@@ -36,4 +37,5 @@ export function registerAllTools(registry: ToolRegistry, deps: RegisterAllToolsD
   registry.register(createGetRunIdToolRegistration({ db: deps.db, mode: deps.mode }));
   registry.register(getFeaturePackToolRegistration);
   registry.register(createSaveContextPackToolRegistration({ db: deps.db }));
+  registry.register(createSearchPacksNlToolRegistration({ db: deps.db }));
 }

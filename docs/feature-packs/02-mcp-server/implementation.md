@@ -462,17 +462,56 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S10 — tool save_context_pack + §24.4 failure-mode amendment`.
 
-### S11 — Tool `search_packs_nl` with LIKE fallback
+### S11 — Tool `search_packs_nl` with LIKE fallback (landed 2026-04-24)
 
-Two paths:
+**Scope:** fourth real MCP tool. Factory-shaped registration (closes over `DbHandle` for projects-slug lookup + context_packs IN-JOIN + LIKE fallback). Semantic KNN goes through `ctx.sqliteVec.searchSimilarPacks` (the S7c dual-path surface — sqlite-vec vec0 for solo, pgvector `<=>` cosine for team). §24.4 amended same-commit to document the new `embedding?: number[]` optional input + the canonical soft-failure shape + the `no_embeddings_yet` advisory on the LIKE fallback path.
 
-- **Semantic path (solo):** encode `query` via `@contextos/shared` `logger` (Module 05 will swap in a real embedding call; Module 02 reuses the embedding stored on `context_packs` if present). Query `context_packs_vec` via `sqlite-vec-client.knn(...)`.
-- **Semantic path (team):** pgvector `ORDER BY summary_embedding <=> :query_vec LIMIT :k`.
-- **LIKE fallback:** when no candidate row has a `summary_embedding`, query `context_packs` with `LOWER(title) LIKE :needle OR LOWER(content_excerpt) LIKE :needle` ordered by `created_at DESC`, LIMIT `limit`. Response includes `notice: 'no_embeddings_yet'` and `howToFix: 'Module 05 (NL Assembly) will populate summary_embedding on save.'`.
+**Input-side design (M02-specific):** §24.4's base input is `{ projectSlug, query, limit? }`. The S11 slice adds `embedding?: number[]` because Module 02 has no NL Assembly service to compute one server-side; callers that have an embedder pre-compute and supply. Module 05 will become the default producer. Callers without an embedder get the LIKE fallback over `title + content_excerpt`.
 
-Manifest description includes the fallback behaviour per directive Step 3.
+**Flow:**
 
-**Commit:** `feat(mcp-server): tool search_packs_nl with LIKE fallback`.
+1. Resolve `projectSlug → projects.id`. Missing → `{ ok: false, error: 'project_not_found', howToFix }` soft-failure. No auto-create — this is a read tool.
+2. If `embedding` supplied:
+   - Length === `EMBEDDING_DIM` (384)? Handler-level check BEFORE the store. Mismatch → `{ ok: false, error: 'embedding_dim_mismatch', expected: 384, got: N, howToFix }`. Deliberately NOT at the Zod level — the registry's generic `invalid_input` envelope is too opaque for callers; a structured code lets agents branch.
+   - Convert `number[] → Float32Array`, call `ctx.sqliteVec.searchSimilarPacks({ embedding, k: limit, filter: { projectSlug } })`, IN-JOIN `context_packs` for metadata, preserve distance-ascending order, attach `distance` as `score`. Return `{ ok: true, packs: [...] }` — no `notice`.
+3. If `embedding` NOT supplied (M02 common case):
+   - LIKE fallback query: `context_packs WHERE project_id = ? AND (LOWER(title) LIKE ? OR LOWER(content_excerpt) LIKE ?) ORDER BY created_at DESC LIMIT ?`.
+   - Return `{ ok: true, packs: [...], notice: 'no_embeddings_yet', howToFix: '...' }`. `score = null` per row (no semantic distance).
+
+**Output shape:**
+
+- Success: `{ ok: true, packs: Array<{ id, title, excerpt, score: number | null, savedAt, runId }>, notice?: 'no_embeddings_yet', howToFix?: string }`. §9.1.2 canonical shape for success-side advisory notices (additive on top, not soft-failure).
+- Soft-failures: `project_not_found` and `embedding_dim_mismatch` — each carries `error` + `howToFix` per §9.1.2.
+
+**Empty semantic results** (caller supplied valid embedding but no matching rows exist for the project) → `{ ok: true, packs: [] }`, NO notice. Empty is a valid success — callers distinguish "no matches" from "no embeddings available" via `notice` presence.
+
+**Tests added (+25 total; unit 141→156, integration 114→124):**
+
+- `__tests__/unit/tools/search-packs-nl.test.ts` (NEW, 15 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key readonly + truncation + embedding-presence flag, input schema boundaries (valid, any embedding length accepted at Zod, missing fields, oversize query, limit bounds, strict-unknown fields), factory construction contract.
+- `__tests__/integration/tools/search-packs-nl.test.ts` (NEW, 10 tests):
+  1. `project_not_found` soft-failure.
+  2. `embedding_dim_mismatch` (too-short embedding) — handler-level check, store untouched.
+  3. `embedding_dim_mismatch` (too-long embedding).
+  4. LIKE fallback returns matching packs + notice + howToFix.
+  5. Empty LIKE result is `ok:true, packs:[], notice:'no_embeddings_yet'` — NOT soft-failure.
+  6. LIKE is case-insensitive across title + content_excerpt.
+  7. LIKE respects the `limit` parameter.
+  8. LIKE scopes to the project (no cross-project leakage).
+  9. Semantic path with real 384-dim unit-vector embeddings — distance-ordered, score populated, no notice.
+  10. Empty semantic result (no packs in project) → `ok:true, packs:[]`, NO notice.
+
+**Decisions-log entry (1 timestamped 2026-04-24 16:00):** S11 input extension + dim-check location + LIKE fallback triggers on no-embedding-supplied (not on project-has-no-embeddings); empty-result is success-with-empty, not soft-failure; score is semantic distance or null.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info.
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 273/273 repo-wide (shared 75 + db 42 + mcp-server 156).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 124/124.
+
+**Commit:** `feat(mcp-server): S11 — tool search_packs_nl (semantic + LIKE fallback) + §24.4 amendment`.
 
 ### S12 — Tool `query_run_history`
 

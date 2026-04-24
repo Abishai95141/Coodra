@@ -686,3 +686,21 @@ Append-only per ADR-007 — same `runId` + different content returns the ORIGINA
 **Alternatives considered:** let the `context_packs.run_id` FK throw on missing runs and rely on `handler_threw` (rejected — opaque to the agent, violates §9.1.2). Accept `embedding?: number[]` in the tool input (rejected — no M02 caller has one; fake-null pass-through is dishonest). Split run completion into a separate tool (rejected — extra round-trip; §24.4 bakes the side-effect into this tool).
 
 **Reference:** `apps/mcp-server/src/tools/save-context-pack/handler.ts`; `apps/mcp-server/src/tools/save-context-pack/schema.ts`; `apps/mcp-server/src/tools/save-context-pack/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/save-context-pack.test.ts`; `system-architecture.md §24.4 save_context_pack` (amended same-commit); user autonomous-mode directive 2026-04-24 for S10.
+
+## 2026-04-24 16:00 — S11: `search_packs_nl` input/output shape — optional caller-supplied embedding + LIKE fallback with advisory notice
+
+**Decision:** `apps/mcp-server/src/tools/search-packs-nl/` ships with a factory-shaped handler closing over `DbHandle`. The §24.4 base input `{ projectSlug, query, limit? }` is extended with an optional `embedding?: number[]`:
+
+- If `embedding` is supplied AND `length === 384` → semantic path via `ctx.sqliteVec.searchSimilarPacks`, IN-JOIN `context_packs` for metadata, preserve distance-ascending order, `score` = cosine distance.
+- If `embedding` is supplied but length mismatches → `{ ok: false, error: 'embedding_dim_mismatch', expected, got, howToFix }` soft-failure. Handler-level check, not Zod — the generic `invalid_input` envelope is too opaque for agents.
+- If `embedding` is NOT supplied → LIKE fallback over `LOWER(title) LIKE ? OR LOWER(content_excerpt) LIKE ?` scoped to the project, `ORDER BY created_at DESC LIMIT ?`. Response includes `notice: 'no_embeddings_yet'` + `howToFix` pointing at Module 05. `score: null` per row.
+
+Empty results (valid input, zero hits) are `{ ok: true, packs: [] }` — NOT a soft-failure. Agents distinguish "no matches" from "no embedder available" via `notice` presence.
+
+**Rationale:** Module 02 has no NL Assembly service — no server-side embedder exists. Two pragmatic options: (a) return opaque empty results forever until Module 05 (bad UX, hides the capability gap); (b) accept a caller-supplied embedding so motivated callers get semantic search today + advise the rest via the fallback notice. Option (b) also positions the tool correctly for Module 05, which becomes the default caller simply by computing and passing the embedding. No tool-contract change needed then.
+
+Dim check at handler level (not Zod) because the S8/S9 soft-failure pattern makes structured error codes the user-facing contract; pushing the check into Zod would surface as `invalid_input` with a generic message, wasting the carefully-built agent-caller-branches-on-error-code convention.
+
+**Alternatives considered:** Compute embedding server-side via Ollama (rejected — Module 05's scope, duplicates work). Reject non-embedding callers entirely with a soft-failure `no_embedder` (rejected — LIKE fallback is genuinely useful and matches the §S11 spec). Put the dim check in Zod (rejected — loses structured error code). Advisory-only path with no notice (rejected — agents can't distinguish "LIKE result came from semantic fallback" from "these ARE semantic results"; the notice is load-bearing).
+
+**Reference:** `apps/mcp-server/src/tools/search-packs-nl/handler.ts`; `apps/mcp-server/src/tools/search-packs-nl/schema.ts`; `apps/mcp-server/src/tools/search-packs-nl/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/search-packs-nl.test.ts` (10 cases covering all branches); `system-architecture.md §24.4 search_packs_nl` (amended same-commit); user autonomous-mode directive 2026-04-24 for S11.

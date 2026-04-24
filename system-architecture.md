@@ -2248,9 +2248,13 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 #### `search_packs_nl`
 > Call this when the user asks "what was done before?", "has X been tried?", or "what is the current state of Y?" — or when you are unsure whether work on a topic already exists. Natural-language search across all prior Context Packs in this project, ranked by relevance. ALWAYS call this before answering questions about prior state from memory.
 
-**Input:** `{ projectSlug: string, query: string, limit?: number }`
-**Returns:** `{ packs: Array<{ id, title, excerpt, score, savedAt, runId }> }`
-**Mechanism:** pgvector cosine similarity (team) or sqlite-vec (solo) against the Context Pack embeddings.
+**Input:** `{ projectSlug: string, query: string, embedding?: number[], limit?: number }` — `embedding` is a pre-computed 384-dim vector (Module 05 NL Assembly is the default producer; Module 02 callers without an embedder omit it and get the LIKE fallback). Amended in Module 02 S11 2026-04-24.
+**Returns:** `{ ok: true, packs: Array<{ id, title, excerpt, score: number | null, savedAt, runId }>, notice?: 'no_embeddings_yet', howToFix?: string }` on success. `score` is cosine distance on the semantic path, `null` on the LIKE fallback. `notice: 'no_embeddings_yet'` + `howToFix` are emitted ONLY on the LIKE fallback path (caller did not supply `embedding`) — agents branch on `notice` presence to surface remediation.
+**Mechanism:** if `embedding` is supplied with length 384, pgvector `<=>` cosine (team) or sqlite-vec `vec_distance_cosine` (solo) via `ctx.sqliteVec.searchSimilarPacks`; otherwise the LIKE fallback — `context_packs WHERE project_id = ? AND (LOWER(title) LIKE ? OR LOWER(content_excerpt) LIKE ?) ORDER BY created_at DESC LIMIT ?`.
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered.
+- `{ ok: false, error: 'embedding_dim_mismatch', expected: 384, got: number, howToFix: string }` — the supplied `embedding` length is not 384. Handler-level check returns a structured code rather than the registry's generic `invalid_input` envelope.
+**Empty results** (valid input, zero hits) are `{ ok: true, packs: [] }` — NOT a soft-failure.
 **When NOT to call:** if the user's question is about the current in-flight change — use `current-session.md` from `context_memory/` instead.
 
 #### `record_decision`
