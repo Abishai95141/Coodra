@@ -726,3 +726,27 @@ Alternatives TEXT-JSON on both dialects (vs JSONB on postgres) keeps the seriali
 **Alternatives considered:** Route through `ctx.runRecorder` with a `phase: 'decision'` event shape (rejected — wrong table, wrong lifecycle rules, harder to query, doesn't match §S13 spec). Key idempotency on hash(description + rationale + alternatives) (rejected — typo retries duplicate decisions; defeats idempotency). `ON DELETE CASCADE` (rejected — destroys decision history with run deletion, contradicts "permanent record" framing). JSONB alternatives on postgres / TEXT on sqlite (rejected — split dialect types add complexity for zero benefit at M02 scale). Omit `created` from success return (rejected — forces callers to re-query the DB to detect dedupe).
 
 **Reference:** `apps/mcp-server/src/tools/record-decision/handler.ts`; `apps/mcp-server/src/tools/record-decision/schema.ts`; `apps/mcp-server/src/tools/record-decision/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/record-decision.test.ts` (7 cases: happy + alts-null + alts-empty + multi-per-run + dedupe + run_not_found + ON DELETE SET NULL); `packages/db/drizzle/{sqlite,postgres}/0003_*.sql`; `packages/db/src/schema/{sqlite,postgres}.ts`; `system-architecture.md §24.4 record_decision` (amended same-commit); `docs/feature-packs/02-mcp-server/implementation.md §S13` (rewritten in "what landed" style same-commit); user GO-recommendation-as-specified directive 2026-04-24 for S13.
+
+## 2026-04-24 18:00 — S12: `query_run_history` title source, DESC ordering, readonly idempotency key, default limit
+
+**Decision:** `query_run_history` derives `title` via LEFT JOIN `context_packs ON context_packs.run_id = runs.id`. No new column on `runs`. `title` returns as `string | null` (null for runs without a saved pack — e.g., `in_progress` runs that have not yet called `save_context_pack`). The `context_packs(run_id)` unique index (S3 migration 0000) guarantees at most one join row per run, so no row multiplication.
+
+Ordering is `ORDER BY runs.started_at DESC` — most recent first. Matches the agent-trigger use case at session start ("see whether there is an `in_progress` run to resume" — the most recent one is what you want).
+
+Idempotency-key kind is `readonly` (mirrors `search_packs_nl`). Key format: `readonly:query_run_history:{projectSlug}:{status ?? 'any'}:{limit}` truncated to 200 chars. Different (status, limit) combos on the same project emit distinct log keys so retries can be correlated without collapsing two distinct reads.
+
+Input defaults: `limit = 10` (per §S12 spec), upper bound 200. Status enum `'in_progress' | 'completed' | 'failed'`. `projectSlug` required min 1.
+
+Soft-failure: `project_not_found` per S8/S11 canon. Empty results (valid slug, zero matching runs) → `{ ok: true, runs: [] }` — NOT a soft-failure; agents distinguish "no recent runs" from "project not registered" via the `ok` discriminant.
+
+Landed **out of linear order**: S13 (`record_decision`) shipped first per the S13 kickoff's option-(a) directive (spec-faithful numbering). S12 fills the gap now; subsequent slices resume linear sequence from S14.
+
+**Rationale:** LEFT JOIN for title avoids a migration and a write-site decision (who populates `runs.title`?). Null-on-no-pack is the correct semantic for "run started but not yet concluded"; forcing a placeholder string would lie to the caller. The unique index on `context_packs(run_id)` means the join does not fan rows out, so the query is one scan + one index lookup per row with no DISTINCT needed.
+
+DESC ordering matches §24.4's "chronological" with the session-start use case: agents resume the most recent `in_progress` run, not the oldest. Ascending would still be "chronological" but would make the common case require manual reversal client-side.
+
+Empty-is-success (not soft-failure) parallels the S11 search_packs_nl convention: the ok-discriminant carries the transport signal; the data carries the domain payload. Missing results with a valid slug are a legitimate empty state, not an error.
+
+**Alternatives considered:** Add a `runs.title` column via migration 0004 (rejected — requires a new write-site and either default-values dishonesty or a pre-save flow; the join is zero-migration and semantically accurate). ASC ordering (rejected — bad ergonomics for the primary session-start use case). Mutating idempotency key (rejected — reads have no side effects; readonly is correct). Return `title` as omitted-when-null rather than `null` (rejected — unstable output shape; callers then have to `in` check). Treat empty results as a `no_runs_yet` soft-failure (rejected — it's a valid success state; distinguishing "no data" from "project missing" is what `ok:false / error:project_not_found` already does).
+
+**Reference:** `apps/mcp-server/src/tools/query-run-history/handler.ts`; `apps/mcp-server/src/tools/query-run-history/schema.ts`; `apps/mcp-server/src/tools/query-run-history/manifest.ts`; `apps/mcp-server/__tests__/integration/tools/query-run-history.test.ts` (9 cases: project_not_found + empty + DESC + status filter + limit + LEFT JOIN title + cross-project scoping + metadata passthrough + endedAt null); `system-architecture.md §24.4 query_run_history` (amended same-commit); `docs/feature-packs/02-mcp-server/implementation.md §S12` (rewritten in "what landed" style same-commit); user GO-recommendation-as-specified directive 2026-04-24 for S12.

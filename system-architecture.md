@@ -2277,10 +2277,16 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 **Failure mode:** if the policy engine is unreachable, returns `allow` (fail-open) and logs a `policy_check_unavailable` event. See §16 pattern 2.
 
 #### `query_run_history`
-> Call this when you need to understand recent work on this project — which runs have been executed, their status, their associated PRs or JIRA issues. Returns a chronological list of runs with metadata. Use alongside `search_packs_nl` when answering "what happened recently?" questions, and at session start to see whether there is an `in_progress` run to resume.
+> Call this when you need to understand recent work on this project — which runs have been executed, their status, their associated PRs or JIRA issues, and the context-pack title for each completed run. Returns a chronological (most-recent-first) list of runs with metadata. Use alongside `search_packs_nl` when answering "what happened recently?" questions, and at session start to see whether there is an `in_progress` run to resume.
 
 **Input:** `{ projectSlug: string, status?: 'in_progress' | 'completed' | 'failed', limit?: number }`
-**Returns:** `{ runs: Array<{ runId, startedAt, endedAt, status, title, issueRef, prRef }> }`
+**Defaults:** `limit = 10`; upper bound `200`.
+**Ordering:** `ORDER BY runs.started_at DESC` — most recent first.
+**Returns (success):** `{ ok: true, runs: Array<{ runId: string, startedAt: string /* ISO 8601 */, endedAt: string | null, status: 'in_progress' | 'completed' | 'failed', title: string | null, issueRef: string | null, prRef: string | null }> }`
+**`title` nullability:** derived via a LEFT JOIN on `context_packs.run_id`. Runs with no saved pack (e.g., an `in_progress` run that has not called `save_context_pack`) return `title: null`. The `context_packs(run_id)` unique index guarantees at most one join row per run.
+**Empty result** (valid slug, zero matching runs) → `{ ok: true, runs: [] }` — NOT a soft-failure.
+**Soft-failures:**
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered.
 
 #### `query_codebase_graph`
 > Call this BEFORE making significant structural changes to understand the code's dependency graph. Returns symbol-level relationships (who calls what, who depends on what) from the Graphify-indexed codebase. Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer "where is X defined?" without reading every file.

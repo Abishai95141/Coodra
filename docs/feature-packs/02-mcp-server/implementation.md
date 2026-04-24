@@ -513,11 +513,56 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 
 **Commit:** `feat(mcp-server): S11 — tool search_packs_nl (semantic + LIKE fallback) + §24.4 amendment`.
 
-### S12 — Tool `query_run_history`
+### S12 — Tool `query_run_history` (landed 2026-04-24)
 
-Chronological list of runs with optional `status` filter. Default limit 10. Returns `{ runs: [{ runId, startedAt, endedAt, status, title, issueRef, prRef }] }`.
+**Scope:** sixth real MCP tool. Factory-shaped registration closing over `DbHandle` for projects-slug resolution + runs SELECT with a LEFT JOIN on `context_packs` for the `title` projection. §24.4 amended same-commit to document `title` nullability (the LEFT JOIN returns `null` for runs with no pack yet), the default/max `limit` (10/200), DESC ordering, canonical success + soft-failure shape, and the "empty result is ok:true" rule.
 
-**Commit:** `feat(mcp-server): tool query_run_history`.
+**Landed out of linear order:** S13 (record_decision) shipped first per the S13 kickoff's option-(a) (spec-faithful numbering). S12 fills the gap now; subsequent slices resume linear sequence from S14.
+
+**Title source:** `runs` has no `title` column; the LEFT JOIN onto `context_packs ON runs.id = context_packs.run_id` surfaces the pack title. The `context_packs_run_idx` unique index (S3's migration 0000) guarantees at most one join row per run, so no row multiplication. Runs that have not yet called `save_context_pack` return `title: null` — the field is always present on the wire, with null rather than omission, so output shape is stable across run states.
+
+**Flow:**
+
+1. Resolve `projectSlug → projects.id`. Missing → `{ ok: false, error: 'project_not_found', howToFix }` soft-failure per §9.1.2. No auto-create — this is a read tool.
+2. Build WHERE: `runs.project_id = ?` + (if supplied) `runs.status = ?`.
+3. `SELECT runs.*, context_packs.title FROM runs LEFT JOIN context_packs ON context_packs.run_id = runs.id WHERE ... ORDER BY runs.started_at DESC LIMIT ?`.
+4. Map rows: `Date → ISO 8601 string`; `endedAt` / `title` / `issueRef` / `prRef` pass through with their DB nulls.
+
+**Output shape:**
+
+- Success: `{ ok: true, runs: Array<{ runId, startedAt, endedAt: string | null, status, title: string | null, issueRef: string | null, prRef: string | null }> }`. Empty `runs` array is NOT a soft-failure — agents distinguish "no recent runs" from "project not registered" via the `ok` discriminant.
+- Soft-failure: `{ ok: false, error: 'project_not_found', howToFix }`.
+
+**Read-only tool:** idempotency key is kind `readonly`. Registry skips DB-backed dedupe but logs the key for correlation — the builder embeds `(projectSlug, status ?? 'any', limit)` so distinct reads produce distinct log keys.
+
+**Zod bounds:** `projectSlug` min 1; `status` enum `'in_progress' | 'completed' | 'failed'`; `limit` int 1..200 default 10. Oversize → registry's generic `invalid_input` envelope.
+
+**Tests added (+27 total; unit 174→192, integration 131→140):**
+
+- `__tests__/unit/tools/query-run-history.test.ts` (NEW, 18 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key readonly (slug+status+limit embed, 'any' when status absent, distinct combos yield distinct keys, truncation, probe-safe empty input), input schema boundaries (minimal valid + default limit=10, each status enum value, invalid status reject, empty slug, limit<1/>200/non-integer rejects, limit boundary 1/200, strict-unknown-fields), factory construction contract.
+- `__tests__/integration/tools/query-run-history.test.ts` (NEW, 9 tests):
+  1. `project_not_found` soft-failure.
+  2. Empty result → `{ ok: true, runs: [] }` (NOT soft-failure).
+  3. DESC order by `started_at`.
+  4. Status filter (`in_progress`, `failed`) returns only matching rows.
+  5. Limit honoured (default 10, custom 3).
+  6. LEFT JOIN title: pack title surfaces for run-with-pack; null for run-without-pack.
+  7. Project scoping: no cross-project leak.
+  8. `issueRef` + `prRef` + ISO-formatted `endedAt` passthrough.
+  9. `endedAt: null` for in-progress runs.
+
+**Decisions-log entry (1 timestamped 2026-04-24):** S12 title-via-LEFT-JOIN choice + DESC ordering + empty-is-success + readonly idempotency key + default limit 10.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (idempotency.ts:77:3).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 309/309 repo-wide (shared 75 + db 42 + mcp-server 192).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 140/140.
+
+**Commit:** `feat(mcp-server): S12 — tool query_run_history + §24.4 amendment`.
 
 ### S13 — Tool `record_decision` (landed 2026-04-24)
 
