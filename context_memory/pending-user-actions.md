@@ -23,13 +23,21 @@ Format:
 **What to paste back:** Output of `docker --version` (expected format: `Docker version 24.x.x, build ...`).
 **Blocking module:** Module 02 (MCP Server integration tests, starting at S17).
 
-## 2026-04-22 20:58 — Provision Clerk project (needed by Module 04 OR first team-mode flip, whichever is earlier)
+## 2026-04-22 20:58 — Provision Clerk project (needed by Module 04 OR first team-mode flip, whichever is earlier) — S7b-refreshed 2026-04-24
 
 **What is needed:** A Clerk project with a publishable key (`pk_test_...` or `pk_live_...`) and a secret key (`sk_test_...` or `sk_live_...`).
-**Why:** Module 02 ships the Clerk JWT middleware wired-but-unvalidated against live Clerk (decision 2026-04-22 20:58, Q-02-5). The middleware is tested with mocks in solo-bypass; it has **not** been exercised against a real Clerk tenant. First live validation will happen either when Module 04 (Web App) starts calling the MCP server over HTTP in team mode, or when you flip `CONTEXTOS_MODE=team` for any reason before then — whichever comes first.
+**Why:** Module 02 S7b ships the real `@clerk/backend@3.3.0::verifyToken` integration in `apps/mcp-server/src/lib/auth.ts`. All unit tests exercise the wire code via `@clerk/backend`'s own mocking surface (see `__tests__/unit/lib/auth-chain.test.ts`) — that is real wire code with a test double, not a shallow proxy. The middleware has **not** been exercised against a real Clerk tenant yet. First live validation is a Module 04 precondition: Module 04's first acceptance criterion must include a smoke test against a real Clerk dev project that calls the MCP server over HTTP with a real Bearer token, so the gap closes the moment keys land.
 **Steps:** Create a free project at <https://clerk.com>, grab the keys from the dashboard. The Module 02 env schema validates that the secret matches `/^sk_(test|live)_/` and the publishable matches `/^pk_(test|live)_/`; the placeholder `sk_test_replace_me` is rejected in team mode (startup ValidationError).
 **What to paste back:** Confirmation that both env vars are populated in `.env` (do NOT paste the keys themselves into chat — only confirmation). Also paste the `CLERK_JWT_ISSUER` URL (the `https://clerk.<your-tenant>.dev` value from the dashboard).
-**Blocking module:** Module 04 OR first team-mode flip (whichever is earlier). **Not** blocking Module 02 merge — the server ships wired and the solo-bypass path is tested.
+**Blocking module:** Module 04 OR first team-mode flip (whichever is earlier). **Not** blocking Module 02 merge — the server ships wired and the solo-bypass path is tested end-to-end.
+
+## 2026-04-24 10:45 — `LOCAL_HOOK_SECRET` config-file reads via a future `contextos team login` CLI
+
+**What is needed:** A dedicated CLI command (`contextos team login`) that writes `~/.contextos/config.json` with the team-mode secret, per `system-architecture.md` §19's spec. Tracking this here because S7b's `lib/auth.ts::verifyLocalHookSecret` currently reads the secret from the `LOCAL_HOOK_SECRET` env var only.
+**Why:** §19 says the shared secret belongs in `~/.contextos/config.json`, not in a process env var. Module 02 S7b scoped this intentionally to env-only (decisions-log 2026-04-24 — user S7b directive Q7). The follow-up is a dedicated module (Module 07 VS Code Extension, or a dedicated distribution module) that ships the CLI; until then, team-mode operators set the env var manually and the env schema validates `≥16 chars`.
+**Steps:** No user action today. This entry exists so the follow-up is not forgotten when Module 07 opens.
+**What to paste back:** Nothing now. When the CLI module ships, the `lib/auth.ts::verifyLocalHookSecret` integration will switch to reading `~/.contextos/config.json` first, env var second.
+**Blocking module:** None for Module 02. Follow-up for Module 07 / dedicated distribution module.
 
 ## 2026-04-22 14:27 — Provision team-mode cloud infra before team deploy
 

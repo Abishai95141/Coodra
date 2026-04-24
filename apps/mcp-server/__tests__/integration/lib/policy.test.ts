@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PolicyCheck } from '../../../src/framework/policy-wrapper.js';
-import { createDevNullPolicyClient, createPolicyClientFromCheck, devNullPolicyCheck } from '../../../src/lib/policy.js';
+import {
+  buildPolicyDecisionIdempotencyKey,
+  createDevNullPolicyClient,
+  createPolicyClient,
+  createPolicyClientFromCheck,
+  devNullPolicyCheck,
+} from '../../../src/lib/policy.js';
 
 /**
  * Integration test for `src/lib/policy.ts`.
@@ -80,5 +86,34 @@ describe('lib/policy — createPolicyClientFromCheck', () => {
       phase: 'pre',
     });
     expect(out.decision).toBe('allow');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S7b additions: the real factory's construction contract and the locked
+// audit idempotency key format. Behavioural tests against a real DB live
+// in `policy-db.test.ts`.
+// ---------------------------------------------------------------------------
+
+describe('lib/policy — createPolicyClient construction contract (S7b)', () => {
+  it('throws TypeError when options is missing', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
+    expect(() => createPolicyClient(undefined as unknown as any)).toThrow(TypeError);
+  });
+
+  it('throws TypeError when options.db is not a DbHandle', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: intentional negative test
+    expect(() => createPolicyClient({ db: {} as any })).toThrow(TypeError);
+  });
+});
+
+describe('lib/policy — buildPolicyDecisionIdempotencyKey (S7b, §4.3 lock)', () => {
+  it('formats as pd:{sessionId}:{toolName}:{eventType}', () => {
+    const key = buildPolicyDecisionIdempotencyKey({
+      sessionId: 'sess_abc',
+      toolName: 'write_file',
+      eventType: 'PreToolUse',
+    });
+    expect(key).toBe('pd:sess_abc:write_file:PreToolUse');
   });
 });

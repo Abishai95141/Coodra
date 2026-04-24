@@ -1213,57 +1213,135 @@ export const ENRICHMENT_JSON_SCHEMA = zodToJsonSchema(EnrichmentSchema, 'Enrichm
 
 ### cockatiel (circuit breakers & retries)
 
-**Version:** 3.1.3. [npmjs](https://www.npmjs.com/package/cockatiel/v/1.1.0)
-**Install:**
+**Version:** 3.2.1 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/cockatiel)
+**Install (exact pin):**
 
 ```bash
-npm install --save cockatiel
+pnpm --filter @contextos/mcp-server add cockatiel@3.2.1 --save-exact
 ```
 
-**Docs:** <https://www.npmjs.com/package/cockatiel> [npmjs](https://www.npmjs.com/package/cockatiel)
+**Docs:** <https://www.npmjs.com/package/cockatiel>
 
-#### Circuit breaker policy for Redis/DB/LLMs
+#### Circuit breaker policy for DB / LLMs (the policy-engine pattern ContextOS actually uses)
 
-Architecture’s pattern aligns with examples from docs: [npmjs](https://www.npmjs.com/package/cockatiel)
-
-```ts
-import { Policy, ConsecutiveBreaker } from 'cockatiel';
-
-const redisBreaker = Policy.handleAll().circuitBreaker(
-  30_000,                  // half-open after 30s
-  new ConsecutiveBreaker(5),
-);
-
-async function withRedisBreaker<T>(fn: () => Promise<T>): Promise<T | null> {
-  return redisBreaker.execute(fn);
-}
-```
-
-Alternate API (docs): [npmjs](https://www.npmjs.com/package/cockatiel/v/1.1.0)
+ContextOS uses the v3.x functional API — `circuitBreaker(handleAll, { halfOpenAfter, breaker })` and `wrap(timeout, circuitBreaker)` for a timeout-then-breaker fuse. This is exactly what `apps/mcp-server/src/lib/policy.ts` builds for the policy-rule DB read path (§7 "Fault Tolerance" + §5 "Policy Evaluation → AP").
 
 ```ts
 import {
-  ConsecutiveBreaker,
-  ExponentialBackoff,
-  retry,
-  handleAll,
   circuitBreaker,
+  ConsecutiveBreaker,
+  handleAll,
+  timeout,
+  TimeoutStrategy,
   wrap,
 } from 'cockatiel';
 
-const retryPolicy = retry(handleAll, { maxAttempts: 3, backoff: new ExponentialBackoff() });
-
-const circuitBreakerPolicy = circuitBreaker(handleAll, {
-  halfOpenAfter: 10_000,
+// Verbatim §7 config: open after 5 consecutive failures, probe for
+// recovery after 30s. 100ms per-call fuse so a pathological query
+// cannot blow the policy-check budget even before the breaker trips.
+const policyBreaker = circuitBreaker(handleAll, {
+  halfOpenAfter: 30_000,
   breaker: new ConsecutiveBreaker(5),
 });
+const policyFuse = timeout(100, TimeoutStrategy.Aggressive);
+const policyPolicy = wrap(policyFuse, policyBreaker);
 
-const retryWithBreaker = wrap(retryPolicy, circuitBreakerPolicy);
+async function evaluateWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
+  return policyPolicy.execute(fn);
+}
 ```
 
 **Gotchas**
 
-- Architecture mandates fail‑open: when the breaker is open, handlers must immediately return “allow” rather than propagate errors. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
+- Architecture mandates fail-open: when the breaker is open OR the timeout fuse trips, the caller must immediately return `{ decision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }` rather than propagate. See `apps/mcp-server/src/lib/policy.ts` for the canonical implementation.
+- `wrap(timeout, breaker)` applies the timeout to each attempt; `wrap(breaker, timeout)` would apply it to the whole breaker execution — keep the timeout on the inside.
+- `BrokenCircuitError` (thrown when the breaker is open) and `TaskCancelledError` (thrown on timeout) must both be caught at the boundary. Don't differentiate — both map to `allow` with the same reason.
+- `TimeoutStrategy.Aggressive` aborts the in-flight operation via `AbortSignal`; your callback must honour the signal argument cockatiel passes through. better-sqlite3 calls are synchronous so the signal is advisory — the breaker still counts them as failures on timeout.
+
+***
+
+### @clerk/backend (JWT verification, Node server)
+
+**Version:** 3.3.0 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent auth library, no caret per amendment-B discipline; techstack.md's original `^3.2.13` is superseded). [npmjs](https://www.npmjs.com/package/@clerk/backend)
+**Install (exact pin):**
+
+```bash
+pnpm --filter @contextos/mcp-server add @clerk/backend@3.3.0 --save-exact
+```
+
+**Docs:** <https://clerk.com/docs/references/backend/overview>
+
+#### `verifyToken` — the ContextOS JWT verification entrypoint
+
+Module 02 `apps/mcp-server/src/lib/auth.ts` calls `createClerkClient({ secretKey, publishableKey }).verifyToken(token)` to authenticate inbound Bearer JWTs. Per §19 + decisions-log 2026-04-22 Q-02-1 the auth chain is: solo-bypass → `X-Local-Hook-Secret` → full Clerk JWT; the Clerk path is step 3 and is the only one that calls this library.
+
+```ts
+import { createClerkClient } from '@clerk/backend';
+
+const clerk = createClerkClient({
+  secretKey: env.CLERK_SECRET_KEY,
+  publishableKey: env.CLERK_PUBLISHABLE_KEY,
+});
+
+// Returns the verified JWT payload ({ sub, org_id, ... }) or throws
+// if the token is malformed / expired / signed by a different tenant.
+const payload = await clerk.verifyToken(bearerToken);
+const identity = {
+  userId: payload.sub,
+  orgId: (payload.org_id as string | undefined) ?? null,
+  source: 'clerk' as const,
+};
+```
+
+**Gotchas**
+
+- `verifyToken` fetches JWKS from the Clerk tenant on first use and caches it in-process. First call adds ~150ms; subsequent calls are ~1ms. If you're writing a latency assertion, warm the client in `beforeAll`.
+- Pass the **raw token**, not the `Bearer <token>` string. Strip the prefix at the HTTP middleware layer.
+- `publishableKey` is required alongside `secretKey` even server-side; omitting it throws at `verifyToken` time with an unhelpful message. The env schema in `apps/mcp-server/src/config/env.ts` already enforces both being present in team mode.
+- The solo-bypass sentinel `sk_test_replace_me` is NEVER accepted by this library — it is short-circuited one layer up in `createAuthClient(env)` before any Clerk call is made.
+- Module 02 ships this wired but **not live-validated against a real Clerk tenant** — see `context_memory/pending-user-actions.md` (Clerk provisioning, due by Module 04 or first team-mode flip).
+
+***
+
+### picomatch (glob matcher for policy-rule path matching)
+
+**Version:** 4.0.2 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library used in policy rule matching, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/picomatch)
+**Install (exact pin):**
+
+```bash
+pnpm --filter @contextos/mcp-server add picomatch@4.0.2 --save-exact
+pnpm --filter @contextos/mcp-server add -D @types/picomatch@4.0.2 --save-exact
+```
+
+**Docs:** <https://github.com/micromatch/picomatch>
+
+#### Policy-rule path matcher
+
+`apps/mcp-server/src/lib/policy.ts` compiles each rule's `match_path_glob` at cache-load time and reuses the compiled matcher across calls — not at every `evaluate()` invocation. This keeps the policy-check path under the §8 solo latency target even when a project has hundreds of active rules.
+
+```ts
+import picomatch from 'picomatch';
+
+// Compiled once per rule at cache-load time.
+const matchSrcTs = picomatch('src/**/*.ts', {
+  // Treat an unset path the same as an unmatched path.
+  dot: false,
+  // No brace-expansion overhead for the common case; callers that
+  // want it set this true explicitly in the rule metadata.
+  nobrace: true,
+});
+
+matchSrcTs('src/lib/auth.ts');     // true
+matchSrcTs('src/lib/auth.test.ts'); // true
+matchSrcTs('dist/lib/auth.js');     // false
+```
+
+**Gotchas**
+
+- Compiling `picomatch(pattern)` on every evaluate call is expensive enough to matter at ~500 rules — always memoize on cache-load.
+- `picomatch(undefined)` throws; rules without a `match_path_glob` must be handled before calling picomatch (the `lib/policy.ts` matcher returns "any path" for rules with a null pattern).
+- Matcher returns `false` for empty-string input. Policy callers that receive no `filePath` in `toolInput` should use a sentinel (e.g. `''`) and treat `false` as "rule does not apply".
+- Chose over `minimatch`: picomatch is ~10× faster per match, zero dependencies, syntax superset; matches the choice already made by Biome, fast-glob, globby, and chokidar upstream.
 
 ***
 

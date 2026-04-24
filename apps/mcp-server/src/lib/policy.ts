@@ -1,32 +1,95 @@
+import { type DbHandle, postgresSchema, sqliteSchema } from '@contextos/db';
+import {
+  BrokenCircuitError,
+  ConsecutiveBreaker,
+  circuitBreaker,
+  handleAll,
+  IsolatedCircuitError,
+  TaskCancelledError,
+  TimeoutStrategy,
+  timeout,
+  wrap,
+} from 'cockatiel';
+import { eq } from 'drizzle-orm';
+import picomatch from 'picomatch';
+
 import type { PolicyCheck, PolicyInput, PolicyResult } from '../framework/policy-wrapper.js';
 import type { PolicyClient } from '../framework/tool-context.js';
 import { createMcpLogger } from './logger.js';
 
 /**
- * `apps/mcp-server/src/lib/policy.ts` — factory for the `PolicyClient`
- * wired into `ToolContext.policy`.
+ * `apps/mcp-server/src/lib/policy.ts` — cache-first policy evaluator
+ * backed by the `policies` + `policy_rules` DB tables, wrapped in a
+ * cockatiel timeout-then-breaker fuse, fail-open on every error path.
  *
- * The registry automatically wraps every tool call in a pre- and
- * post-phase policy evaluation by calling `ctx.policy.evaluate(...)`
- * (see `framework/tool-registry.ts`). Tool code rarely calls this
- * interface directly — the only current consumer is `check_policy`
- * (S14), which probes "would tool X be allowed for this input right
- * now?" without actually running X.
+ * Wiring:
+ *   - `src/index.ts` calls `createPolicyClient({ db, clock? })` once
+ *     at boot with the `DbHandle` from `createDbClient(...).asInternalHandle()`.
+ *   - The registry's auto-wrap (see `framework/tool-registry.ts::handleCall`)
+ *     calls `ctx.deps.policy.evaluate(...)` in pre AND post phase for
+ *     every tool call. The S7a dev-null stand-in is gone; this real
+ *     evaluator is the only `PolicyClient` production wires.
+ *   - `createPolicyClientFromCheck` (for tests) + `createDevNullPolicyClient`
+ *     (for the anonymous/always-allow test fixture) stay exported so
+ *     the existing test suite keeps compiling.
  *
- * S7a state: the returned client delegates to a `devNullPolicyCheck`
- * that always returns `{ decision: 'allow' }`. A WARN at construction
- * time surfaces the stand-in in every startup log so the dev-null
- * path cannot ship to team mode unnoticed. S7b replaces the
- * implementation with a cache-backed rule evaluator wrapped in a
- * cockatiel circuit breaker, and the factory call site in
- * `src/index.ts` is the single line that changes.
+ * Fail-open contract (`system-architecture.md` §7):
+ *
+ *   Any of the following returns `{ decision: 'allow',
+ *   reason: 'policy_check_unavailable', matchedRuleId: null }`:
+ *     - breaker is open                 (cockatiel `BrokenCircuitError`)
+ *     - breaker is isolated             (cockatiel `IsolatedCircuitError`)
+ *     - per-call timeout tripped        (cockatiel `TaskCancelledError`)
+ *     - DB throws a non-breaker error   (any other Error)
+ *     - rule-cache refill failed mid-eval
+ *
+ *   The only `deny` ever returned is from a rule that explicitly
+ *   matched with `decision = 'deny'`. §7 defines this as the only
+ *   intentional block.
+ *
+ * Cache (`system-architecture.md` §5: Policy Evaluation → AP, cache-first):
+ *
+ *   The evaluator keeps an in-process rule cache with a 60s TTL. At
+ *   Module 02 solo-mode scale (<10 rules across a single project)
+ *   this is effectively a global cache keyed by the synthetic key
+ *   `'all'`. When S14's `check_policy` tool lands and passes per-
+ *   project context, the cache upgrades to `Map<projectId, …>`
+ *   without changing the evaluator's public shape.
+ *
+ * Audit writes (`system-architecture.md` §4.3):
+ *
+ *   The registry auto-wrap call does NOT have `projectId`,
+ *   `agentType`, or `runId` in its `PolicyInput` — those fields are
+ *   required (NOT NULL FK) on `policy_decisions`. Writing defaults
+ *   from the auto-wrap path would (a) require a synthetic `projects`
+ *   row and (b) flood the audit log with per-registry-call rows that
+ *   are not the `check_policy` hook events §4.3 actually cares about.
+ *   So S7b exports `recordPolicyDecision(db, context)` as the wire
+ *   code for the audit write; S14's `check_policy` tool is the
+ *   first call site that will invoke it (with full hook-event
+ *   context via `setImmediate` + ON CONFLICT DO NOTHING). Keeping the
+ *   helper here means S14 imports from the same lib module as the
+ *   evaluator, preserving single-source-of-truth for the policy
+ *   engine surface.
  *
  * Factory style (user S7a directive): no module-level `PolicyClient`
- * is exported. Tests build their own via `createPolicyClientFromCheck`
- * with a fake `PolicyCheck` that records calls.
+ * is exported. Tests build their own via `createPolicyClientFromCheck`.
  */
 
 const policyLogger = createMcpLogger('lib-policy');
+
+/** `pd:{sessionId}:{toolName}:{eventType}` per `system-architecture.md` §4.3. */
+export function buildPolicyDecisionIdempotencyKey(args: {
+  readonly sessionId: string;
+  readonly toolName: string;
+  readonly eventType: string;
+}): string {
+  return `pd:${args.sessionId}:${args.toolName}:${args.eventType}`;
+}
+
+// ---------------------------------------------------------------------------
+// Test-supporting factories (kept from S7a — test files import these).
+// ---------------------------------------------------------------------------
 
 /**
  * Build a `PolicyClient` by wrapping a lower-level `PolicyCheck` —
@@ -41,10 +104,6 @@ export function createPolicyClientFromCheck(check: PolicyCheck): PolicyClient {
   }
   return {
     async evaluate(input) {
-      // `PolicyClient.evaluate` and `PolicyCheck` have a
-      // type-compatible input/output (see `tool-context.ts` and
-      // `policy-wrapper.ts`); the forwarded call preserves every
-      // field without translation.
       const req: PolicyInput = {
         toolName: input.toolName,
         sessionId: input.sessionId,
@@ -63,33 +122,404 @@ export function createPolicyClientFromCheck(check: PolicyCheck): PolicyClient {
 }
 
 /**
- * Deterministic always-allow `PolicyCheck` — the S7a stand-in. The
- * reason string carries the slice marker so a query against
- * `policy_decisions` in a later slice can identify rows produced
- * during the dev-null era.
+ * Deterministic always-allow `PolicyCheck` — the S7a stand-in. Kept
+ * exported in S7b because `__tests__/helpers/fake-deps.ts` still uses
+ * it as the default for tests that don't care about policy.
  */
 export const devNullPolicyCheck: PolicyCheck = async () => ({
   decision: 'allow',
-  reason: 'dev-null: policy engine not yet wired (S7a stand-in)',
+  reason: 'dev-null: policy engine not wired (test stand-in)',
   matchedRuleId: null,
 });
 
 /**
- * S7a factory — always returns the dev-null client wired behind the
- * `PolicyClient` interface. The WARN is emitted once at construction
- * so multiple imports (e.g. via a test helper + production code in
- * the same process) do not flood the log. S7b swaps this factory at
- * the `src/index.ts` call site; no handler code changes.
+ * Test-only factory — returns a `PolicyClient` whose `.evaluate` is
+ * `allow` for any input. The WARN that S7a emitted from this factory
+ * at construction is gone; production no longer goes through this
+ * path. `__tests__/helpers/fake-deps.ts` uses it silently.
  */
 export function createDevNullPolicyClient(): PolicyClient {
-  policyLogger.warn(
-    {
-      event: 'policy_dev_null_in_use',
-      module: '@contextos/mcp-server',
-      slice: 'S7a',
-    },
-    'createDevNullPolicyClient: tool calls will always be allowed. ' +
-      'Replace with the cache-backed evaluator (S7b) before team-mode deployment.',
-  );
   return createPolicyClientFromCheck(devNullPolicyCheck);
+}
+
+// ---------------------------------------------------------------------------
+// Real evaluator.
+// ---------------------------------------------------------------------------
+
+/** Match-value a rule uses to compare against PolicyInput.phase. */
+const PHASE_TO_EVENT_TYPE: Readonly<Record<'pre' | 'post', string>> = {
+  pre: 'PreToolUse',
+  post: 'PostToolUse',
+};
+
+/** Tunables surfaced for tests that need to override them. */
+export interface CreatePolicyClientOptions {
+  /** `DbHandle` — usually `dbClient.asInternalHandle()` from index.ts. */
+  readonly db: DbHandle;
+  /** Clock injection for deterministic cache-TTL tests. Defaults to `Date.now`. */
+  readonly now?: () => number;
+  /** Cache TTL override (tests only). Defaults to 60s per §5. */
+  readonly cacheTtlMs?: number;
+  /** Per-call timeout fuse. Defaults to 100ms per user S7b directive. */
+  readonly timeoutMs?: number;
+  /** Breaker threshold override. Defaults to 5 consecutive failures per §7. */
+  readonly breakerThreshold?: number;
+  /** Breaker half-open probe delay. Defaults to 30_000ms per §7. */
+  readonly breakerHalfOpenMs?: number;
+}
+
+/** Internal cached rule with its compiled path matcher. */
+interface CompiledRule {
+  readonly id: string;
+  readonly policyId: string;
+  readonly priority: number;
+  readonly matchEventType: string;
+  readonly matchToolName: string;
+  /** `null` = any path matches; otherwise the compiled picomatch result. */
+  readonly matchPath: ((p: string) => boolean) | null;
+  readonly matchAgentType: string | null;
+  readonly decision: 'allow' | 'deny';
+  readonly reason: string;
+}
+
+interface CacheEntry {
+  readonly rules: ReadonlyArray<CompiledRule>;
+  readonly loadedAt: number;
+}
+
+const DEFAULTS = {
+  CACHE_TTL_MS: 60_000,
+  TIMEOUT_MS: 100,
+  BREAKER_THRESHOLD: 5,
+  BREAKER_HALF_OPEN_MS: 30_000,
+} as const;
+
+/** Coerce a DB rule row into a `CompiledRule` once at cache-load time. */
+function compileRule(row: {
+  id: string;
+  policyId: string;
+  priority: number;
+  matchEventType: string;
+  matchToolName: string;
+  matchPathGlob: string | null;
+  matchAgentType: string | null;
+  decision: string;
+  reason: string;
+}): CompiledRule {
+  const decision = row.decision === 'deny' ? 'deny' : 'allow';
+  const matcher = row.matchPathGlob ? picomatch(row.matchPathGlob, { dot: false, nobrace: true }) : null;
+  return {
+    id: row.id,
+    policyId: row.policyId,
+    priority: row.priority,
+    matchEventType: row.matchEventType,
+    matchToolName: row.matchToolName,
+    matchPath: matcher,
+    matchAgentType: row.matchAgentType,
+    decision,
+    reason: row.reason,
+  };
+}
+
+/**
+ * Tool-name match: exact, or `'*'` wildcard, or a subset of picomatch
+ * semantics (`tool_*`). Compiling a picomatch instance per rule on
+ * the tool-name axis costs no more than ~100ns and keeps the match
+ * logic symmetrical with the path axis.
+ */
+function toolNameMatches(rule: CompiledRule, toolName: string): boolean {
+  if (rule.matchToolName === '*') return true;
+  if (rule.matchToolName === toolName) return true;
+  if (!rule.matchToolName.includes('*')) return false;
+  return picomatch(rule.matchToolName, { dot: false, nobrace: true })(toolName);
+}
+
+/**
+ * Derive a file-path-like string from the validated `toolInput` for
+ * path-glob matching. This is deliberately loose — rules that don't
+ * care about paths don't reach here. Returns the empty string when no
+ * path candidate is present; picomatch returns `false` on that,
+ * meaning "rule does not apply" (matches the documented gotcha).
+ */
+function extractPath(input: unknown): string {
+  if (!input || typeof input !== 'object') return '';
+  const record = input as Record<string, unknown>;
+  for (const key of ['filePath', 'file_path', 'path']) {
+    const value = record[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return '';
+}
+
+/**
+ * First-match-wins rule evaluation. `rules` is assumed to be sorted
+ * by priority ASC (the DB query does this; the cache preserves the
+ * order). Returns the first rule whose axes all match, or `null` if
+ * none apply (caller defaults to `allow`).
+ */
+export function evaluateRules(
+  rules: ReadonlyArray<CompiledRule>,
+  input: Pick<PolicyInput, 'phase' | 'toolName' | 'input'>,
+): CompiledRule | null {
+  const eventType = PHASE_TO_EVENT_TYPE[input.phase];
+  const path = extractPath(input.input);
+  for (const rule of rules) {
+    if (rule.matchEventType !== '*' && rule.matchEventType !== eventType) continue;
+    if (!toolNameMatches(rule, input.toolName)) continue;
+    if (rule.matchPath) {
+      if (path.length === 0 || !rule.matchPath(path)) continue;
+    }
+    // agentType is not present in the registry auto-wrap PolicyInput;
+    // rules scoped to a specific agent are skipped. Rules with `*` or
+    // `null` agent apply to every auto-wrap call.
+    if (rule.matchAgentType !== null && rule.matchAgentType !== '*') continue;
+    return rule;
+  }
+  return null;
+}
+
+/** SELECT active rules from both dialects' schemas, ordered for first-match-wins. */
+async function loadRules(db: DbHandle): Promise<ReadonlyArray<CompiledRule>> {
+  if (db.kind === 'sqlite') {
+    const rows = await db.db
+      .select({
+        id: sqliteSchema.policyRules.id,
+        policyId: sqliteSchema.policyRules.policyId,
+        priority: sqliteSchema.policyRules.priority,
+        matchEventType: sqliteSchema.policyRules.matchEventType,
+        matchToolName: sqliteSchema.policyRules.matchToolName,
+        matchPathGlob: sqliteSchema.policyRules.matchPathGlob,
+        matchAgentType: sqliteSchema.policyRules.matchAgentType,
+        decision: sqliteSchema.policyRules.decision,
+        reason: sqliteSchema.policyRules.reason,
+      })
+      .from(sqliteSchema.policyRules)
+      .innerJoin(sqliteSchema.policies, eq(sqliteSchema.policies.id, sqliteSchema.policyRules.policyId))
+      .where(eq(sqliteSchema.policies.isActive, true))
+      .orderBy(sqliteSchema.policyRules.priority);
+    return rows.map(compileRule);
+  }
+  const rows = await db.db
+    .select({
+      id: postgresSchema.policyRules.id,
+      policyId: postgresSchema.policyRules.policyId,
+      priority: postgresSchema.policyRules.priority,
+      matchEventType: postgresSchema.policyRules.matchEventType,
+      matchToolName: postgresSchema.policyRules.matchToolName,
+      matchPathGlob: postgresSchema.policyRules.matchPathGlob,
+      matchAgentType: postgresSchema.policyRules.matchAgentType,
+      decision: postgresSchema.policyRules.decision,
+      reason: postgresSchema.policyRules.reason,
+    })
+    .from(postgresSchema.policyRules)
+    .innerJoin(postgresSchema.policies, eq(postgresSchema.policies.id, postgresSchema.policyRules.policyId))
+    .where(eq(postgresSchema.policies.isActive, true))
+    .orderBy(postgresSchema.policyRules.priority);
+  return rows.map(compileRule);
+}
+
+const FAIL_OPEN_RESULT: PolicyResult = Object.freeze({
+  decision: 'allow',
+  reason: 'policy_check_unavailable',
+  matchedRuleId: null,
+});
+
+function isCockatielFailOpen(err: unknown): boolean {
+  return err instanceof BrokenCircuitError || err instanceof IsolatedCircuitError || err instanceof TaskCancelledError;
+}
+
+/**
+ * Real policy evaluator. Wraps a cache-first DB read in a
+ * cockatiel timeout + breaker fuse, returns fail-open on every
+ * error path. The frozen `PolicyClient` interface (see
+ * `framework/tool-context.ts`) is the only surface exposed to the
+ * registry.
+ */
+export function createPolicyClient(options: CreatePolicyClientOptions): PolicyClient {
+  if (!options || typeof options !== 'object') {
+    throw new TypeError('createPolicyClient requires an options object');
+  }
+  if (!options.db || typeof options.db !== 'object' || !('kind' in options.db)) {
+    throw new TypeError('createPolicyClient: options.db must be a DbHandle from @contextos/db');
+  }
+
+  const now = options.now ?? (() => Date.now());
+  const cacheTtlMs = options.cacheTtlMs ?? DEFAULTS.CACHE_TTL_MS;
+  const timeoutMs = options.timeoutMs ?? DEFAULTS.TIMEOUT_MS;
+  const breakerThreshold = options.breakerThreshold ?? DEFAULTS.BREAKER_THRESHOLD;
+  const breakerHalfOpenMs = options.breakerHalfOpenMs ?? DEFAULTS.BREAKER_HALF_OPEN_MS;
+
+  const breaker = circuitBreaker(handleAll, {
+    halfOpenAfter: breakerHalfOpenMs,
+    breaker: new ConsecutiveBreaker(breakerThreshold),
+  });
+  const fuse = timeout(timeoutMs, TimeoutStrategy.Aggressive);
+  const policy = wrap(fuse, breaker);
+
+  // Module 02 solo-mode cache is keyed globally. S14's `check_policy`
+  // will introduce a per-project key when it lands; this `'all'`
+  // sentinel is the single entry for now.
+  const CACHE_KEY = 'all';
+  const cache = new Map<string, CacheEntry>();
+
+  policyLogger.info(
+    {
+      event: 'policy_engine_wired',
+      mode: options.db.kind === 'sqlite' ? 'solo' : 'team',
+      cacheTtlMs,
+      timeoutMs,
+      breakerThreshold,
+      breakerHalfOpenMs,
+    },
+    'createPolicyClient: policy engine wired (cache-first + timeout + breaker + fail-open).',
+  );
+
+  async function getRules(): Promise<ReadonlyArray<CompiledRule>> {
+    const cached = cache.get(CACHE_KEY);
+    if (cached && now() - cached.loadedAt < cacheTtlMs) {
+      return cached.rules;
+    }
+    const rules = await policy.execute(() => loadRules(options.db));
+    cache.set(CACHE_KEY, { rules, loadedAt: now() });
+    return rules;
+  }
+
+  return {
+    async evaluate(input) {
+      const started = now();
+      let rules: ReadonlyArray<CompiledRule>;
+      try {
+        rules = await getRules();
+      } catch (err) {
+        const durationMs = now() - started;
+        if (isCockatielFailOpen(err)) {
+          policyLogger.warn(
+            {
+              event: 'policy_fail_open_breaker',
+              tool: input.toolName,
+              phase: input.phase,
+              sessionId: input.sessionId,
+              durationMs,
+              reason: err instanceof Error ? err.name : 'unknown',
+            },
+            'policy fuse tripped (breaker open, isolated, or timeout); failing open',
+          );
+        } else {
+          policyLogger.warn(
+            {
+              event: 'policy_fail_open_error',
+              tool: input.toolName,
+              phase: input.phase,
+              sessionId: input.sessionId,
+              durationMs,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'policy DB read threw; failing open',
+          );
+        }
+        return FAIL_OPEN_RESULT;
+      }
+
+      const matched = evaluateRules(rules, {
+        phase: input.phase,
+        toolName: input.toolName,
+        input: input.input,
+      });
+
+      if (!matched) {
+        return {
+          decision: 'allow',
+          reason: 'no_rule_matched',
+          matchedRuleId: null,
+        };
+      }
+
+      return {
+        decision: matched.decision,
+        reason: matched.reason,
+        matchedRuleId: matched.id,
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Audit write helper (called by S14's check_policy tool, NOT by evaluate()).
+// Exported from the same module so there is one source of truth for the
+// policy-engine surface. Kept module-level (not a PolicyClient method)
+// because writing to `policy_decisions` requires projectId + agentType
+// context the frozen PolicyClient interface does not expose.
+// ---------------------------------------------------------------------------
+
+export interface RecordPolicyDecisionArgs {
+  /** NOT NULL FK to `projects.id`. S14's caller must supply. */
+  readonly projectId: string;
+  readonly sessionId: string;
+  readonly agentType: string;
+  readonly eventType: string;
+  readonly toolName: string;
+  /** JSON string of the tool input — caller controls truncation. */
+  readonly toolInputSnapshot: string;
+  readonly permissionDecision: 'allow' | 'deny';
+  readonly reason: string;
+  readonly matchedRuleId: string | null;
+  /** Nullable FK — PreToolUse before a run exists writes NULL per §4.3. */
+  readonly runId: string | null;
+  /** UUID minter; defaults to `crypto.randomUUID()`. Exposed for tests. */
+  readonly mintId?: () => string;
+}
+
+/**
+ * Insert a row into `policy_decisions` using the locked idempotency
+ * key `pd:{sessionId}:{toolName}:{eventType}` (§4.3). ON CONFLICT DO
+ * NOTHING dedupes retries. Caller dispatches via `setImmediate(...)`
+ * per Q-02-2; this function is synchronous-throwing so the caller's
+ * `.catch()` sees the error.
+ *
+ * Returns `{ inserted }`:
+ *   - `inserted: true` on first write.
+ *   - `inserted: false` when the idempotency key already exists.
+ * The distinction lets tests and observability count retry dedupes.
+ */
+export async function recordPolicyDecision(
+  db: DbHandle,
+  args: RecordPolicyDecisionArgs,
+): Promise<{ readonly inserted: boolean }> {
+  const id = (args.mintId ?? (() => globalThis.crypto.randomUUID()))();
+  const idempotencyKey = buildPolicyDecisionIdempotencyKey({
+    sessionId: args.sessionId,
+    toolName: args.toolName,
+    eventType: args.eventType,
+  });
+
+  const row = {
+    id,
+    idempotencyKey,
+    runId: args.runId,
+    sessionId: args.sessionId,
+    projectId: args.projectId,
+    agentType: args.agentType,
+    eventType: args.eventType,
+    toolName: args.toolName,
+    toolInputSnapshot: args.toolInputSnapshot,
+    permissionDecision: args.permissionDecision,
+    matchedRuleId: args.matchedRuleId,
+    reason: args.reason,
+  };
+
+  if (db.kind === 'sqlite') {
+    const result = await db.db
+      .insert(sqliteSchema.policyDecisions)
+      .values(row)
+      .onConflictDoNothing({ target: sqliteSchema.policyDecisions.idempotencyKey })
+      .returning({ id: sqliteSchema.policyDecisions.id });
+    return { inserted: result.length === 1 };
+  }
+
+  const result = await db.db
+    .insert(postgresSchema.policyDecisions)
+    .values(row)
+    .onConflictDoNothing({ target: postgresSchema.policyDecisions.idempotencyKey })
+    .returning({ id: postgresSchema.policyDecisions.id });
+  return { inserted: result.length === 1 };
 }

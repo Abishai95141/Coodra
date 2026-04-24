@@ -15,13 +15,13 @@ import { createLogger } from '@contextos/shared';
 import { env } from './config/env.js';
 import type { ContextDeps } from './framework/tool-context.js';
 import { ToolRegistry } from './framework/tool-registry.js';
-import { createSoloAuthClient } from './lib/auth.js';
+import { createAuthClient } from './lib/auth.js';
 import { createContextPackStore } from './lib/context-pack.js';
 import { createDbClient } from './lib/db.js';
 import { createFeaturePackStore } from './lib/feature-pack.js';
 import { createGraphifyClient } from './lib/graphify.js';
 import { createMcpLogger } from './lib/logger.js';
-import { createDevNullPolicyClient } from './lib/policy.js';
+import { createPolicyClient } from './lib/policy.js';
 import { createRunRecorder } from './lib/run-recorder.js';
 import { createSqliteVecClient } from './lib/sqlite-vec.js';
 import { pingToolRegistration } from './tools/ping/manifest.js';
@@ -79,8 +79,8 @@ async function main(): Promise<void> {
   // line change here.
   const sharedLogger = createMcpLogger('root');
   const dbClient = createDbClient({});
-  const auth = createSoloAuthClient();
-  const policy = createDevNullPolicyClient();
+  const auth = createAuthClient(env);
+  const policy = createPolicyClient({ db: dbClient.asInternalHandle() });
   const featurePack = createFeaturePackStore({ db: dbClient.client });
   const contextPack = createContextPackStore({ db: dbClient.client });
   const runRecorder = createRunRecorder({ db: dbClient.client });

@@ -214,15 +214,59 @@ The tool-registration framework and `manifest-from-zod` helper landed in S5 as p
 - S7c lands the real bodies of `lib/feature-pack.ts`, `lib/context-pack.ts`, `lib/run-recorder.ts`, `lib/sqlite-vec.ts`, `lib/graphify.ts`. Each swap is a function-body change only — file tree, interfaces, and wiring are frozen.
 - `apps/mcp-server/src/lib/env.ts` — **not needed.** The env schema already lives at `apps/mcp-server/src/config/env.ts` (landed S6); moving it is unnecessary.
 
-### S7b — Lib: auth + policy (security-critical, CODEOWNERS-friendly split)
+### S7b — Lib: auth + policy (landed 2026-04-24)
 
-`apps/mcp-server/src/lib/auth.ts` — Hono middleware that applies (per Q-02-1, in order): (1) solo-bypass when `CLERK_SECRET_KEY === 'sk_test_replace_me'` → `c.set('identity', { mode: 'solo-bypass', orgId: 'org_dev_local', userId: 'user_dev_local' })`; (2) `X-Local-Hook-Secret` header → look up the secret in env / storage, map to orgId; (3) Clerk JWT via `@clerk/backend` `authenticateRequest()` with tenant's JWKS endpoint. First match wins. No match → `c.json({ ok: false, error: 'unauthorized' }, 401)`. Unit tests: one fixture per branch plus the "none match" fallback.
+**User directive recap:** swap the S7a stubs for real bodies in `lib/auth.ts` and `lib/policy.ts`. No edits to `tool-context.ts`, no interface changes, body swaps only. The Clerk chain is wired but not live-validated against a real tenant (that is a Module 04 precondition, per `context_memory/pending-user-actions.md`).
 
-`apps/mcp-server/src/lib/policy.ts` — cache-first evaluator. 60-second in-process LRU keyed by `projectId`. Rule match logic exactly as in spec §4. Wrapped by `circuitBreaker(handleAll, { halfOpenAfter: 30_000, breaker: new ConsecutiveBreaker(5) })` from cockatiel. On breaker open / throw / timeout → `{ permissionDecision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }`. Writes every decision (including fail-open) to `policy_decisions` via `setImmediate` + `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` — per Q-02-2. Async write failure logs at **WARN** with `{ sessionId, toolName, eventType, matchedRuleId, error }` context. Unit tests cover: first-match-wins priority ordering, glob matching, breaker-open fail-open, async-write idempotency, async-write failure logging.
+**What landed:**
 
-**Files:** `apps/mcp-server/src/lib/auth.ts`, `apps/mcp-server/src/lib/policy.ts`, unit tests.
+- `apps/mcp-server/src/lib/auth.ts` — real auth module. `createSoloAuthClient`, `createAnonymousAuthClient`, and `SOLO_IDENTITY` are unchanged; three new exports land: `verifyLocalHookSecret(presented, expected): boolean` (constant-time compare via `node:crypto::timingSafeEqual`, defence-in-depth length / type guards), `verifyClerkJwt(token, env): Promise<Identity>` (thin adapter over `@clerk/backend@3.3.0`'s top-level `verifyToken(token, { secretKey })` export — not `ClerkClient.verifyToken`, which does not exist; see decisions-log 2026-04-24), and `createClerkAuthClient(env): AuthClient` (returns `{ getIdentity: () => null, requireIdentity: () => throw UnauthorizedError }` on stdio — null-then-helpers per user directive Q1; per-request identity flows through the two helpers above when S16 HTTP middleware lands). The top-level dispatcher `createAuthClient(env)` picks solo when the solo-bypass sentinel is set OR `CONTEXTOS_MODE === 'solo'`, otherwise Clerk. The chain order (solo → local-hook → Clerk) mirrors `context_memory/decisions-log.md` 2026-04-22 Q-02-1 and `system-architecture.md` §19.
 
-**Commit:** `feat(mcp-server): lib auth (Clerk + solo bypass + local-hook-secret) + policy engine (fail-open, async idempotent writes)`.
+- `apps/mcp-server/src/lib/policy.ts` — real cache-first evaluator. `createPolicyClientFromCheck` and `createDevNullPolicyClient` + `devNullPolicyCheck` stay exported (test fixtures depend on them). The new `createPolicyClient({ db, now?, cacheTtlMs?, timeoutMs?, breakerThreshold?, breakerHalfOpenMs? })` factory returns a `PolicyClient` whose `evaluate()` does:
+  1. Cache-first rule read with 60 s TTL (keyed globally for Module 02 solo-mode; per-project keying deferred to S14 — see decisions-log 2026-04-24).
+  2. DB read wrapped in `wrap(timeout(100, TimeoutStrategy.Aggressive), circuitBreaker(handleAll, { halfOpenAfter: 30_000, breaker: new ConsecutiveBreaker(5) }))` from `cockatiel@3.2.1`. Numbers are `§7` verbatim plus the 100ms fuse per user directive Q4.
+  3. First-match-wins rule evaluation via the exported pure function `evaluateRules(rules, input)`. Match axes: event-type (PreToolUse/PostToolUse/`*`), tool-name (exact/`*`/picomatch glob — `picomatch@4.0.2`), path-glob (picomatch, compiled once per rule at cache-load), agent-type (`null` or `*` only for the auto-wrap path; specific-agent rules are skipped until S14 threads agentType through input).
+  4. Fail-open on every error path: `BrokenCircuitError`, `IsolatedCircuitError`, `TaskCancelledError`, or any DB throw returns `{ decision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }`. WARN-logs with `{ tool, phase, sessionId, durationMs, reason|err }` so degradation is visible before the breaker trips.
+  5. INFO log at construction (`policy_engine_wired` with mode + cache/timeout/breaker knobs) — pairs with the S7a dev-null WARN to give ops a binary grep signal.
+  - `createPolicyClient` does NOT write to `policy_decisions` from the registry auto-wrap path — the PolicyInput shape (frozen) lacks `projectId`, `agentType`, `runId`, which are NOT NULL FK columns. The audit-write helper `recordPolicyDecision(db, args)` is exported from the same module as real wire code (ON CONFLICT DO NOTHING on the locked idempotency key `pd:{sessionId}:{toolName}:{eventType}` per §4.3, accepts `runId: string | null`). S14's `check_policy` MCP tool is the first call site. See decisions-log 2026-04-24 for the rationale.
+  - Key builder `buildPolicyDecisionIdempotencyKey` is also exported so S14 and any future auditing test uses the same format.
+
+- `apps/mcp-server/src/index.ts` — two factory-call swaps: `createSoloAuthClient()` → `createAuthClient(env)`, and `createDevNullPolicyClient()` → `createPolicyClient({ db: dbClient.asInternalHandle() })`. Nothing else changes. Shutdown flow unchanged (no setImmediate writes from the evaluator; flush hook arrives with S14's `check_policy` audit writes).
+
+- `apps/mcp-server/package.json` — three runtime deps exact-pinned: `cockatiel@3.2.1`, `@clerk/backend@3.3.0`, `picomatch@4.0.2`. One devDep: `@types/picomatch@4.0.2`. Also adds `drizzle-orm@^0.45.2` as a direct runtime dep (matches `@contextos/db`'s pin) because `lib/policy.ts` imports `eq` from it.
+
+- `biome.json` — `.claude` and `context_memory` added to `files.includes` exclusion list. Pre-existing Claude Code internal worktrees carry their own nested biome.json which was failing root-level `pnpm lint`. This is ancillary to S7b but unblocks the gate.
+
+- `External api and library reference.md` — amendment-B mandatory update same commit: cockatiel section rewritten against 3.2.1 (verbatim breaker config, timeout-inside-breaker pattern, TaskCancelledError/BrokenCircuitError handling); new `@clerk/backend` subsection under Auth & Security (exact 3.3.0 pin, top-level `verifyToken` snippet, JWKS caching note, "wired but not live-validated" flag); new `picomatch` subsection under Validation, Schemas & Resilience (exact 4.0.2 pin, compile-at-cache-load pattern, picomatch-over-minimatch rationale).
+
+- `context_memory/decisions-log.md` — six new entries appended (2026-04-24): cockatiel exact pin + breaker config, @clerk/backend exact pin + top-level verifyToken entrypoint, picomatch exact pin, AuthClient null-on-stdio contract, policy cache global-keying for Module 02, policy_decisions writes deferred to S14.
+
+- `context_memory/pending-user-actions.md` — the Clerk-project entry is refreshed to note S7b ships the real wire code + mandates a Module-04 AC for the first live validation. New entry added for the future `contextos team login` CLI → `~/.contextos/config.json` read-path for `LOCAL_HOOK_SECRET` (env-only is the S7b scope, per user directive Q7).
+
+**Tests added or changed:**
+
+- `__tests__/unit/lib/auth-chain.test.ts` (new, ~19 tests) — hoist-mocks `@clerk/backend::verifyToken` via `vi.mock`; covers `createAuthClient` dispatcher (solo / solo-bypass-sentinel-in-team / real-team), `createClerkAuthClient` construction rejection of the sentinel + missing publishable key, `verifyLocalHookSecret` (match / length-mismatch / same-length-different-content / non-string / empty), `verifyClerkJwt` (valid token with/without org_id, SDK rejection, missing `sub`, empty token short-circuit, sentinel secret short-circuit).
+- `__tests__/unit/lib/policy-rules.test.ts` (new, ~17 tests) — pure unit tests against the exported `evaluateRules` function: empty ruleset, event-type axis, tool-name axis (exact/`*`/glob), path-glob axis (null matcher / missing path / matching / file_path / path / non-match), agent-type axis (null / `*` / pinned-to-specific-agent skipped), first-match-wins by priority ASC.
+- `__tests__/integration/lib/auth.test.ts` (extended, +4 tests) — dispatcher fixtures for solo vs sentinel-in-team vs real-team; `createClerkAuthClient` construction-contract rejection cases.
+- `__tests__/integration/lib/policy.test.ts` (extended, +3 tests) — `createPolicyClient` construction contract (missing options, missing db); `buildPolicyDecisionIdempotencyKey` format lock (`pd:{sessionId}:{toolName}:{eventType}`).
+- `__tests__/integration/lib/policy-db.test.ts` (new, ~9 tests) — end-to-end against real `:memory:` SQLite with migrations applied. Covers: no-rules → allow with `no_rule_matched` reason; seeded deny-rule match with `matchedRuleId` populated; priority ASC first-match-wins across two rules; TTL cache behavior with fake clock (stale within TTL, refresh after); DB-throw fail-open + breaker-open fail-open; `recordPolicyDecision` inserts with locked idempotency key shape; ON CONFLICT DO NOTHING retry dedupe; null runId accepted per §4.3.
+
+**Gate (all green):**
+
+- `pnpm install --frozen-lockfile` — clean.
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (S5-era `useShorthandFunctionType` hint, intentionally left).
+- `pnpm typecheck` — all 3 packages green.
+- `pnpm --filter @contextos/mcp-server run test:unit` — **75/75** (was 40 at S7a; +35 from S7b: 17 policy-rules + 19 auth-chain − 1 deduped test setup line).
+- `pnpm --filter @contextos/mcp-server run test:integration` — **61/61** (was 45 at S7a; +16 from S7b: 9 policy-db + 4 auth dispatcher + 3 policy construction).
+
+**Commit:** `feat(mcp-server): S7b — real Clerk/local-hook auth + cache-first policy engine with breaker`.
+
+**Deferred (per user directive, S7c scope):**
+
+- S7c lands the real bodies of `lib/feature-pack.ts`, `lib/context-pack.ts`, `lib/run-recorder.ts`, `lib/sqlite-vec.ts`, `lib/graphify.ts`. Each swap is a function-body change only; file tree, interfaces, and wiring are frozen.
+- S14's `check_policy` MCP tool lands the first caller of `recordPolicyDecision`, threading `projectId` / `agentType` / `eventType` / `runId` through from the Hooks Bridge input. At that point the policy cache key upgrades from global `'all'` to per-`projectId`.
+- S16 HTTP transport lands the Clerk + local-hook middleware that calls `verifyClerkJwt` / `verifyLocalHookSecret` on inbound Bearer tokens / `X-Local-Hook-Secret` headers.
 
 ### S7c — Lib: domain services
 
@@ -287,6 +331,29 @@ Inserts a row into a new `decisions` table (introduced in this commit's migratio
 ### S14 — Tool `check_policy`
 
 Delegates to `lib/policy.ts`. Returns `{ permissionDecision, reason, policyId? }` synchronously. Fires the policy_decisions insert asynchronously via `setImmediate`. Latency target < 10 ms — unit test with a timing assertion.
+
+**S14 is the first caller of `recordPolicyDecision`** — the audit-write helper exported from `apps/mcp-server/src/lib/policy.ts` in S7b (2026-04-24 decisions-log). S7b landed the wire code with unit coverage against `:memory:` SQLite (ON CONFLICT DO NOTHING on the locked idempotency key `pd:{sessionId}:{toolName}:{eventType}`, null-runId accepted per §4.3) specifically so S14 is a call-site add, not a new-code task. The S14 handler's implementation is literally:
+
+```ts
+const decision = await ctx.policy.evaluate(policyInput); // cached rule lookup
+setImmediate(() => {
+  recordPolicyDecision(ctx.db /* as InternalDbHandle */, {
+    projectId: toolInput.projectSlug,   // resolved to projectId before this line
+    sessionId: toolInput.sessionId,
+    agentType: toolInput.agentType,     // the Hooks Bridge threads the real value
+    eventType: toolInput.eventType,
+    toolName: toolInput.toolName,
+    toolInputSnapshot: JSON.stringify(toolInput.toolInput),
+    permissionDecision: decision.decision,
+    matchedRuleId: decision.matchedRuleId,
+    reason: decision.reason,
+    runId: toolInput.runId ?? null,
+  }).catch((err) => policyLogger.warn({ event: 'policy_audit_write_failed', err }, '...'));
+});
+return decision;
+```
+
+Do NOT re-defer the audit write past S14 — S7b deferred it here precisely because this is the first call site with the right context (`projectId`, `agentType`, `eventType`, `runId` all threaded from the Hooks Bridge input).
 
 **Commit:** `feat(mcp-server): tool check_policy (fail-open, async policy_decisions write)`.
 

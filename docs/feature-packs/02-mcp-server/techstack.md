@@ -20,18 +20,21 @@
 | `@modelcontextprotocol/sdk` | `^1.29.0` | MCP server + client TS SDK. Provides `Server`, stdio/HTTP transport classes, `Client` (used in manifest-e2e test). | **NEW** entry in Protocols & Transports section |
 | `hono` | `^4.12.14` | Minimal web framework for the HTTP transport's `POST /mcp` + `GET /healthz` endpoints. | Pin `^4.12.14` replaces the "verify via npm view" placeholder |
 | `@hono/node-server` | `^2.0.0` | Node.js adapter for Hono's `fetch` handler. Serves the Streamable HTTP endpoint on 127.0.0.1:3100. | **Major bump** from reference's `1.19.3`; `serve({ fetch, port, hostname })` signature unchanged for our use |
-| `cockatiel` | `^3.2.1` | Circuit breaker + retry policies wrapping DB / filesystem calls in every tool handler. | Minor bump from `3.1.3` |
-| `zod-to-json-schema` | `^3.25.2` | Converts each tool's Zod `schema.ts` into the JSON Schema shape the MCP `tools/list` response expects. | Matches existing pin; no change |
-| `@clerk/backend` | `^3.2.13` | Server-side JWT verification (`authenticateRequest()`) for the HTTP transport in team mode. | **NEW** entry in Auth & Security section |
+| `cockatiel` | `3.2.1` **exact** | Circuit breaker + timeout fuse wrapping the policy-rule DB read in `lib/policy.ts`. Installed in S7b. Exact pin (no caret) per amendment-B — security-adjacent library; silent minor bumps could shift breaker semantics. |
+| `zod-to-json-schema` | dropped | Replaced by Zod v4's native `z.toJSONSchema()` in S5 (decisions-log 2026-04-23). Not installed. |
+| `@clerk/backend` | `3.3.0` **exact** | Server-side JWT verification via the top-level `verifyToken(token, { secretKey })` helper (NOT `ClerkClient.verifyToken`, which does not exist — see decisions-log 2026-04-24). Installed in S7b. Exact pin (no caret) — auth-critical library. Supersedes the original `^3.2.13` plan. |
+| `picomatch` | `4.0.2` **exact** | Policy-rule path/tool-name glob matcher compiled once per rule at cache-load time in `lib/policy.ts`. Installed in S7b. Exact pin per amendment-B — glob semantics govern policy decisions. |
+| `drizzle-orm` | `^0.45.2` | Query builder used by `lib/policy.ts` to SELECT policies + policy_rules rows and INSERT policy_decisions with `onConflictDoNothing`. Installed in S7b. Caret pin matches `@contextos/db`'s own pin. |
 
 `apps/mcp-server/package.json` devDependencies:
 
 | Package | Pin | Role | Reference action |
 |---|---|---|---|
-| `ajv` | `^8.18.0` | JSON Schema validator used by `manifest-e2e.test.ts` to assert every tool's `inputSchema` is a valid Ajv-compilable schema (per §24.9). | **NEW** entry in Validation/Schemas/Resilience section |
-| `ajv-formats` | `^3.0.1` | Adds `date-time`, `uuid`, `uri` format checkers to Ajv so the manifest-e2e test matches real MCP client behaviour. | **NEW** entry (same section) |
-| `testcontainers` | `^11.14.0` | Docker-backed Postgres 16 + pgvector container for `policy-decisions-idempotency.test.ts` and the Module 04 reuse. | **NEW** entry in a new Testing & Containers section |
-| `@testcontainers/postgresql` | `^11.14.0` | Convenience wrapper for the Postgres container with pgvector preinstalled. | **NEW** entry (same section) |
+| `@types/picomatch` | `4.0.2` **exact** | Type definitions for picomatch. Installed alongside the runtime pin in S7b. |
+| `ajv` | `^8.18.0` | JSON Schema validator used by `manifest-e2e.test.ts` to assert every tool's `inputSchema` is a valid Ajv-compilable schema (per §24.9). Deferred to S17. |
+| `ajv-formats` | `^3.0.1` | Adds `date-time`, `uuid`, `uri` format checkers to Ajv so the manifest-e2e test matches real MCP client behaviour. Deferred to S17. |
+| `testcontainers` | `^11.14.0` | Docker-backed Postgres 16 + pgvector container for `policy-decisions-idempotency.test.ts` and the Module 04 reuse. Deferred to S17. |
+| `@testcontainers/postgresql` | `^11.14.0` | Convenience wrapper for the Postgres container with pgvector preinstalled. Deferred to S17. |
 
 ## `packages/db` dependency additions (installed in S4)
 
@@ -46,8 +49,10 @@ Every new/updated version above is amended in `External api and library referenc
 | Commit | Reference changes |
 |---|---|
 | S4 (`feat(db): sqlite-vec virtual table...`) | `sqlite-vec` pin + load snippet + brute-force-KNN gotcha |
-| S5 (`feat(mcp-server): bootstrap...`) | MCP SDK new entry, Hono pin, `@hono/node-server` bump, cockatiel bump, `@clerk/backend` new entry, Ajv + ajv-formats new entries, Testing & Containers new section |
-| S6 (`feat(mcp-server): tool-registration framework`) | `system-architecture.md §24.3` amended to "40–80 word soft target, 120-word hard maximum" per Q-02-6 |
+| S5 (`feat(mcp-server): scaffold...`) | MCP SDK new entry, Pino `CONTEXTOS_LOG_DESTINATION` gotcha. Zod v4 replaces `zod-to-json-schema` (dropped). HTTP-transport deps (Hono, @hono/node-server, ajv, ajv-formats, testcontainers) deferred to S16/S17. |
+| S6 (`feat(shared): assertManifestDescriptionValid...`) | `system-architecture.md §24.3` amended to "40–80 word soft target, 120-word hard maximum" per Q-02-6; §24.8 safeguard 1 updated to reference `@contextos/shared/test-utils`. |
+| S7a (`feat(mcp-server): S7a — freeze ToolContext...`) | No reference changes; lib-factory infra only. |
+| S7b (`feat(mcp-server): S7b — real Clerk/local-hook auth + cache-first policy engine with breaker`) | `cockatiel` rewritten for 3.2.1 exact + timeout-fuse pattern; `@clerk/backend` new subsection at 3.3.0 exact + top-level `verifyToken` snippet + "wired but not live-validated" flag; `picomatch` new subsection at 4.0.2 exact + compile-at-cache-load pattern + picomatch-over-minimatch rationale. |
 
 ## Deferred / forward-looking pins (not installed in Module 02)
 

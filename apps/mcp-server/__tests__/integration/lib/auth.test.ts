@@ -1,7 +1,26 @@
-import { UnauthorizedError } from '@contextos/shared';
+import { UnauthorizedError, ValidationError } from '@contextos/shared';
 import { describe, expect, it } from 'vitest';
 
-import { createAnonymousAuthClient, createSoloAuthClient, SOLO_IDENTITY } from '../../../src/lib/auth.js';
+import type { McpServerEnv } from '../../../src/config/env.js';
+import {
+  createAnonymousAuthClient,
+  createAuthClient,
+  createClerkAuthClient,
+  createSoloAuthClient,
+  SOLO_IDENTITY,
+} from '../../../src/lib/auth.js';
+
+function baseEnv(overrides: Partial<McpServerEnv> = {}): McpServerEnv {
+  return {
+    NODE_ENV: 'test',
+    LOG_LEVEL: 'info',
+    HOSTNAME: 'test',
+    CONTEXTOS_MODE: 'solo',
+    CONTEXTOS_LOG_DESTINATION: 'stderr',
+    MCP_SERVER_PORT: 3100,
+    ...overrides,
+  } as McpServerEnv;
+}
 
 /**
  * Integration test for `src/lib/auth.ts`.
@@ -45,5 +64,52 @@ describe('lib/auth — createAnonymousAuthClient', () => {
   it('throws UnauthorizedError from requireIdentity', async () => {
     const auth = createAnonymousAuthClient();
     await expect(auth.requireIdentity()).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+});
+
+describe('lib/auth — createAuthClient dispatcher (S7b)', () => {
+  it('dispatches to solo in solo mode', async () => {
+    const auth = createAuthClient(baseEnv());
+    await expect(auth.getIdentity()).resolves.toEqual(SOLO_IDENTITY);
+  });
+
+  it('dispatches to solo when CLERK_SECRET_KEY is the solo-bypass sentinel, even in team mode', async () => {
+    const auth = createAuthClient(
+      baseEnv({
+        CONTEXTOS_MODE: 'team',
+        CLERK_SECRET_KEY: 'sk_test_replace_me',
+        CLERK_PUBLISHABLE_KEY: 'pk_test_xxx',
+      }),
+    );
+    await expect(auth.getIdentity()).resolves.toEqual(SOLO_IDENTITY);
+  });
+
+  it('dispatches to Clerk in team mode with real keys — getIdentity=null on stdio', async () => {
+    const auth = createAuthClient(
+      baseEnv({
+        CONTEXTOS_MODE: 'team',
+        CLERK_SECRET_KEY: 'sk_test_real',
+        CLERK_PUBLISHABLE_KEY: 'pk_test_real',
+      }),
+    );
+    await expect(auth.getIdentity()).resolves.toBeNull();
+    await expect(auth.requireIdentity()).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+});
+
+describe('lib/auth — createClerkAuthClient construction contract (S7b)', () => {
+  it('rejects the solo-bypass sentinel', () => {
+    expect(() =>
+      createClerkAuthClient(
+        baseEnv({
+          CLERK_SECRET_KEY: 'sk_test_replace_me',
+          CLERK_PUBLISHABLE_KEY: 'pk_test_x',
+        }),
+      ),
+    ).toThrow(ValidationError);
+  });
+
+  it('requires publishable key alongside secret key', () => {
+    expect(() => createClerkAuthClient(baseEnv({ CLERK_SECRET_KEY: 'sk_test_real' }))).toThrow(ValidationError);
   });
 });
