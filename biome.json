@@ -25,7 +25,9 @@
       "!**/out",
       "!**/*.min.js",
       "!pnpm-lock.yaml",
-      "!packages/db/migrations.lock.json"
+      "!packages/db/migrations.lock.json",
+      "!.claude",
+      "!context_memory"
     ]
   },
   "formatter": {
