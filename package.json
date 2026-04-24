@@ -44,7 +44,8 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "@biomejs/biome",
-      "better-sqlite3"
+      "better-sqlite3",
+      "@clerk/shared"
     ]
   }
 }

@@ -20,12 +20,12 @@
     },
     "test:unit": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
+      "outputs": [],
       "inputs": ["src/**/*", "__tests__/unit/**/*", "vitest.config.ts", "package.json"]
     },
     "test:integration": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
+      "outputs": [],
       "inputs": ["src/**/*", "__tests__/integration/**/*", "vitest.config.ts", "package.json"],
       "env": ["DATABASE_URL", "REDIS_URL", "CONTEXTOS_MODE"]
     },
