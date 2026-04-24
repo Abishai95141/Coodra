@@ -4,11 +4,13 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 /**
  * SQLite schema — solo-mode primary store (`system-architecture.md` §4.1).
  *
- * Nine tables total after Module 02:
+ * Ten tables total after Module 02:
  *   - Module-01 core (append-only where noted in §4.3):
  *     projects, runs, run_events, context_packs, pending_jobs
  *   - Module-02 additions:
- *     policies, policy_rules, policy_decisions (append-only), feature_packs
+ *     policies, policy_rules, policy_decisions (append-only),
+ *     feature_packs, decisions (append-only, idempotent on
+ *     `dec:{runId}:{sha256(description)}`)
  *
  * Every timestamp column uses `integer({ mode: 'timestamp' })` so Drizzle
  * returns `Date` instances; the underlying storage is Unix seconds. Every
@@ -177,6 +179,30 @@ export const featurePacks = sqliteTable('feature_packs', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 });
 
+export const decisions = sqliteTable(
+  'decisions',
+  {
+    id: text('id').primaryKey(),
+    // idempotency_key = `dec:{runId}:{sha256(description).slice(0,32)}`. Two
+    // calls with the same runId + identical description collide on this
+    // unique index and the second returns the first row's id — see
+    // `apps/mcp-server/src/tools/record-decision/handler.ts`.
+    idempotencyKey: text('idempotency_key').notNull().unique(),
+    // run_id is nullable + ON DELETE SET NULL so decisions survive the
+    // deletion of their originating run (decisions are permanent history;
+    // parallels the run_events widening in migration 0002).
+    runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
+    description: text('description').notNull(),
+    rationale: text('rationale').notNull(),
+    // JSON-encoded string[] ; NULL is treated as [] by the handler.
+    // Stored as text on both dialects for parity — the handler does
+    // JSON.parse/stringify, so Postgres gains nothing from JSONB here.
+    alternatives: text('alternatives'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (t) => [index('decisions_run_created_idx').on(t.runId, t.createdAt)],
+);
+
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Run = typeof runs.$inferSelect;
@@ -195,3 +221,5 @@ export type PolicyDecision = typeof policyDecisions.$inferSelect;
 export type NewPolicyDecision = typeof policyDecisions.$inferInsert;
 export type FeaturePack = typeof featurePacks.$inferSelect;
 export type NewFeaturePack = typeof featurePacks.$inferInsert;
+export type Decision = typeof decisions.$inferSelect;
+export type NewDecision = typeof decisions.$inferInsert;

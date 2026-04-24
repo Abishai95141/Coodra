@@ -2261,7 +2261,11 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 > Call this IMMEDIATELY after choosing a library, designing an API shape, selecting an implementation approach over an alternative, or deciding NOT to implement something. Persists a permanent decision entry with description, rationale, and alternatives considered. Future sessions will see these decisions and must not contradict them silently. Do not batch decisions — log each one as it is made.
 
 **Input:** `{ runId: string, description: string, rationale: string, alternatives?: string[] }`
-**Returns:** `{ decisionId: string }`
+**Returns (success):** `{ ok: true, decisionId: string, createdAt: string /* ISO 8601 */, created: boolean }`
+**Idempotency:** keyed on `dec:{runId}:{sha256(description).slice(0,32)}`. A retry with identical `description` on the same `runId` collides on the `decisions.idempotency_key` UNIQUE index, returns the original `decisionId` with `created: false`, and does NOT update `rationale` / `alternatives`. Two calls with *different* `description` values on the same `runId` persist as two distinct rows — this supports logging multiple decisions inside one run (unlike `save_context_pack` which is idempotent-per-runId).
+**Storage:** dedicated `decisions` table (migration 0003), dual-dialect per §4. `run_id` is nullable + `ON DELETE SET NULL` so decision history survives the originating run's deletion — same rule as `run_events` per the 2026-04-24 widening.
+**Soft-failures:**
+- `{ ok: false, error: 'run_not_found', howToFix: string }` — the `runId` does not match a row in `runs`. No auto-create.
 **When NOT to call:** for trivial mechanical choices (variable names, local loop structure). Reserve for choices a future agent could reasonably re-open.
 
 #### `check_policy`

@@ -4,6 +4,7 @@ import type { ToolRegistry } from '../framework/tool-registry.js';
 import { getFeaturePackToolRegistration } from './get-feature-pack/manifest.js';
 import { createGetRunIdToolRegistration } from './get-run-id/manifest.js';
 import { pingToolRegistration } from './ping/manifest.js';
+import { createRecordDecisionToolRegistration } from './record-decision/manifest.js';
 import { createSaveContextPackToolRegistration } from './save-context-pack/manifest.js';
 import { createSearchPacksNlToolRegistration } from './search-packs-nl/manifest.js';
 
@@ -38,4 +39,5 @@ export function registerAllTools(registry: ToolRegistry, deps: RegisterAllToolsD
   registry.register(getFeaturePackToolRegistration);
   registry.register(createSaveContextPackToolRegistration({ db: deps.db }));
   registry.register(createSearchPacksNlToolRegistration({ db: deps.db }));
+  registry.register(createRecordDecisionToolRegistration({ db: deps.db }));
 }

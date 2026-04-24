@@ -3,8 +3,9 @@ import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, vector 
 /**
  * Postgres schema — team-mode cloud store (`system-architecture.md` §4.2).
  *
- * Mirrors `./sqlite.ts` column-for-column for all nine tables (5-table
- * Module-01 core + 4 Module-02 additions). The schema-parity unit test
+ * Mirrors `./sqlite.ts` column-for-column for all ten tables (5-table
+ * Module-01 core + 5 Module-02 additions incl. `decisions`). The
+ * schema-parity unit test
  * asserts that column names, notNull flags, and Drizzle `dataType`
  * categories match between dialects.
  *
@@ -167,6 +168,30 @@ export const featurePacks = pgTable('feature_packs', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 });
 
+export const decisions = pgTable(
+  'decisions',
+  {
+    id: text('id').primaryKey(),
+    // idempotency_key = `dec:{runId}:{sha256(description).slice(0,32)}`. Two
+    // calls with the same runId + identical description collide on this
+    // unique index and the second returns the first row's id — see
+    // `apps/mcp-server/src/tools/record-decision/handler.ts`.
+    idempotencyKey: text('idempotency_key').notNull().unique(),
+    // run_id is nullable + ON DELETE SET NULL so decisions survive the
+    // deletion of their originating run (decisions are permanent history;
+    // parallels the run_events widening in migration 0002).
+    runId: text('run_id').references(() => runs.id, { onDelete: 'set null' }),
+    description: text('description').notNull(),
+    rationale: text('rationale').notNull(),
+    // JSON-encoded string[] ; NULL is treated as [] by the handler.
+    // Stored as text on both dialects for parity — the handler does
+    // JSON.parse/stringify, so Postgres gains nothing from JSONB here.
+    alternatives: text('alternatives'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [index('decisions_run_created_idx').on(t.runId, t.createdAt)],
+);
+
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Run = typeof runs.$inferSelect;
@@ -185,3 +210,5 @@ export type PolicyDecision = typeof policyDecisions.$inferSelect;
 export type NewPolicyDecision = typeof policyDecisions.$inferInsert;
 export type FeaturePack = typeof featurePacks.$inferSelect;
 export type NewFeaturePack = typeof featurePacks.$inferInsert;
+export type Decision = typeof decisions.$inferSelect;
+export type NewDecision = typeof decisions.$inferInsert;

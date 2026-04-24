@@ -519,13 +519,54 @@ Chronological list of runs with optional `status` filter. Default limit 10. Retu
 
 **Commit:** `feat(mcp-server): tool query_run_history`.
 
-### S13 — Tool `record_decision`
+### S13 — Tool `record_decision` (landed 2026-04-24)
 
-Inserts a row into a new `decisions` table (introduced in this commit's migration patch — add it to S3's migration if caught in review, else a tiny 0002 migration. Decision: include in `0001` via an amendment to S3's commit before it's merged; if S3 is already pushed, add a `0002_decisions.sql` in this commit). Idempotency key: `dec:{runId}:{hash(description)}` — prevents duplicate records on retries. Returns `{ decisionId }`.
+**Scope:** fifth real MCP tool. Factory-shaped registration (closes over `DbHandle` for `runs` existence check + `decisions` INSERT). New `decisions` table shipped same-commit as migration **0003** (S3's 0001 was already pushed, and S7c's 0002 widened `run_events`, so 0002 is taken — the S13 pre-flight note's Option-B path applied). §24.4 amended same-commit to document the idempotency key, the `created` boolean return, storage shape, and the `run_not_found` soft-failure.
 
-**Pre-flight check during implementation:** if S3 is still unmerged when S13 lands, fold `decisions` into S3's migration. Otherwise create `0002_decisions.sql` in this commit.
+**Migration 0003:** dual-dialect `decisions` table. Columns: `id`, `idempotency_key` UNIQUE, `run_id` nullable + `ON DELETE SET NULL` (per the S7c `run_events` widening precedent — decisions are permanent history that must survive run deletion), `description`, `rationale`, `alternatives` TEXT (JSON-encoded string[]; NULL = `[]`; TEXT on both dialects for parity), `created_at`. Index `decisions_run_created_idx (run_id, created_at)` for per-run enumeration. Generated via `drizzle-kit generate`, no preserve blocks → migrations.lock.json unchanged.
 
-**Commit:** `feat(mcp-server): tool record_decision`.
+**Idempotency:** key is `dec:{runId}:{sha256(description).slice(0,32)}`. Same `runId` + identical `description` → second call collides on the UNIQUE index via `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING` and the handler re-reads the existing row, returning `{ decisionId, createdAt, created: false }`. Rationale + alternatives changes on the retry are **discarded** — description is the decision's identity; rationale is metadata. Different `description` → different key → distinct row. Multi-decision-per-run is explicitly supported (unlike `save_context_pack` which is idempotent-per-runId).
+
+**Flow:**
+
+1. SELECT `runs.id` for `input.runId`. Missing → `{ ok: false, error: 'run_not_found', howToFix }` soft-failure per §9.1.2. No auto-create.
+2. Compute idempotency key + JSON-encode `alternatives` (empty array → NULL).
+3. `INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING id, created_at`. If RETURNING returns a row → `created: true`. Empty → re-SELECT by idempotency_key → `created: false`.
+4. Return `{ ok: true, decisionId, createdAt: ISO string, created }`.
+
+**Output shape:**
+
+- Success: `{ ok: true, decisionId, createdAt, created: boolean }`. `created` lets an agent detect silently-deduped retries without re-reading the DB.
+- Soft-failure: `{ ok: false, error: 'run_not_found', howToFix }`.
+
+**Zod caps:** `description` ≤ 2048, `rationale` ≤ 8192, `alternatives` ≤ 10 items × 512 chars each. Oversize → registry's generic `invalid_input` envelope (caller bug, not user-recoverable).
+
+**Tests added (+25 total; unit 156→174, integration 124→131):**
+
+- `__tests__/unit/tools/record-decision.test.ts` (NEW, 18 tests) — manifest via `assertManifestDescriptionValid`, name lock, idempotency-key shape (mutating + matches handler hash + same-description-same-key regardless of rationale + probe-safe empty input + 200-char truncation), input schema boundaries (minimal valid, alternatives 10-cap, 11-item reject, 513-char alternative reject, empty runId/description/rationale, oversize description, oversize rationale, strict-unknown-fields), factory construction contract.
+- `__tests__/integration/tools/record-decision.test.ts` (NEW, 7 tests):
+  1. Happy path — DB row with expected columns, idempotency key, JSON alternatives roundtrip, `created: true`.
+  2. `alternatives` omitted → stored NULL.
+  3. `alternatives: []` → stored NULL (empty-array collapse).
+  4. Multi-decision-per-run: two different descriptions on same runId persist as two distinct rows.
+  5. Idempotency dedupe: same description + different rationale → same decisionId, `created: false`, rationale is NOT updated.
+  6. `run_not_found` soft-failure — no decisions row inserted.
+  7. `ON DELETE SET NULL` — deleting the originating runs row nulls `decisions.run_id` but preserves the decision row.
+- `packages/db/__tests__/unit/client.test.ts` updated: expected table list bumps from ten to eleven to include `decisions`.
+
+**Decisions-log entry (1 timestamped 2026-04-24):** S13 storage choice (dedicated table over RunRecorder), idempotency boundary (description is identity; rationale is metadata), `run_id` `ON DELETE SET NULL` + nullable, `alternatives` TEXT-JSON parity across dialects, and the added `created: boolean` return value.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (no new deps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm --filter @contextos/db run db:generate` — produces `drizzle/sqlite/0003_cloudy_colossus.sql` + `drizzle/postgres/0003_slow_meteorite.sql` + updated `meta/_journal.json` + `meta/0003_snapshot.json` per dialect.
+- `pnpm lint` — 0 errors.
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 291/291 repo-wide (shared 75 + db 42 + mcp-server 174).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 131/131.
+
+**Commit:** `feat(mcp-server): S13 — tool record_decision (new decisions table + 0003 migration) + §24.4 amendment`.
 
 ### S14 — Tool `check_policy`
 

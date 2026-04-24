@@ -82,7 +82,7 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('applies the generated migrations and creates the ten-object logical schema', () => {
+  it('applies the generated migrations and creates the eleven-object logical schema', () => {
     const handle = createSqliteDb({ path: dbPath });
     try {
       migrateSqlite(handle.db);
@@ -106,6 +106,7 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
       expect(tables).toEqual([
         'context_packs',
         'context_packs_vec',
+        'decisions',
         'feature_packs',
         'pending_jobs',
         'policies',
@@ -134,7 +135,7 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
                AND substr(name, 1, 18) <> 'context_packs_vec_'`,
         )
         .get() as { n: number };
-      expect(rows.n).toBe(10);
+      expect(rows.n).toBe(11);
     } finally {
       first.close();
     }
