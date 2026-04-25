@@ -19,5 +19,6 @@ export {
   RUN_EVENT_KEY_PATTERN,
   RUN_KEY_PATTERN,
   type RunPhase,
+  runKeySegmentSchema,
 } from './idempotency.js';
 export { createLogger, type Logger, type LoggerOptions, logger } from './logger.js';

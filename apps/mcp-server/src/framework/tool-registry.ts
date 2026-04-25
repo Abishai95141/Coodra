@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { createLogger } from '@contextos/shared';
+import { createLogger, runKeySegmentSchema } from '@contextos/shared';
 import type { z } from 'zod';
 
 import {
@@ -239,6 +239,32 @@ export class ToolRegistry {
     if (!tool) {
       return {
         content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'tool_not_found', name }) }],
+        isError: true,
+      };
+    }
+
+    // Boundary-level sessionId validation (verification finding §8.6).
+    // The runId encoding `run:{projectId}:{sessionId}:{uuid}` requires
+    // sessionId to contain no `:`. The runtime check used to live in
+    // `assertRunKeySegment` inside `generateRunKey`, which throws after
+    // the handler enters and produces an opaque `handler_threw`
+    // envelope. Validating here returns a structured `invalid_input`
+    // envelope before any handler runs.
+    const sessionParse = runKeySegmentSchema.safeParse(sessionId);
+    if (!sessionParse.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: false,
+              error: 'invalid_input',
+              tool: name,
+              field: 'sessionId',
+              issues: sessionParse.error.issues,
+            }),
+          },
+        ],
         isError: true,
       };
     }
