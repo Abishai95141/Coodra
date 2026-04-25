@@ -906,3 +906,47 @@ Without this change, parallel test workers in vitest would race on a fixed port 
 **Alternatives considered:** Keep `.positive()` and have tests assign random ports above 49152 (rejected — race risk on busy machines). Use a separate `MCP_SERVER_PORT_TEST` env var (rejected — schema bifurcation, no real benefit). Mock the listener entirely in tests (rejected — defeats the purpose of an integration test).
 
 **Reference:** `apps/mcp-server/src/config/env.ts::MCP_SERVER_PORT` schema; `apps/mcp-server/src/transports/http.ts` bound-port read-back via `nodeServer.address()`; `apps/mcp-server/__tests__/integration/transports/http.test.ts` harness uses `MCP_SERVER_PORT: 0`.
+
+## 2026-04-25 10:00 — S17: e2e test layout at repo root, BootHandle.dbHandle exposure, e2e boot helper mirrors src/index.ts
+
+**Decision:** E2E tests live at `__tests__/e2e/<scenario>.test.ts` at the repo root, NOT under any workspace's `__tests__/`. Per `essentialsforclaude/06-testing.md §6.7`, e2e crosses workspace boundaries (mcp-server + db + shared + sdk client) and putting it in any single workspace's tree would force fragile cross-workspace path imports inside that workspace's vitest config. Root layout makes the cross-workspace nature first-class.
+
+A new `vitest.e2e.config.ts` at repo root sits next to the existing root `package.json::test:e2e` script. Workspace deps `@contextos/db`, `@contextos/shared`, `@contextos/mcp-server` are added as `workspace:*` root devDependencies so the e2e tests can import production source directly.
+
+The e2e `boot.ts` helper at `__tests__/e2e/_helpers/boot.ts` mirrors `apps/mcp-server/src/index.ts`'s `ContextDeps` wiring — every lib factory the production server constructs is constructed here too (createAuthClient, createPolicyClient, createFeaturePackStore, createContextPackStore, createRunRecorder, createSqliteVecClient, createGraphifyClient). The deliberate parallel structure means e2e proves the production wiring works, not a test-only shim.
+
+`BootHandle.dbHandle` is an additive field landed in this slice so e2e tests can run typed Drizzle queries directly against the underlying handle. `deps.db.db` is intentionally `unknown` at the `ContextDeps` boundary (handlers must consume domain methods, not raw SQL); exposing the strongly-typed handle separately on the boot helper keeps the production invariant while letting e2e assertions verify table state cleanly.
+
+**Rationale:** The boot helper is the load-bearing piece. It MUST stay in lock-step with `src/index.ts` — if production grows a new lib factory, the e2e helper must too, otherwise scenarios silently exercise stale-shape deps. The helper docblock flags this. Mirror discipline > a shared abstraction that could drift.
+
+`testTimeout: 60_000` and `hookTimeout: 120_000` accept testcontainers cold-pull on a fresh runner. `fileParallelism: false` because parallel scenarios race on testcontainers port reservations and `EADDRINUSE` becomes the dominant failure mode under concurrency — sequential keeps the tests deterministic at the cost of ~10–12s wall-clock total.
+
+**Alternatives considered:** Put e2e under `apps/mcp-server/__tests__/e2e/` (rejected — requires that workspace's vitest config to reach into other workspaces' source, breaks Turborepo's task isolation). Use a separate `@contextos/e2e` workspace package (rejected — over-engineered; root devDeps + a single config file is simpler). Boot helper that delegates back to `index.ts` (rejected — `index.ts` calls `process.exit` in shutdown, can't be reused as a library entry point).
+
+**Reference:** `vitest.e2e.config.ts`, `__tests__/e2e/_helpers/boot.ts` (mirror of `apps/mcp-server/src/index.ts` boot path), `__tests__/e2e/_helpers/postgres.ts` (testcontainers pgvector container helper), `apps/mcp-server/src/transports/http.ts` BootHandle additive field; user 2026-04-25 directive ("S17 — full-lifecycle e2e integration tests"); `essentialsforclaude/06-testing.md` §6.7.
+
+## 2026-04-25 10:05 — S17: testcontainers Postgres for the idempotency scenario, NOT sqlite
+
+**Decision:** The `policy-decisions-idempotency.test.ts` scenario uses a real Postgres container (`pgvector/pgvector:pg16` via `testcontainers@11.14.0`) and explicitly NOT sqlite. The scenario dispatches 10 `check_policy` calls concurrently with the same `(sessionId, toolName, eventType)` triple and asserts exactly one row lands in `policy_decisions`.
+
+The migration 0000 references `vector(384)`. The pgvector extension must exist BEFORE migrate runs; migration 0001 contains a `CREATE EXTENSION IF NOT EXISTS vector` safety net but it runs AFTER 0000. The e2e Postgres helper runs `CREATE EXTENSION IF NOT EXISTS vector` against the fresh database BEFORE calling `migratePostgres`. The `pgvector/pgvector:pg16` image bundles the extension binary; just opting in on the database is sufficient.
+
+**Rationale:** Sqlite serialises writes per file at the OS-page level — "10 concurrent inserts" on sqlite isn't actually concurrent. Postgres + a real connection pool is the only way to exercise the actual race condition the production deployment will see (concurrent Hooks Bridge calls inside a session, retried on the network layer, all hitting the same idempotency key). Without the testcontainers Postgres, the scenario is theatre — it would pass because sqlite serialises out the race, not because the `ON CONFLICT DO NOTHING` clause works.
+
+The other four scenarios use sqlite `:memory:` because they don't exercise concurrency — they walk a single client session through the data plane and assert outcomes. Spinning up a Postgres container for each would add ~30s of cold-pull latency for no additional coverage.
+
+**Alternatives considered:** Run all five scenarios against testcontainers Postgres (rejected — wall-clock cost balloons; sqlite is sufficient for the four non-concurrency scenarios). Skip the idempotency e2e and rely on the unit-level integration test (rejected — that test runs against sqlite which serialises writes; it's the wrong sandbox for the contract being verified). Use Postgres service-container instead of testcontainers (rejected — diverges from local-dev experience; testcontainers runs identically in CI and on a developer's laptop).
+
+**Reference:** `__tests__/e2e/_helpers/postgres.ts` (CREATE EXTENSION + migrate + close); `__tests__/e2e/policy-decisions-idempotency.test.ts` (10× concurrent assertion); `system-architecture.md` §4.2 (pgvector/pgvector:pg16 image pin); `packages/db/__tests__/integration/postgres-migrate.test.ts` (precedent for the CREATE EXTENSION pattern).
+
+## 2026-04-25 10:10 — S17 found a bug: HTTP/stdio session-id colon broke get_run_id encoding
+
+**Decision:** The HTTP transport's per-server session id was minted as `http:${randomUUID()}` (with a colon) since S16. The stdio transport in `src/index.ts` was the same shape (`stdio:${randomUUID()}`). `get_run_id` validates that incoming sessionIds contain no `:` because its runId encoding is `run:{projectId}:{sessionId}:{uuid}` and a colon-bearing sessionId breaks the encoding round-trip. Fix: mint `http-${uuid}` and `stdio-${uuid}` instead (hyphen separator — collision-free with the runId encoding, semantically equivalent for log correlation).
+
+**Rationale for why this wasn't caught earlier:** S14's `check_policy` integration tests pass a literal `'sess_xxx'` style sessionId via `registry.handleCall(name, args, sessionId, ...)` directly — they bypass the transport and so never observe the transport's mint. S16's HTTP integration tests exercise the auth chain + `initialize` + `/healthz` but never invoke `get_run_id`. The bug only surfaces when a real SDK Client connects through the transport AND chains `get_run_id` against the per-transport sessionId. S17's full-session scenario was the first test to do that — and it failed immediately on the very first call.
+
+This is the kind of latent encoding bug that integration tests at the wrong granularity can never catch — they live one stack frame away from the actual contract that breaks. Cross-tool e2e is the right granularity. Documenting this here so the next time we add a tool that constructs IDs from concatenated parts, we lock the separator-purity invariant at the schema layer (Zod refine), not at the runtime layer (handler validate).
+
+**Alternatives considered:** Update `get_run_id` to accept colon-bearing sessionIds (rejected — breaks the runId encoding which other handlers parse). URL-encode the sessionId in runIds (rejected — runId is a primary key; round-trip encoding is fragile). Accept the bug as latent because nothing currently chains transport→get_run_id (rejected — production usage WILL chain that path; lock the contract now).
+
+**Reference:** `apps/mcp-server/src/transports/http.ts` line 165 (`http-${uuid}`); `apps/mcp-server/src/index.ts` line 123 (`stdio-${uuid}`); `apps/mcp-server/src/tools/get-run-id/handler.ts` validation throw on colon-bearing sessionId; `__tests__/e2e/full-session.test.ts` (the test that exposed it on first run); user 2026-04-25 e2e directive.

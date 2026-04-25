@@ -826,7 +826,79 @@ Stdio transport tests unchanged — S16 didn't touch the stdio code path.
 
 **Commit:** `feat(mcp-server): S16 — Streamable HTTP transport + auth chain + entrypoint --transport flag`.
 
-### S17 — Integration tests
+### S17 — End-to-end tests (landed 2026-04-25)
+
+**Scope:** Module 02 closeout slice. Five e2e scenarios across `__tests__/e2e/<name>.test.ts` at the repo root (cross-workspace by design — they import from `apps/mcp-server/src/*`, `@contextos/db`, and `@contextos/shared` simultaneously). New deps: `testcontainers@11.14.0`, `ajv@8.20.0` + `ajv-formats@3.0.1`, `@modelcontextprotocol/sdk@1.29.0` (root devDep — already a workspace dep on mcp-server, lifted to root for the SDK Client), `drizzle-orm` (root). No schema migration. No new MCP tool.
+
+**vitest.e2e.config.ts** at repo root: `testTimeout: 60_000`, `hookTimeout: 120_000` (testcontainers cold-pull tolerance), `fileParallelism: false` (port reservations + container lifecycle), `pool: 'forks'`. New `pnpm test:e2e` script. New turbo task `test:e2e` with the full env passthrough allowlist.
+
+**Five scenarios shipping:**
+
+1. **`manifest-e2e.test.ts`** (13 tests). Connects an SDK Client over Streamable HTTP, calls `tools/list`, asserts:
+   - Exact 9-tool set (`ping`, `get_run_id`, `get_feature_pack`, `save_context_pack`, `search_packs_nl`, `record_decision`, `query_run_history`, `check_policy`, `query_codebase_graph`) — locks the count + each name.
+   - Each description ≤ 800 chars (§24.3).
+   - Each input schema is valid JSON Schema (Ajv 2020-12 dialect — Zod's `.toJSONSchema()` emits draft 2020-12).
+   - Each tool's curated minimal-valid-input round-trips; soft-failure envelopes count as legitimate protocol shapes.
+
+2. **`http-roundtrip.test.ts`** (5 tests). Boots the full ContextDeps graph + Streamable HTTP listener for each test (independent harness — proves auth-mode swaps work cleanly). Exercises:
+   - Solo-bypass (sentinel) → 200 on initialize without Authorization header.
+   - Team mode + no creds → 401 + `WWW-Authenticate: Bearer`.
+   - Team mode + malformed Bearer → 401 (Clerk verifyToken rejects).
+   - Team mode + matching `X-Local-Hook-Secret` → 200.
+   - `/healthz` unauthed in team mode (operational probe).
+
+3. **`policy-decisions-idempotency.test.ts`** (1 test, testcontainers Postgres). Real `pgvector/pgvector:pg16` container; CREATE EXTENSION vector before migrate (migration 0000 references `vector(384)` and pre-dates the safety-net extension creation in 0001). Dispatches 10 concurrent `check_policy` calls with identical `(sessionId, toolName, eventType)` triple via `Promise.all`. Asserts:
+   - All 10 responses structurally match (deterministic — `no_rule_matched`, `failOpen: false`).
+   - Exactly 1 row in `policy_decisions` after `setImmediate` queue drain.
+   - Audit row's `idempotency_key` matches `pd:{sessionId}:{toolName}:{eventType}`.
+
+4. **`full-session.test.ts`** (2 tests). Single SDK Client session walks the entire data plane:
+   - `get_run_id` → mints a run, auto-creates the projects row in solo mode.
+   - `record_decision` × 2 → two distinct rows (different descriptions).
+   - `save_context_pack` → inserts `context_packs`, materialises markdown file on disk, flips run to `completed`.
+   - `query_run_history` → returns the run with the joined pack title and `endedAt` populated.
+   - DB-side assertions verify each write actually hit the tables; FS check confirms the markdown materialisation.
+
+5. **`stdio-roundtrip.test.ts`** (3 tests). Spawns `apps/mcp-server/src/index.ts` as a subprocess via `pnpm exec tsx ... --transport stdio`, connects an SDK Client over `StdioClientTransport`. Asserts:
+   - `initialize` handshake completes; `serverInfo.name === '@contextos/mcp-server'`.
+   - `tools/list` returns the same 9-tool set as the HTTP path.
+   - `ping` round-trip preserves the echoed payload.
+
+**Bug surfaced + fixed in S17:** the HTTP transport's session id was minted as `http:${uuid}` (with a colon). `get_run_id` rejects sessionIds containing `':'` because its runId encoding is `run:{projectId}:{sessionId}:{uuid}`. The colon broke the encoding round-trip. Fixed by minting `http-${uuid}` and `stdio-${uuid}` instead. Same edit applied at `transports/http.ts` + `index.ts`. The integration tests didn't catch this because none of them chained `get_run_id` against a real per-call sessionId from the transport.
+
+**Cross-workspace test layout:** per `essentialsforclaude/06-testing.md` §6.7, e2e tests live at repo root (NOT under any workspace's `__tests__/`). They import directly from workspace source paths via the new root-level workspace devDeps (`@contextos/db`, `@contextos/shared`, `@contextos/mcp-server`). The boot helper at `__tests__/e2e/_helpers/boot.ts` mirrors `apps/mcp-server/src/index.ts`'s ContextDeps wiring exactly — every lib factory production calls is also called here.
+
+**`BootHandle` exposes `dbHandle`** (additive to S17): the strongly-typed `DbHandle` is now a top-level field on the boot handle, so e2e tests can run direct DB assertions (Drizzle `select().from(schema...)` with full type safety) instead of casting through `deps.db` which is `unknown` at the ContextDeps boundary.
+
+**CI extension:** new `e2e` job in `ci.yml` that depends on `verify` + `integration` (so e2e only runs after the cheaper jobs pass). Runs `docker info` to fail fast if the daemon is unavailable. Pulls `pgvector/pgvector:pg16` for the idempotency scenario; subsequent runs reuse the cached image. 25-minute timeout.
+
+**Tests added (+24 total e2e; unit unchanged at 348; integration unchanged at 173):**
+
+| Scenario file | tests | scope |
+|---|---|---|
+| `manifest-e2e.test.ts` | 13 | tool set + description caps + JSON schema + minimal-valid-input round-trip |
+| `http-roundtrip.test.ts` | 5 | three auth modes + healthz unauthed |
+| `policy-decisions-idempotency.test.ts` | 1 | 10× concurrent → 1 row, testcontainers Postgres |
+| `full-session.test.ts` | 2 | cross-tool session + DB/FS assertions |
+| `stdio-roundtrip.test.ts` | 3 | subprocess spawn + tool surface + ping |
+
+**Decisions-log entries (3, timestamped 2026-04-25):**
+
+1. E2e-test layout at repo root (cross-workspace) + boot helper mirroring `index.ts` + `BootHandle.dbHandle` exposure.
+2. testcontainers Postgres for the idempotency scenario (sqlite serialises writes; can't fake real concurrent INSERT...ON CONFLICT racing).
+3. `http-${uuid}` / `stdio-${uuid}` session-id mint fix + bug-trace.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — clean (5 new root devDeps).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (idempotency.ts:77:3).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 348/348 repo-wide.
+- `pnpm --filter @contextos/mcp-server run test:integration` — 173/173.
+- `pnpm test:e2e` — **24/24 across 5 scenarios** (~12s wall-clock incl. testcontainers Postgres pull on a warm image, ~2.3s for the stdio subprocess scenario).
+
+**Commit:** `feat(repo): S17 — e2e test suite (5 scenarios, 24 tests, testcontainers + subprocess) + sessionId colon bug fix`.
 
 `apps/mcp-server/__tests__/integration/stdio-roundtrip.test.ts` — in-process Duplex pair + `@modelcontextprotocol/sdk` `Client`. Sends `initialize` + `tools/list` + `tools/call` for each of the 8 tools. Asserts stdout purity (no non-JSON-RPC bytes in the Duplex buffer).
 

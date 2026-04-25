@@ -162,7 +162,13 @@ export async function startHttpTransport(opts: HttpStartOptions): Promise<HttpTr
   const port = env.MCP_SERVER_PORT;
   const host = env.MCP_SERVER_HOST;
 
-  const sessionId = `http:${randomUUID()}`;
+  // Hyphen separator (not colon): get_run_id validates that sessionId
+  // contains no ':' because it builds runIds as
+  // `run:{projectId}:{sessionId}:{uuid}` — a colon-bearing sessionId
+  // breaks that encoding. Discovered in S17 e2e against the SDK Client
+  // round-trip. Same fix applied to the stdio transport's session id
+  // in `src/index.ts`.
+  const sessionId = `http-${randomUUID()}`;
   const sdkServer = buildSdkServer(opts, sessionId);
 
   const transport = new StreamableHTTPServerTransport({

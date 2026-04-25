@@ -41,6 +41,25 @@
         "MCP_SERVER_TRANSPORT"
       ]
     },
+    "test:e2e": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "inputs": ["src/**/*", "__tests__/e2e/**/*", "vitest.e2e.config.ts", "package.json"],
+      "env": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CONTEXTOS_MODE",
+        "CLERK_SECRET_KEY",
+        "CLERK_PUBLISHABLE_KEY",
+        "CLERK_JWT_ISSUER",
+        "LOCAL_HOOK_SECRET",
+        "MCP_SERVER_HOST",
+        "MCP_SERVER_PORT",
+        "MCP_SERVER_TRANSPORT",
+        "DOCKER_HOST",
+        "TESTCONTAINERS_HOST_OVERRIDE"
+      ]
+    },
     "clean": {
       "cache": false,
       "outputs": []

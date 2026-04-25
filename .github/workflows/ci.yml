@@ -131,3 +131,43 @@ jobs:
 
       - name: Integration tests (Postgres migrations)
         run: pnpm test:integration
+
+  e2e:
+    name: end-to-end (manifest + transport + idempotency + full session)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [verify, integration]
+    env:
+      CONTEXTOS_MODE: solo
+      CLERK_SECRET_KEY: sk_test_replace_me
+      LOG_LEVEL: error
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Approve build scripts
+        run: pnpm rebuild
+
+      - name: Build @contextos/shared (required by e2e imports)
+        run: pnpm --filter @contextos/shared build
+
+      # `testcontainers` needs a Docker daemon. GitHub-hosted ubuntu
+      # runners ship Docker pre-installed; just verify it before the
+      # tests pull pgvector/pgvector:pg16.
+      - name: Verify Docker daemon
+        run: docker info
+
+      - name: E2E tests (5 scenarios, 24 tests; testcontainers + subprocess)
+        run: pnpm test:e2e

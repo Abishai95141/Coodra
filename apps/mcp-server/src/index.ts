@@ -120,7 +120,9 @@ async function main(): Promise<void> {
     'transport selection resolved',
   );
 
-  const stdioSessionId = `stdio:${randomUUID()}`;
+  // Hyphen separator (not colon) — get_run_id rejects colon-bearing
+  // sessionIds because its runId encoding uses `:` as the separator.
+  const stdioSessionId = `stdio-${randomUUID()}`;
   const stdioHandle = startStdio
     ? await startStdioTransport({
         registry,
