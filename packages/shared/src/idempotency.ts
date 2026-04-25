@@ -1,6 +1,28 @@
 import { randomUUID } from 'node:crypto';
 
+import { z } from 'zod';
+
 import { ValidationError } from './errors/index.js';
+
+/**
+ * Zod schema for any segment that participates in a run-key encoding —
+ * the shape `run:{projectId}:{sessionId}:{uuid}`. Used at the registry
+ * boundary so callers get a structured `invalid_input` envelope instead
+ * of a buried `handler_threw` when they pass a colon-bearing sessionId.
+ *
+ * Closes verification finding §8.6 — the no-colon constraint used to
+ * live only in `assertRunKeySegment` (called from `generateRunKey`),
+ * which throws after the handler enters and produces a `handler_threw`
+ * envelope. Surfacing the constraint as a Zod schema means the
+ * registry can validate at the boundary before any handler runs.
+ *
+ * The runtime `assertRunKeySegment` helper below is kept as a defensive
+ * second line for any code path that bypasses the registry.
+ */
+export const runKeySegmentSchema = z
+  .string()
+  .min(1, 'segment must be non-empty')
+  .refine((s) => !s.includes(':'), { message: "segment must not contain ':' (run-key separator)" });
 
 /**
  * Idempotency-key helpers whose output shapes match

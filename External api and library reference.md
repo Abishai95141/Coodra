@@ -46,53 +46,78 @@ PRAGMA temp_store = MEMORY;
 
 ### sqlite-vec
 
-**Version:** Not pinned; architecture assumes a `vec0` virtual table module with cosine distance support. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-**Install:**  
+**Version:** `0.1.9` — pinned **exact** in `packages/db/package.json` (no caret). 0.x packages do not follow semver; a minor bump can and has added column syntax. The matching platform binary ships as an `optionalDependencies` entry (e.g. `sqlite-vec-darwin-arm64@0.1.9`), resolved automatically by pnpm from the parent `sqlite-vec` package.
+**Install:**
 
-Installation is environment-specific; typical patterns (must verify manually):
-
-- Python / CLI wrapper:  
-
-  ```bash
-  # Example from sqlite-utils ecosystem
-  sqlite-utils install sqlite-utils-sqlite-vec
-  ``` [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-- Direct dynamic extension: download the `sqlite-vec` shared library for your platform and load with `load_extension()`. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-**Docs:** <https://github.com/asg017/sqlite-vec> [github](https://github.com/TablePlus/TablePlus/issues/3625)
-
-#### Cosine KNN virtual table
-
-Architecture uses a 384‑dimensional cosine KNN table for embeddings. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
-
-```sql
-SELECT load_extension('/path/to/vec0');
-
-CREATE VIRTUAL TABLE IF NOT EXISTS pack_embeddings USING vec0(
-  pack_id   TEXT PRIMARY KEY,
-  embedding FLOAT[384] distance_metric=cosine
-);
-
-SELECT pack_id, distance
-FROM pack_embeddings
-WHERE embedding MATCH ?   -- query vector as packed float32 blob
-  AND k = 5
-ORDER BY distance;
+```bash
+pnpm --filter @contextos/db add sqlite-vec@0.1.9 --save-exact
 ```
 
-- `distance_metric=cosine` must be supported by the installed `sqlite-vec` build; early versions only supported L2. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-- Query uses `MATCH` with `k` filter; this is the canonical sqlite-vec query style. [github](https://github.com/TablePlus/TablePlus/issues/3625)
+**Node.js load pattern** (what `createSqliteDb` does, guarded by the strict-vs-WARN contract below):
+
+```ts
+import Database from 'better-sqlite3';
+import * as sqliteVec from 'sqlite-vec';
+
+const db = new Database(path);
+sqliteVec.load(db);   // throws if the platform binary is missing
+```
+
+**Docs:** <https://alexgarcia.xyz/sqlite-vec/> · <https://github.com/asg017/sqlite-vec>
+
+#### vec0 virtual table (what ContextOS writes)
+
+Module 02 migration `0001_chief_turbo.sql` creates:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS context_packs_vec USING vec0(
+  context_pack_id TEXT PRIMARY KEY,
+  embedding       FLOAT[384]
+);
+```
+
+`sqlite-vec@0.1.9` does **not** accept `distance_metric=cosine` as an inline column modifier. The default distance for `FLOAT[N]` columns is L2; for cosine similarity, we normalise vectors to unit length before inserting and rely on the `vec_distance_cosine(a, b)` scalar function in ad-hoc queries. The HNSW-cosine cloud index lives on the Postgres side (`context_packs_embedding_hnsw_idx`, migration 0001, preserve-block).
+
+**Insert + KNN from Node:**
+
+```ts
+// JSON-text form is the canonical input — sidesteps any ambiguity around
+// how better-sqlite3 binds typed-array buffers into BLOB parameters.
+const vec = `[${values.join(',')}]`;
+
+db.prepare(
+  'INSERT INTO context_packs_vec(context_pack_id, embedding) VALUES (?, ?)',
+).run(packId, vec);
+
+const rows = db
+  .prepare(
+    `SELECT context_pack_id, distance
+       FROM context_packs_vec
+       WHERE embedding MATCH ?
+         AND k = ?
+       ORDER BY distance`,
+  )
+  .all(vec, 5);
+```
+
+#### Strict-vs-WARN load contract (decision 2026-04-22 22:08)
+
+`packages/db/src/client.ts::loadSqliteVecOrFail` attempts `sqliteVec.load(db)` and handles failure based on the environment:
+
+- `NODE_ENV=test` **or** `CONTEXTOS_REQUIRE_VEC=1` → throw `InternalError('sqlite_vec_unavailable')` and refuse the SQLite handle. Dev and CI must never silently degrade to the LIKE-over-`content_excerpt` fallback, because that would hide embedding-index regressions.
+- otherwise → log a structured WARN tagged `sqlite_vec_unavailable` with `{ loadablePath, platform, arch, err }` and continue. This is the production fail-open path (§7 of `system-architecture.md`): the server still serves contextual reads and falls back to LIKE search.
 
 **Gotchas & caveats**
 
-- Architecture assumes brute-force KNN by default: `sqlite-vec` can behave as an O(n·d) scan engine; ANN indices like IVF/HNSW are optional and version-dependent. [github](https://github.com/TablePlus/TablePlus/issues/3625)
-- Do **not** assume HNSW support; you must explicitly check documentation and extension version before configuring any `index_type`. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
-- Vectors are stored as fixed-length arrays; changing dimensionality requires table recreation.  
+- **Dimension changes require recreation.** `FLOAT[N]` is baked into the vtab schema; changing `EMBEDDING_DIM` (from `@contextos/shared/constants`) means a migration + full re-embed. The `packages/shared/src/constants.ts` docblock carries the five-step checklist.
+- **Shadow tables.** Creating a `vec0` virtual table also materialises 4–5 companion tables (`<name>_chunks`, `<name>_rowids`, `<name>_vector_chunks00`, `<name>_info`). The unit test in `packages/db/__tests__/unit/client.test.ts` filters them via `substr(name, 1, 18) <> 'context_packs_vec_'` so assertions target the 10-object logical schema.
+- **Migration lock.** The `CREATE VIRTUAL TABLE` block is hand-written and sha256-locked via `packages/db/migrations.lock.json`. Drizzle-Kit regenerating `0001` would wipe it; CI and the `.githooks/pre-commit` hook run `pnpm --filter @contextos/db check:migration-lock` to catch that drift before it reaches main.
+- **ANN vs brute-force.** `vec0` is an O(n·d) scan engine in 0.1.x; HNSW/IVF support is not in 0.1.9. Solo-mode SQLite search is therefore brute-force, which is acceptable for the dataset sizes solo workflows produce. Team mode uses the Postgres HNSW index.
+- **Loadable-extension privilege.** `loadExtension(path)` requires SQLite to have extension loading enabled. `better-sqlite3` enables it for the lifetime of the connection it's called on; no pragma needed.
 
 **Incompatibilities**
 
-- Some GUI tools cannot introspect `vec0` virtual tables; they may show errors when browsing DBs using sqlite-vec. [github](https://github.com/TablePlus/TablePlus/issues/3625)
+- Some GUI tools (TablePlus, DB Browser) cannot introspect `vec0` virtual tables and will surface errors when browsing `context_packs_vec`. Use the CLI (`sqlite3`) for direct inspection.
 
 ***
 
@@ -706,6 +731,62 @@ The architecture’s MCP server implements both stdio and HTTP transports simult
 
 ***
 
+### `@modelcontextprotocol/sdk` (Node.js server)
+
+**Version:** `1.29.0` — pinned **exact** in `apps/mcp-server/package.json` (no caret). MCP is an active protocol; a minor-version bump can add required fields to tool-list entries and we want the ref implementation and our code to move together on a deliberate schedule, not auto-update.
+**Install:**
+
+```bash
+pnpm --filter @contextos/mcp-server add @modelcontextprotocol/sdk@1.29.0 --save-exact
+```
+
+**Docs:** <https://github.com/modelcontextprotocol/typescript-sdk> · <https://modelcontextprotocol.io/specification/2025-03-26>
+
+#### Server vs McpServer — we use the low-level `Server`
+
+The SDK exposes two Node server APIs:
+
+- **`McpServer`** (`@modelcontextprotocol/sdk/server/mcp.js`) — high-level, prescriptive. `McpServer.registerTool(name, { inputSchema, handler })` takes Zod *raw shapes*, validates inputs for you, and formats outputs.
+- **`Server`** (`@modelcontextprotocol/sdk/server/index.js`) — low-level. You register request handlers against the SDK's exported Zod schemas (`ListToolsRequestSchema`, `CallToolRequestSchema`) and own every byte of the response.
+
+ContextOS's `ToolRegistry` (`apps/mcp-server/src/framework/tool-registry.ts`) already owns input parsing, output validation, the idempotency-key contract, and the automatic policy wrapper. Routing calls through `McpServer.registerTool` would either duplicate that work or invalidate our single-source-of-truth claim. We therefore use `Server` + `setRequestHandler` directly. The SDK marks `Server` as `@deprecated` in favour of `McpServer`, but in context that annotation means "use `McpServer` unless you have a reason to take over the request lifecycle" — and our custom registry is exactly that reason.
+
+```ts
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+
+const server = new Server({ name, version }, { capabilities: { tools: {} } });
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: registry.list() }));
+server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  const { name, arguments: args } = req.params;
+  return registry.handleCall(name, args ?? {}, sessionId);
+});
+await server.connect(new StdioServerTransport());
+```
+
+#### Zod v4 compatibility
+
+`@modelcontextprotocol/sdk@1.29.0` supports Zod v4. Our workspace uses Zod v4 uniformly (both `@contextos/shared` and `@contextos/mcp-server`), which lets us drop the third-party `zod-to-json-schema` helper in favour of Zod v4's built-in `z.toJSONSchema(schema, { target: 'draft-2020-12' })` — see `apps/mcp-server/src/framework/manifest-from-zod.ts`.
+
+#### Stdio transport + logger contract (load-bearing)
+
+The stdio transport uses **stdout** exclusively for JSON-RPC frames. A single stray byte on stdout — a `console.log` from our code, a pino line from any transitive dependency — corrupts the transport. The ContextOS mcp-server enforces this invariant in three places:
+
+1. `apps/mcp-server/src/bootstrap/ensure-stderr-logging.ts` — side-effect module imported **first** in `src/index.ts`. Sets `CONTEXTOS_LOG_DESTINATION=stderr` before `@contextos/shared`'s logger module evaluates.
+2. `packages/shared/src/logger.ts` — reads `CONTEXTOS_LOG_DESTINATION` at module load; `'stderr'` routes pino to fd 2 via `pino.destination({ fd: 2, sync: true })`. Unknown values throw at boot rather than silently defaulting.
+3. `apps/mcp-server/__tests__/unit/transports/stdio-stdout-purity.test.ts` — spawns the real entrypoint, sends an `initialize` frame, and asserts every byte on stdout is a valid JSON-RPC frame and every line on stderr is a parseable pino JSON object.
+
+The Dockerfile and `.mcp.json` both set `CONTEXTOS_LOG_DESTINATION=stderr` as a defence-in-depth: even if the bootstrap module were accidentally removed, the env would still be correct.
+
+**Gotchas**
+
+- Do **not** use `console.log` anywhere in `apps/mcp-server/src/` — raw `console.log` writes to stdout regardless of our logger wiring. Biome's `suspicious/noConsole` rule (configured in `biome.json`) catches it at lint time. `console.error` / `console.warn` go to stderr and are safe.
+- The SDK's `setRequestHandler` return-type union includes a "task" branch we don't produce; narrow the return with `as unknown as CallToolResult` at the transport boundary (kept to that one file only).
+- Tool names are validated against `^[a-z][a-z0-9_]{2,63}$` — hyphens, uppercase letters, and leading digits are rejected by the `ToolRegistry` at registration time.
+
+***
+
 ### JSON-RPC 2.0
 
 **Docs:** <https://www.jsonrpc.org/specification> [jsonrpc](https://www.jsonrpc.org/specification)
@@ -1132,57 +1213,135 @@ export const ENRICHMENT_JSON_SCHEMA = zodToJsonSchema(EnrichmentSchema, 'Enrichm
 
 ### cockatiel (circuit breakers & retries)
 
-**Version:** 3.1.3. [npmjs](https://www.npmjs.com/package/cockatiel/v/1.1.0)
-**Install:**
+**Version:** 3.2.1 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/cockatiel)
+**Install (exact pin):**
 
 ```bash
-npm install --save cockatiel
+pnpm --filter @contextos/mcp-server add cockatiel@3.2.1 --save-exact
 ```
 
-**Docs:** <https://www.npmjs.com/package/cockatiel> [npmjs](https://www.npmjs.com/package/cockatiel)
+**Docs:** <https://www.npmjs.com/package/cockatiel>
 
-#### Circuit breaker policy for Redis/DB/LLMs
+#### Circuit breaker policy for DB / LLMs (the policy-engine pattern ContextOS actually uses)
 
-Architecture’s pattern aligns with examples from docs: [npmjs](https://www.npmjs.com/package/cockatiel)
-
-```ts
-import { Policy, ConsecutiveBreaker } from 'cockatiel';
-
-const redisBreaker = Policy.handleAll().circuitBreaker(
-  30_000,                  // half-open after 30s
-  new ConsecutiveBreaker(5),
-);
-
-async function withRedisBreaker<T>(fn: () => Promise<T>): Promise<T | null> {
-  return redisBreaker.execute(fn);
-}
-```
-
-Alternate API (docs): [npmjs](https://www.npmjs.com/package/cockatiel/v/1.1.0)
+ContextOS uses the v3.x functional API — `circuitBreaker(handleAll, { halfOpenAfter, breaker })` and `wrap(timeout, circuitBreaker)` for a timeout-then-breaker fuse. This is exactly what `apps/mcp-server/src/lib/policy.ts` builds for the policy-rule DB read path (§7 "Fault Tolerance" + §5 "Policy Evaluation → AP").
 
 ```ts
 import {
-  ConsecutiveBreaker,
-  ExponentialBackoff,
-  retry,
-  handleAll,
   circuitBreaker,
+  ConsecutiveBreaker,
+  handleAll,
+  timeout,
+  TimeoutStrategy,
   wrap,
 } from 'cockatiel';
 
-const retryPolicy = retry(handleAll, { maxAttempts: 3, backoff: new ExponentialBackoff() });
-
-const circuitBreakerPolicy = circuitBreaker(handleAll, {
-  halfOpenAfter: 10_000,
+// Verbatim §7 config: open after 5 consecutive failures, probe for
+// recovery after 30s. 100ms per-call fuse so a pathological query
+// cannot blow the policy-check budget even before the breaker trips.
+const policyBreaker = circuitBreaker(handleAll, {
+  halfOpenAfter: 30_000,
   breaker: new ConsecutiveBreaker(5),
 });
+const policyFuse = timeout(100, TimeoutStrategy.Aggressive);
+const policyPolicy = wrap(policyFuse, policyBreaker);
 
-const retryWithBreaker = wrap(retryPolicy, circuitBreakerPolicy);
+async function evaluateWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
+  return policyPolicy.execute(fn);
+}
 ```
 
 **Gotchas**
 
-- Architecture mandates fail‑open: when the breaker is open, handlers must immediately return “allow” rather than propagate errors. [ppl-ai-file-upload.s3.amazonaws](https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/28356926/e4e460e8-fe3c-4f55-b291-2a78271d88e6/system-architecture.md?AWSAccessKeyId=ASIA2F3EMEYE3MY3T5JN&Signature=8FIvmLoCYSJ6NxP7DhxVc8Qpjc0%3D&x-amz-security-token=IQoJb3JpZ2luX2VjEPP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIFiExgsPLb9lUsn%2FEwIaSRcBrulhBweWpop3MwxGbAkIAiBvRShUUTiKmou%2Fxf%2FvuZ7FlEltkCcY6VJI58Sbs8X7ayr8BAi8%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAEaDDY5OTc1MzMwOTcwNSIMZvv0SYJ8%2FV%2B1ereyKtAE7Xba3%2Fx3vMytWOuP2TCaaCFfm0aQbCHzTPq8x9tMeiRrWJyCPKNapsvKy2UZWb388fNHumdsI0YEx4ufPPfRwWppGL%2F5TE7slRt5avdicaArLFv%2BewgnPZRDGqOtUaOarh6maUTslgqxpGXMjk5YZ109WXl3IshUWWMS7rypot7gGdevUYMWNutAIplJazSWhCGRGIEvIqKzdxpun1XatGGcGB7UlWFN%2BDHFJ3ITV4oDqEUTlz%2BsOYjE4lxuc8QIt7AlTsAwUkcBggr4kJNO7RMvFJFW1CSxplif46eBFhmrI%2FBPKXgSbNxE%2Frwbrqyj5mKWSqtwjWk%2Fr5VgSEUspEPrJzB7n63%2B1CXsnJ3TW5ZTm9frVdtquRthMj5LmuS7vj9zap7AFOW3YKjSz4AfiqZAgwvGEyWVua7So0tQnxdvolK0HJS%2BuXalbiB%2BxgCHC%2Bv9WqgPYk7BIP%2BO1bWUK2WFzn%2F1nYd1U0nQACzMWpXoluNcOdNlCiimpHirx3HxtPXMWLZMlyGxRHOjvT0ZCvFt4iN1j%2FICYw2rDbPBOvKzCEGs9u6IUOQFHMOX9zpXsoQ5CVhiJ%2FXb7N8Jj0D1BSm8lb%2BRrJABTFJjjM8Sv6efkYg9kyGtoSof5ThCtHiwgdYS2q%2BDbGuNAU8QHuuDfLGP0njbgtgPWjIvpv6sq8jRSGQbZkZSds8uzIZ%2Bs0ZvSP80ikQxjCb2ed8RvwjNW5Y2%2BabFmXNUPpiyPGB4ZG8d0gNbiuJ4%2FwjTNxVOcd53SivcoEdjJX9QfZ1Xpz9svjCW%2BILPBjqZAffWM775KKTJPS30orTm4AuyrQihe%2BiGVdl30Vvn9qKd8nA3VSsnC3Jwl%2Fu1B36pLAEtMsvBPvY3eGjIk8sbayXnqSbDSg6%2FRV74wy1nd85FMy%2BOeJxXshopaKehnOnZ7IaQX3ucr47uYeU9nHf9JcXbquA36ncZIkSvpwl1glhPK1f4DO1vns2E4NL1aAitQL%2FT8sZlZRlh8g%3D%3D&Expires=1776336983)
+- Architecture mandates fail-open: when the breaker is open OR the timeout fuse trips, the caller must immediately return `{ decision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }` rather than propagate. See `apps/mcp-server/src/lib/policy.ts` for the canonical implementation.
+- `wrap(timeout, breaker)` applies the timeout to each attempt; `wrap(breaker, timeout)` would apply it to the whole breaker execution — keep the timeout on the inside.
+- `BrokenCircuitError` (thrown when the breaker is open) and `TaskCancelledError` (thrown on timeout) must both be caught at the boundary. Don't differentiate — both map to `allow` with the same reason.
+- `TimeoutStrategy.Aggressive` aborts the in-flight operation via `AbortSignal`; your callback must honour the signal argument cockatiel passes through. better-sqlite3 calls are synchronous so the signal is advisory — the breaker still counts them as failures on timeout.
+
+***
+
+### @clerk/backend (JWT verification, Node server)
+
+**Version:** 3.3.0 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent auth library, no caret per amendment-B discipline; techstack.md's original `^3.2.13` is superseded). [npmjs](https://www.npmjs.com/package/@clerk/backend)
+**Install (exact pin):**
+
+```bash
+pnpm --filter @contextos/mcp-server add @clerk/backend@3.3.0 --save-exact
+```
+
+**Docs:** <https://clerk.com/docs/references/backend/overview>
+
+#### `verifyToken` — the ContextOS JWT verification entrypoint
+
+Module 02 `apps/mcp-server/src/lib/auth.ts` calls `createClerkClient({ secretKey, publishableKey }).verifyToken(token)` to authenticate inbound Bearer JWTs. Per §19 + decisions-log 2026-04-22 Q-02-1 the auth chain is: solo-bypass → `X-Local-Hook-Secret` → full Clerk JWT; the Clerk path is step 3 and is the only one that calls this library.
+
+```ts
+import { createClerkClient } from '@clerk/backend';
+
+const clerk = createClerkClient({
+  secretKey: env.CLERK_SECRET_KEY,
+  publishableKey: env.CLERK_PUBLISHABLE_KEY,
+});
+
+// Returns the verified JWT payload ({ sub, org_id, ... }) or throws
+// if the token is malformed / expired / signed by a different tenant.
+const payload = await clerk.verifyToken(bearerToken);
+const identity = {
+  userId: payload.sub,
+  orgId: (payload.org_id as string | undefined) ?? null,
+  source: 'clerk' as const,
+};
+```
+
+**Gotchas**
+
+- `verifyToken` fetches JWKS from the Clerk tenant on first use and caches it in-process. First call adds ~150ms; subsequent calls are ~1ms. If you're writing a latency assertion, warm the client in `beforeAll`.
+- Pass the **raw token**, not the `Bearer <token>` string. Strip the prefix at the HTTP middleware layer.
+- `publishableKey` is required alongside `secretKey` even server-side; omitting it throws at `verifyToken` time with an unhelpful message. The env schema in `apps/mcp-server/src/config/env.ts` already enforces both being present in team mode.
+- The solo-bypass sentinel `sk_test_replace_me` is NEVER accepted by this library — it is short-circuited one layer up in `createAuthClient(env)` before any Clerk call is made.
+- Module 02 ships this wired but **not live-validated against a real Clerk tenant** — see `context_memory/pending-user-actions.md` (Clerk provisioning, due by Module 04 or first team-mode flip).
+
+***
+
+### picomatch (glob matcher for policy-rule path matching)
+
+**Version:** 4.0.2 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library used in policy rule matching, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/picomatch)
+**Install (exact pin):**
+
+```bash
+pnpm --filter @contextos/mcp-server add picomatch@4.0.2 --save-exact
+pnpm --filter @contextos/mcp-server add -D @types/picomatch@4.0.2 --save-exact
+```
+
+**Docs:** <https://github.com/micromatch/picomatch>
+
+#### Policy-rule path matcher
+
+`apps/mcp-server/src/lib/policy.ts` compiles each rule's `match_path_glob` at cache-load time and reuses the compiled matcher across calls — not at every `evaluate()` invocation. This keeps the policy-check path under the §8 solo latency target even when a project has hundreds of active rules.
+
+```ts
+import picomatch from 'picomatch';
+
+// Compiled once per rule at cache-load time.
+const matchSrcTs = picomatch('src/**/*.ts', {
+  // Treat an unset path the same as an unmatched path.
+  dot: false,
+  // No brace-expansion overhead for the common case; callers that
+  // want it set this true explicitly in the rule metadata.
+  nobrace: true,
+});
+
+matchSrcTs('src/lib/auth.ts');     // true
+matchSrcTs('src/lib/auth.test.ts'); // true
+matchSrcTs('dist/lib/auth.js');     // false
+```
+
+**Gotchas**
+
+- Compiling `picomatch(pattern)` on every evaluate call is expensive enough to matter at ~500 rules — always memoize on cache-load.
+- `picomatch(undefined)` throws; rules without a `match_path_glob` must be handled before calling picomatch (the `lib/policy.ts` matcher returns "any path" for rules with a null pattern).
+- Matcher returns `false` for empty-string input. Policy callers that receive no `filePath` in `toolInput` should use a sentinel (e.g. `''`) and treat `false` as "rule does not apply".
+- Chose over `minimatch`: picomatch is ~10× faster per match, zero dependencies, syntax superset; matches the choice already made by Biome, fast-glob, globby, and chokidar upstream.
 
 ***
 
@@ -1217,6 +1376,7 @@ logger.info({ sessionId, runId, orgId }, 'PreToolUse decision allow');
 
 - For pretty logs in dev, you can pipe through `pino-pretty`; do **not** use pretty transports in production hot path due to performance cost. [libraries](https://libraries.io/npm/pino-api-logger)
 - **Pino 10 is ESM-only.** Consumers must use `import pino from 'pino'` from an ESM context; `require('pino')` is no longer supported. ContextOS's `tsconfig.base.json` sets `module: NodeNext`, which matches Pino 10's expectations. Transitive consumers that still ship CJS will need to be updated or pinned.
+- **`CONTEXTOS_LOG_DESTINATION` env contract** (added 2026-04-23, S5): services that own stdout as a protocol channel — today only `@contextos/mcp-server` under the MCP stdio transport — set this env to `stderr` before any import of `@contextos/shared`. `packages/shared/src/logger.ts` reads it at module load and routes pino to fd 2 via `pino.destination({ fd: 2, sync: true })`. Accepted values: unset / `stdout` / `stderr`; anything else throws at boot. See the `@modelcontextprotocol/sdk` entry under Protocols & Transports for the full enforcement story.
 
 ***
 

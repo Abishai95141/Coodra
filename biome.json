@@ -24,7 +24,10 @@
       "!**/.next",
       "!**/out",
       "!**/*.min.js",
-      "!pnpm-lock.yaml"
+      "!pnpm-lock.yaml",
+      "!packages/db/migrations.lock.json",
+      "!.claude",
+      "!context_memory"
     ]
   },
   "formatter": {
@@ -82,5 +85,17 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/mcp-server/src/lib/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noImportCycles": "error"
+          }
+        }
+      }
+    }
+  ]
 }

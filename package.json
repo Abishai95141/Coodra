@@ -28,12 +28,22 @@
     "test": "pnpm test:unit",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
-    "clean": "turbo run clean && rm -rf node_modules .turbo"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
+    "@contextos/db": "workspace:*",
+    "@contextos/mcp-server": "workspace:*",
+    "@contextos/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@vitest/coverage-v8": "^4.1.5",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "testcontainers": "11.14.0",
     "tsx": "^4.21.0",
     "turbo": "^2.9.6",
     "typescript": "^6.0.3",
@@ -43,7 +53,8 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "@biomejs/biome",
-      "better-sqlite3"
+      "better-sqlite3",
+      "@clerk/shared"
     ]
   }
 }

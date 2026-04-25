@@ -1,0 +1,26 @@
+{
+  "$schema": "https://contextos.dev/schemas/migrations-lock.v1.json",
+  "description": "Hand-written preserve-blocks inside drizzle migrations. Regenerate via `pnpm --filter @contextos/db check:migration-lock --write` after intentional edits. CI enforces drift via `pnpm --filter @contextos/db check:migration-lock`.",
+  "entries": [
+    {
+      "file": "packages/db/drizzle/postgres/0001_clean_rafael_vega.sql",
+      "blockMarker": "pgvector-hnsw",
+      "sha256": "4e28f8e3a4f5127bae704accc9512270447330c3f90041b9731386a4663a8135",
+      "lineRange": [
+        59,
+        76
+      ],
+      "generatedAt": "2026-04-22T16:33:01.335Z"
+    },
+    {
+      "file": "packages/db/drizzle/sqlite/0001_chief_turbo.sql",
+      "blockMarker": "sqlite-vec",
+      "sha256": "6193025cf70fa105a85af46d8bd8c1bbcd9023e8786b3a69cbfc7e593bb4e1e5",
+      "lineRange": [
+        59,
+        71
+      ],
+      "generatedAt": "2026-04-22T16:33:01.328Z"
+    }
+  ]
+}

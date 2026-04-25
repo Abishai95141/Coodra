@@ -45,13 +45,15 @@
     "db:generate:postgres": "drizzle-kit generate --config=drizzle.postgres.config.ts",
     "db:generate": "pnpm run db:generate:sqlite && pnpm run db:generate:postgres",
     "db:studio:sqlite": "drizzle-kit studio --config=drizzle.sqlite.config.ts",
-    "db:studio:postgres": "drizzle-kit studio --config=drizzle.postgres.config.ts"
+    "db:studio:postgres": "drizzle-kit studio --config=drizzle.postgres.config.ts",
+    "check:migration-lock": "node scripts/check-migration-lock.mjs"
   },
   "dependencies": {
     "@contextos/shared": "workspace:*",
     "better-sqlite3": "^12.9.0",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "sqlite-vec": "0.1.9"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

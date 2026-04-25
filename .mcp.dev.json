@@ -1,0 +1,16 @@
+{
+  "_comment": "ContextOS MCP server — DEV profile. Runs the server under `tsx watch` from src/ so changes hot-reload without an IDE restart. Closes verification finding §8.2 (subprocess staleness). For prod-shaped boot, use `.mcp.json` which points at dist/index.js. Copy this file over `.mcp.json` and restart Claude Code once to switch profiles.",
+  "_implementedBy": "Module 02 verification fixes (2026-04-25)",
+  "mcpServers": {
+    "contextos": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": ["exec", "tsx", "watch", "apps/mcp-server/src/index.ts", "--transport", "stdio"],
+      "env": {
+        "CONTEXTOS_LOG_DESTINATION": "stderr",
+        "CONTEXTOS_MODE": "solo",
+        "CLERK_SECRET_KEY": "sk_test_replace_me"
+      }
+    }
+  }
+}

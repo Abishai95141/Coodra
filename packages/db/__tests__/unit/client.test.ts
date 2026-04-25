@@ -82,17 +82,40 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('applies the generated migrations and creates the 5-table core', () => {
+  it('applies the generated migrations and creates the eleven-object logical schema', () => {
     const handle = createSqliteDb({ path: dbPath });
     try {
       migrateSqlite(handle.db);
+      // sqlite_master rows for vec0 shadow tables (context_packs_vec_chunks,
+      // context_packs_vec_rowids, context_packs_vec_vector_chunks00,
+      // context_packs_vec_info, etc.) are implementation details of
+      // sqlite-vec 0.1.9; filter them out while keeping the virtual table
+      // context_packs_vec itself so this test locks the hand-written
+      // preserve block inside 0001_chief_turbo.sql.
       const rows = handle.raw
         .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '__drizzle%' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          `SELECT name FROM sqlite_master
+             WHERE type IN ('table')
+               AND name NOT LIKE '__drizzle%'
+               AND name NOT LIKE 'sqlite_%'
+               AND substr(name, 1, 18) <> 'context_packs_vec_'
+             ORDER BY name`,
         )
         .all() as Array<{ name: string }>;
       const tables = rows.map((r) => r.name);
-      expect(tables).toEqual(['context_packs', 'pending_jobs', 'projects', 'run_events', 'runs']);
+      expect(tables).toEqual([
+        'context_packs',
+        'context_packs_vec',
+        'decisions',
+        'feature_packs',
+        'pending_jobs',
+        'policies',
+        'policy_decisions',
+        'policy_rules',
+        'projects',
+        'run_events',
+        'runs',
+      ]);
     } finally {
       handle.close();
     }
@@ -105,10 +128,14 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
       migrateSqlite(first.db); // second call must not throw or duplicate schema
       const rows = first.raw
         .prepare(
-          "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name NOT LIKE '__drizzle%' AND name NOT LIKE 'sqlite_%'",
+          `SELECT COUNT(*) AS n FROM sqlite_master
+             WHERE type IN ('table')
+               AND name NOT LIKE '__drizzle%'
+               AND name NOT LIKE 'sqlite_%'
+               AND substr(name, 1, 18) <> 'context_packs_vec_'`,
         )
         .get() as { n: number };
-      expect(rows.n).toBe(5);
+      expect(rows.n).toBe(11);
     } finally {
       first.close();
     }

@@ -1,10 +1,15 @@
 {
-  "_comment": "ContextOS MCP server — STUB during Module 01. The HTTP endpoint below is the intended URL once Module 02 (MCP Server) ships. Until then, Claude Code / Cursor / Windsurf will fail to connect when they attempt to reach this server; that failure is expected and not an error in the config itself.",
-  "_implementedBy": "Module 02 (see docs/feature-packs/02-mcp-server/ once authored)",
+  "_comment": "ContextOS MCP server — stdio transport (Module 02 S5 walking skeleton). Only the 'ping' tool is live in this slice; the full eight contextos__* tools land in S6–S15. The HTTP (Streamable HTTP) transport is deferred to S16 and will be added as a second entry under mcpServers when ready. CONTEXTOS_LOG_DESTINATION=stderr is load-bearing — the stdio transport reserves stdout for JSON-RPC frames and a single stray log byte on stdout corrupts the protocol.",
+  "_implementedBy": "Module 02 (see docs/feature-packs/02-mcp-server/)",
   "mcpServers": {
     "contextos": {
-      "type": "http",
-      "url": "http://127.0.0.1:3100/mcp"
+      "type": "stdio",
+      "command": "node",
+      "args": ["apps/mcp-server/dist/index.js"],
+      "env": {
+        "CONTEXTOS_LOG_DESTINATION": "stderr",
+        "CONTEXTOS_MODE": "solo"
+      }
     }
   }
 }

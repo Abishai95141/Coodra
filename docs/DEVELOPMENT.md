@@ -87,6 +87,57 @@ pnpm --filter @contextos/db db:generate   # regenerate Drizzle migrations
 All of these are the same commands CI runs. If they pass locally they
 pass in CI.
 
+### Iterating on the MCP server (Claude Code subprocess staleness)
+
+Closes verification finding §8.2 (`docs/verification/2026-04-25-module-01-02-verification.md`).
+
+Claude Code's `.mcp.json` points at `apps/mcp-server/dist/index.js`. The
+IDE spawns this subprocess **once** at session start; rebuilds during
+the session do not reach the running process. If you `pnpm build`
+mid-session and don't restart, the IDE keeps using the old binary.
+
+Two workarounds:
+
+1. **Production-shaped flow** — after `pnpm build`, fully restart Claude
+   Code (or trigger an MCP reconnect from the IDE). The new dist takes
+   effect on the next subprocess spawn.
+
+2. **Live-reload dev flow** — replace `.mcp.json` with the
+   `.mcp.dev.json` profile (or copy it over). It runs the server under
+   `tsx watch` directly from `src/`, so saving any file in
+   `apps/mcp-server/src/**` reloads the subprocess without an IDE
+   restart. Note: `tsx watch` adds ~200 ms boot overhead per reload —
+   fine for dev, not appropriate for production.
+
+```bash
+# One-shot dev profile swap
+cp .mcp.dev.json .mcp.json   # then restart Claude Code once
+```
+
+After the swap, edit a tool description, save, call the tool from a
+fresh Claude Code message — observe the new description.
+
+### Local team-mode auth dev (without Postgres)
+
+Closes verification finding §8.3.
+
+The production binary couples `CONTEXTOS_MODE=team` to a Postgres
+connection (per `packages/db/src/client.ts::createDb`). To exercise
+the team-mode auth chain locally without spinning up Postgres, set
+`CONTEXTOS_DB_OVERRIDE_MODE=solo` in addition to `CONTEXTOS_MODE=team`:
+
+```bash
+CONTEXTOS_MODE=team \
+CLERK_SECRET_KEY=sk_test_replace_me \
+CONTEXTOS_DB_OVERRIDE_MODE=solo \
+pnpm --filter @contextos/mcp-server dev
+```
+
+The auth client routes through the bypass branch (because the secret
+is the sentinel), the DB stays SQLite, and tools/list returns all 9
+tools. Use this for local UI smoke tests where you want to exercise
+the team-mode auth surface but don't need real Clerk JWTs.
+
 ### Running a single package
 
 ```bash
@@ -107,6 +158,49 @@ The schema-parity unit test
 (`packages/db/__tests__/unit/schema-parity.test.ts`) will fail CI if
 the two dialects drift in a way that is not explicitly allow-listed in
 the test's `DIALECT_TYPE_EXEMPTIONS` map.
+
+### Migration lock (hand-written preserve-blocks)
+
+Some SQL that the database needs cannot be emitted by Drizzle-Kit —
+today: the `sqlite-vec` virtual-table DDL (SQLite) and the pgvector
+HNSW index DDL (Postgres). These live inside the Drizzle-generated
+migration files, wrapped in preserve markers:
+
+```sql
+-- @preserve-begin hand-written:<marker>
+<hand-written SQL>
+-- @preserve-end hand-written:<marker>
+```
+
+Every marked block is sha256-locked in
+`packages/db/migrations.lock.json` with `{ file, blockMarker, sha256,
+lineRange, generatedAt }`. CI (`.github/workflows/ci.yml` → `verify`
+job) and the `.githooks/pre-commit` hook both run the checker:
+
+```bash
+pnpm --filter @contextos/db run check:migration-lock
+```
+
+The checker surfaces three failure modes, each with a diffable
+message naming the file, the marker, the expected sha256, and the
+remediation command:
+
+- `MISSING_IN_FILE` — the block is gone (Drizzle-Kit regenerated and
+  wiped it). Restore from git: `git log -p <migration>`.
+- `MISSING_IN_LOCK` — a new hand-written block was added without
+  running `--write`. Run it and commit.
+- `SHA256_MISMATCH` — the body drifted. If the edit was intentional,
+  regenerate the lock:
+
+  ```bash
+  pnpm --filter @contextos/db run check:migration-lock -- --write
+  git diff packages/db/migrations.lock.json   # sanity check
+  git add packages/db/migrations.lock.json
+  ```
+
+Pre-commit only runs the check when files under `packages/db/` are
+staged; CI always runs it. The hook is wired automatically by `pnpm
+install` (root `prepare` script sets `core.hooksPath` to `.githooks`).
 
 ## Branching, commits, and the session protocol
 

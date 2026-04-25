@@ -19,15 +19,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
+        # Version is read from `packageManager` in package.json (pinned to pnpm@10.33.0).
+        # Do NOT add `with: version:` — pnpm/action-setup@v5 rejects the run with
+        # "Multiple versions of pnpm specified" when both sources are set.
+        uses: pnpm/action-setup@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -46,6 +47,14 @@ jobs:
         # scripts run for typecheck / tests to work. `pnpm rebuild` re-runs
         # them against the already-resolved versions.
         run: pnpm rebuild
+
+      - name: Migration lock (hand-written preserve-blocks in drizzle/*.sql)
+        # Runs BEFORE lint so a drift in an architecturally-locked block
+        # (e.g. drizzle-kit regenerated 0001 and wiped the vec0 virtual
+        # table) surfaces before any other signal. Produces a diffable
+        # failure naming file, marker, expected sha256, and remediation
+        # command (see packages/db/scripts/check-migration-lock.mjs).
+        run: pnpm --filter @contextos/db run check:migration-lock
 
       - name: Lint
         run: pnpm lint
@@ -88,17 +97,25 @@ jobs:
       DATABASE_URL: postgres://contextos:contextos_ci_password@127.0.0.1:5432/contextos
       REDIS_URL: redis://127.0.0.1:6379/0
       CONTEXTOS_MODE: team
+      # Solo-bypass sentinel: keeps `config/env.ts` `superRefine` happy
+      # under CONTEXTOS_MODE=team without supplying real Clerk creds.
+      # The sentinel is recognised by `auth.ts` and routes auth into
+      # the bypass path. Real keys are loaded from a local `.env` (gitignored).
+      # Required so test files that import `config/env.ts` (S16's
+      # `transports/http.test.ts`) can trigger the module's eager parse.
+      CLERK_SECRET_KEY: sk_test_replace_me
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
+        # Version is read from `packageManager` in package.json (pinned to pnpm@10.33.0).
+        # Do NOT add `with: version:` — pnpm/action-setup@v5 rejects the run with
+        # "Multiple versions of pnpm specified" when both sources are set.
+        uses: pnpm/action-setup@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -109,8 +126,65 @@ jobs:
       - name: Approve build scripts
         run: pnpm rebuild
 
-      - name: Build @contextos/shared (required by @contextos/db imports)
-        run: pnpm --filter @contextos/shared build
+      - name: Build @contextos/shared + @contextos/db + @contextos/mcp-server
+        # `shared` first (db depends on it transitively); `db` next (its
+        # dist/migrate.js is consumed by both the integration suite and
+        # mcp-server's auto-migrate at boot); `mcp-server` last because
+        # the new `boot.test.ts` + `boot-db-override.test.ts` integration
+        # tests spawn `dist/index.js` as a stdio subprocess. Without the
+        # explicit build, `node dist/index.js` fails with ENOENT and the
+        # SDK Client times out with "Connection closed".
+        run: |
+          pnpm --filter @contextos/shared build
+          pnpm --filter @contextos/db build
+          pnpm --filter @contextos/mcp-server build
 
       - name: Integration tests (Postgres migrations)
         run: pnpm test:integration
+
+  e2e:
+    name: end-to-end (manifest + transport + idempotency + full session)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [verify, integration]
+    env:
+      CONTEXTOS_MODE: solo
+      CLERK_SECRET_KEY: sk_test_replace_me
+      LOG_LEVEL: error
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Approve build scripts
+        run: pnpm rebuild
+
+      - name: Build @contextos/shared + @contextos/db (required by e2e imports)
+        # Both packages have `main: ./dist/index.js` and `exports`
+        # pointing into dist. The e2e tests import them as
+        # workspace:* deps; without the build, vitest can't resolve
+        # the entry points. CI runs them in dependency order — shared
+        # first because db depends on it transitively.
+        run: |
+          pnpm --filter @contextos/shared build
+          pnpm --filter @contextos/db build
+
+      # `testcontainers` needs a Docker daemon. GitHub-hosted ubuntu
+      # runners ship Docker pre-installed; just verify it before the
+      # tests pull pgvector/pgvector:pg16.
+      - name: Verify Docker daemon
+        run: docker info
+
+      - name: E2E tests (5 scenarios, 24 tests; testcontainers + subprocess)
+        run: pnpm test:e2e

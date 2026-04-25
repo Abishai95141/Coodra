@@ -5,19 +5,26 @@ import * as pg from '../../src/schema/postgres.js';
 import * as sq from '../../src/schema/sqlite.js';
 
 /**
- * Schema-parity CI test (per decision Q7 of the user-approved bootstrap plan).
+ * Schema-parity CI test (per decision Q7 of the user-approved bootstrap plan,
+ * carried forward into Module 02).
  *
  * This file fails the build if the SQLite and Postgres dialects drift on:
- *   - the set of tables (5-table core)
+ *   - the set of tables (5-table Module-01 core + 4-table Module-02 additions)
  *   - column names per table
  *   - notNull flags per column
+ *   - Drizzle dataType category per column (with the architected exemption)
  *
- * Intentional dialect-specific columns (currently: `context_packs.summary_embedding`
- * is TEXT in SQLite vs VECTOR(384) in Postgres — sqlite-vec binding is Module 02
- * per `docs/feature-packs/01-foundation/spec.md` §4) are exempted from the
- * type-category check and asserted explicitly at the bottom of this file.
- * Every future dialect-specific column must be added to the exemption list
- * with a comment explaining the architectural reason.
+ * Intentional dialect-specific columns — the exemption list MUST be reviewed
+ * every time it grows. Each entry requires a comment naming the architectural
+ * reason.
+ *
+ *   - `context_packs.summary_embedding` is TEXT in SQLite vs VECTOR(384)
+ *     in Postgres. The SQLite dialect materialises the embedding index
+ *     in a parallel `context_packs_vec` vec0 virtual table (created by
+ *     a hand-appended block in migration 0001, sha256-locked in
+ *     `packages/db/migrations.lock.json`). Postgres materialises the
+ *     index directly on the main column via an HNSW index hand-appended
+ *     to the same migration. See `docs/feature-packs/02-mcp-server/spec.md` §4.
  */
 
 const tablePairs = [
@@ -26,6 +33,10 @@ const tablePairs = [
   ['run_events', sq.runEvents, pg.runEvents],
   ['context_packs', sq.contextPacks, pg.contextPacks],
   ['pending_jobs', sq.pendingJobs, pg.pendingJobs],
+  ['policies', sq.policies, pg.policies],
+  ['policy_rules', sq.policyRules, pg.policyRules],
+  ['policy_decisions', sq.policyDecisions, pg.policyDecisions],
+  ['feature_packs', sq.featurePacks, pg.featurePacks],
 ] as const;
 
 /** Columns whose dialect-specific type difference is architecturally intentional. */
@@ -37,21 +48,29 @@ function columnsOf(table: unknown): Record<string, Column> {
   return getTableColumns(table as Parameters<typeof getTableColumns>[0]) as Record<string, Column>;
 }
 
-describe('5-table core is present in both dialects', () => {
-  it('SQLite exports all five tables', () => {
+describe('nine-table schema is present in both dialects', () => {
+  it('SQLite exports all nine tables', () => {
     expect(sq.projects).toBeDefined();
     expect(sq.runs).toBeDefined();
     expect(sq.runEvents).toBeDefined();
     expect(sq.contextPacks).toBeDefined();
     expect(sq.pendingJobs).toBeDefined();
+    expect(sq.policies).toBeDefined();
+    expect(sq.policyRules).toBeDefined();
+    expect(sq.policyDecisions).toBeDefined();
+    expect(sq.featurePacks).toBeDefined();
   });
 
-  it('Postgres exports all five tables', () => {
+  it('Postgres exports all nine tables', () => {
     expect(pg.projects).toBeDefined();
     expect(pg.runs).toBeDefined();
     expect(pg.runEvents).toBeDefined();
     expect(pg.contextPacks).toBeDefined();
     expect(pg.pendingJobs).toBeDefined();
+    expect(pg.policies).toBeDefined();
+    expect(pg.policyRules).toBeDefined();
+    expect(pg.policyDecisions).toBeDefined();
+    expect(pg.featurePacks).toBeDefined();
   });
 });
 

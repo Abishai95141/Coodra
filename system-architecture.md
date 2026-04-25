@@ -2219,7 +2219,7 @@ Anti-patterns banned:
 - *"Returns a feature pack."* — no trigger, no consequence.
 - *"This tool retrieves X."* — third-person; the planner is not a reader of docs, it is a caller.
 - *"Useful for..."* — hedging. If it's useful, say when.
-- Descriptions longer than ~80 words — too long to compete in the system-prompt budget.
+- Descriptions outside the word-count envelope — **40–80 words is the soft target, 120 is the hard maximum** (amended 2026-04-23 per Q-02-6; the old ~80-word cap was too tight for tools with structured outputs that need an extra sentence of shape documentation). Character length is additionally capped at < 800 as a belt-and-braces defence against the system-prompt budget.
 
 ### 24.4 Core Tool Manifest — 8 ContextOS Tools
 
@@ -2229,54 +2229,94 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 > Call this BEFORE editing, creating, or refactoring any file in this project. Returns the Feature Pack for the module that owns the given path: architectural constraints, coding conventions, permitted files, known gotchas, and the tech lead's guidelines. Always call on the first tool use of a session and whenever switching to a new area of the codebase. Without this, your changes will probably violate conventions the team has already recorded.
 
 **Input:** `{ projectSlug: string, filePath?: string }`
-**Returns:** `{ pack: FeaturePack, subPack?: FeaturePack, inherited: FeaturePack[] }`
+**Returns:** `{ pack: FeaturePack, subPack?: FeaturePack, inherited: FeaturePack[] }` — `pack` is the deepest pack whose `sourceFiles` matches the given `filePath` (or the slug's own pack when `filePath` is absent / no glob matches); `inherited` is the ancestor chain of `pack`, root-first (see Module 02 S9, decisions-log 2026-04-24 15:00). `subPack` is reserved for Module 07+ folder-nested sub-feature-packs and is always `undefined`/omitted in Module 02.
 **Latency target:** <50 ms (SQLite-local) or <200 ms (team mode, pgvector).
-**Failure mode:** returns `{ ok: false, error: 'pack_not_found' }` if no pack is registered — do NOT block, proceed with default conventions.
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'pack_not_found', howToFix: string }` — the slug is not registered on disk + DB. Caller should NOT block; proceed with default conventions.
+- `{ ok: false, error: 'feature_pack_cycle', chain: string[], howToFix: string }` — the `parentSlug` references in `meta.json` form a cycle. `chain` names the cyclic sequence so the user can fix the offending `meta.json`.
 
 #### `save_context_pack`
 > Call this when a feature, bug fix, or refactor is complete — not per small edit, once per completed task. Persists a markdown summary of what was built, decisions made, files modified, test results, and open TODOs to the project's context archive. This is the ONLY mechanism by which the next session (possibly a different agent) can know what was done. Skipping this leaves the run as dead weight in the history table.
 
 **Input:** `{ runId: string, title: string, content: string, featurePackId?: string }`
-**Returns:** `{ contextPackId: string, savedAt: string }`
-**Side-effect:** marks the run as `completed`, optionally triggers a Context Pack → JIRA/PR comment worker (§22.8, §23.11).
-**Failure mode:** if the run is already marked `completed` with a pack, returns the existing pack (idempotent).
+**Returns:** `{ ok: true, contextPackId: string, savedAt: string, contentExcerpt: string }` on success. `contentExcerpt` is the first 500 Unicode code points of `content` with trailing whitespace trimmed (Q-02-3), returned for caller confirmation without a second read.
+**Side-effect:** flips `runs.status` to `'completed'` and sets `runs.endedAt` (idempotent — no-op if the run is already completed). Optionally triggers a Context Pack → JIRA/PR comment worker (§22.8, §23.11).
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'run_not_found', howToFix: string }` — the `runId` does not match a `runs` row. Caller should call `get_run_id` first, then retry.
+- Append-only re-call: if a `context_packs` row already exists for `runId`, the store returns the existing row unchanged (same `contextPackId`, same `savedAt`, original content preserved per ADR-007) — the tool responds `{ ok: true, ... }` with the original values. This is NOT a failure; it is the idempotent happy path.
 
 #### `search_packs_nl`
 > Call this when the user asks "what was done before?", "has X been tried?", or "what is the current state of Y?" — or when you are unsure whether work on a topic already exists. Natural-language search across all prior Context Packs in this project, ranked by relevance. ALWAYS call this before answering questions about prior state from memory.
 
-**Input:** `{ projectSlug: string, query: string, limit?: number }`
-**Returns:** `{ packs: Array<{ id, title, excerpt, score, savedAt, runId }> }`
-**Mechanism:** pgvector cosine similarity (team) or sqlite-vec (solo) against the Context Pack embeddings.
+**Input:** `{ projectSlug: string, query: string, embedding?: number[], limit?: number }` — `embedding` is a pre-computed 384-dim vector (Module 05 NL Assembly is the default producer; Module 02 callers without an embedder omit it and get the LIKE fallback). Amended in Module 02 S11 2026-04-24.
+**Returns:** `{ ok: true, packs: Array<{ id, title, excerpt, score: number | null, savedAt, runId }>, notice?: 'no_embeddings_yet', howToFix?: string }` on success. `score` is cosine distance on the semantic path, `null` on the LIKE fallback. `notice: 'no_embeddings_yet'` + `howToFix` are emitted ONLY on the LIKE fallback path (caller did not supply `embedding`) — agents branch on `notice` presence to surface remediation.
+**Mechanism:** if `embedding` is supplied with length 384, pgvector `<=>` cosine (team) or sqlite-vec `vec_distance_cosine` (solo) via `ctx.sqliteVec.searchSimilarPacks`; otherwise the LIKE fallback — `context_packs WHERE project_id = ? AND (LOWER(title) LIKE ? OR LOWER(content_excerpt) LIKE ?) ORDER BY created_at DESC LIMIT ?`.
+**Failure modes** (canonical soft-failure shape per `essentialsforclaude/09-common-patterns.md §9.1.2` — every branch carries both `error` and `howToFix`):
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered.
+- `{ ok: false, error: 'embedding_dim_mismatch', expected: 384, got: number, howToFix: string }` — the supplied `embedding` length is not 384. Handler-level check returns a structured code rather than the registry's generic `invalid_input` envelope.
+**Empty results** (valid input, zero hits) are `{ ok: true, packs: [] }` — NOT a soft-failure.
 **When NOT to call:** if the user's question is about the current in-flight change — use `current-session.md` from `context_memory/` instead.
 
 #### `record_decision`
 > Call this IMMEDIATELY after choosing a library, designing an API shape, selecting an implementation approach over an alternative, or deciding NOT to implement something. Persists a permanent decision entry with description, rationale, and alternatives considered. Future sessions will see these decisions and must not contradict them silently. Do not batch decisions — log each one as it is made.
 
 **Input:** `{ runId: string, description: string, rationale: string, alternatives?: string[] }`
-**Returns:** `{ decisionId: string }`
+**Returns (success):** `{ ok: true, decisionId: string, createdAt: string /* ISO 8601 */, created: boolean }`
+**Idempotency:** keyed on `dec:{runId}:{sha256(description).slice(0,32)}`. A retry with identical `description` on the same `runId` collides on the `decisions.idempotency_key` UNIQUE index, returns the original `decisionId` with `created: false`, and does NOT update `rationale` / `alternatives`. Two calls with *different* `description` values on the same `runId` persist as two distinct rows — this supports logging multiple decisions inside one run (unlike `save_context_pack` which is idempotent-per-runId).
+**Storage:** dedicated `decisions` table (migration 0003), dual-dialect per §4. `run_id` is nullable + `ON DELETE SET NULL` so decision history survives the originating run's deletion — same rule as `run_events` per the 2026-04-24 widening.
+**Soft-failures:**
+- `{ ok: false, error: 'run_not_found', howToFix: string }` — the `runId` does not match a row in `runs`. No auto-create.
 **When NOT to call:** for trivial mechanical choices (variable names, local loop structure). Reserve for choices a future agent could reasonably re-open.
 
 #### `check_policy`
-> Call this BEFORE every file write, shell command, or destructive operation. Returns "allow" (proceed), "ask" (surface to the user), or "deny" (stop). Consults CODEOWNERS, branch protection rules, project policy rules, and agent-type permissions. If the response is "deny", DO NOT proceed under any circumstance — report the reason to the user and stop. This is the one check that must never be skipped on the file-write or bash path.
+> Call this BEFORE every file write, shell command, or destructive operation. Returns "allow" (proceed), "ask" (surface to the user), or "deny" (stop). Consults project policy rules and agent-type permissions (CODEOWNERS + branch-protection integrations are future slices). If the response is "deny", DO NOT proceed under any circumstance — report the reason to the user and stop. This is the one check that must never be skipped on the file-write or bash path.
 
-**Input:** `{ projectSlug: string, sessionId: string, agentType: string, eventType: 'PreToolUse', toolName: string, toolInput: object }`
-**Returns:** `{ permissionDecision: 'allow' | 'ask' | 'deny', reason?: string, policyId?: string }`
-**Latency target:** <10 ms (must not sit in the 150 ms hook SLO).
-**Failure mode:** if the policy engine is unreachable, returns `allow` (fail-open) and logs a `policy_check_unavailable` event. See §16 pattern 2.
+**Input:** `{ projectSlug: string, sessionId: string, agentType: string, eventType: 'PreToolUse' | 'PostToolUse', toolName: string, toolInput: object, runId?: string }`
+**Returns (success):** `{ ok: true, permissionDecision: 'allow' | 'ask' | 'deny', reason: 'no_rule_matched' | 'rule_matched' | 'policy_engine_unavailable', ruleReason: string | null, matchedRuleId: string | null, failOpen: boolean }`
+
+**Reason enum (locked in S14):**
+- `no_rule_matched` — no policy rule fired; default allow (`failOpen: false`).
+- `rule_matched` — an explicit policy rule decided the call; `matchedRuleId` populated, `ruleReason` is the rule's human text (`policy_rules.reason`). `failOpen: false`.
+- `policy_engine_unavailable` — evaluator fault (breaker open, per-call timeout, or DB throw). Returns `allow` per §7 fail-open. `failOpen: true`.
+
+`failOpen` is computed from `reason` (`failOpen === (reason === 'policy_engine_unavailable')`). A unit test locks the enum values — observability can rely on either axis.
+
+**`permissionDecision = 'ask'`** is reserved for future higher-layer integrations (CODEOWNERS, branch protection). The S14 evaluator never emits `'ask'`; the schema keeps it for forward compatibility.
+
+**Returns (soft-failure):** `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered. **Project lookup miss is NOT fail-open** — §7 fail-open covers evaluator faults, not caller-addressable errors. Module 03 (Hooks Bridge) should treat a `project_not_found` response as `allow` for hook-dispatch; otherwise a missing project registration would silently block all work (see `context_memory/decisions-log.md` 2026-04-24 S14 entry).
+
+**Latency target:** <10 ms on the critical path. The audit-row INSERT is dispatched via `setImmediate(...)` and fires AFTER the handler returns — `policy_decisions` visibility lags the response. Retries on the same `(sessionId, toolName, eventType)` triple dedupe on the `policy_decisions.idempotency_key` UNIQUE index via `ON CONFLICT DO NOTHING`.
+
+**Storage:** audit row written to `policy_decisions` (key format `pd:{sessionId}:{toolName}:{eventType}` per §4.3). `toolInputSnapshot` is JSON-serialised and truncated to 8 KiB with a `…[truncated:N]` suffix — prevents audit-table bloat from large-body tool inputs while preserving original-size forensics.
+
+**Cache (S14 upgrade):** rule cache is keyed per-projectId (`Map<projectId, …>`) — one project's cached rules don't mask another's. TTL unchanged at 60s. The S7b-era `'all'` sentinel is retained as a `__global__` fallback for pre-S14 callers (registry auto-wrap) that omit `projectId`.
 
 #### `query_run_history`
-> Call this when you need to understand recent work on this project — which runs have been executed, their status, their associated PRs or JIRA issues. Returns a chronological list of runs with metadata. Use alongside `search_packs_nl` when answering "what happened recently?" questions, and at session start to see whether there is an `in_progress` run to resume.
+> Call this when you need to understand recent work on this project — which runs have been executed, their status, their associated PRs or JIRA issues, and the context-pack title for each completed run. Returns a chronological (most-recent-first) list of runs with metadata. Use alongside `search_packs_nl` when answering "what happened recently?" questions, and at session start to see whether there is an `in_progress` run to resume.
 
 **Input:** `{ projectSlug: string, status?: 'in_progress' | 'completed' | 'failed', limit?: number }`
-**Returns:** `{ runs: Array<{ runId, startedAt, endedAt, status, title, issueRef, prRef }> }`
+**Defaults:** `limit = 10`; upper bound `200`.
+**Ordering:** `ORDER BY runs.started_at DESC` — most recent first.
+**Returns (success):** `{ ok: true, runs: Array<{ runId: string, startedAt: string /* ISO 8601 */, endedAt: string | null, status: 'in_progress' | 'completed' | 'failed', title: string | null, issueRef: string | null, prRef: string | null }> }`
+**`title` nullability:** derived via a LEFT JOIN on `context_packs.run_id`. Runs with no saved pack (e.g., an `in_progress` run that has not called `save_context_pack`) return `title: null`. The `context_packs(run_id)` unique index guarantees at most one join row per run.
+**Empty result** (valid slug, zero matching runs) → `{ ok: true, runs: [] }` — NOT a soft-failure.
+**Soft-failures:**
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered.
 
 #### `query_codebase_graph`
-> Call this BEFORE making significant structural changes to understand the code's dependency graph. Returns symbol-level relationships (who calls what, who depends on what) from the Graphify-indexed codebase. Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer "where is X defined?" without reading every file.
+> Call this BEFORE making significant structural changes to understand the code's dependency graph. Returns the community subgraph (nodes + edges) from the Graphify-indexed codebase. Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer "where is X defined?" without reading every file.
 
 **Input:** `{ projectSlug: string, query: string }`
-**Returns:** `{ symbols: Array<{ name, kind, file, callers, callees, community }> }`
-**Mechanism:** reads `graph.json` nodes/edges loaded by §17.
-**Failure mode:** if no Graphify import exists for the project, returns `{ symbols: [], warning: 'no_graph_available' }` — proceed without it.
+**Returns (success, M02):** `{ ok: true, nodes: ReadonlyArray<unknown>, edges: ReadonlyArray<unknown>, indexed: true, notice?: 'query_filtering_deferred_to_m05' }`
+- `nodes` / `edges` are typed `unknown` at M02 — Module 05 owns the rich `{ name, kind, file, callers, callees, community }` projection and replaces this handler with a typed-filtering version.
+- `indexed: true` is an observability primitive — locked `true` on success (the handler only returns success after `getIndexStatus` confirms the file exists). Distinct from `ok`: a success with `nodes: []` is legitimate empty state; the same outer shape with `ok: false` is a soft-failure.
+- `notice: 'query_filtering_deferred_to_m05'` is present whenever M02 returns the full subgraph without applying `query` filtering — same advisory-marker pattern as `search_packs_nl`'s `no_embeddings_yet`. Module 05 drops this marker when it lands typed filtering.
+**Mechanism:** reads `graph.json` nodes/edges loaded by §17. At M02 the handler calls `ctx.graphify.getIndexStatus(slug)` BEFORE `ctx.graphify.expandContextBySlug(slug)`; the ordering is load-bearing — without the status probe, a missing index would silently fall through to `{ nodes: [], edges: [] }` and callers could not distinguish "no results" from "no index".
+**Soft-failures (two distinct shapes — distinct remediations):**
+- `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered in the `projects` table. Remediation: `contextos init`.
+- `{ ok: false, error: 'codebase_graph_not_indexed', howToFix: string }` — the project exists but no `graph.json` is present on disk at `<graphifyRoot>/<slug>/graph.json`. Remediation: ``run `graphify scan` at repo root``.
+**Empty result** (index present, graph.json parses to `{ nodes: [], edges: [] }`) → `{ ok: true, nodes: [], edges: [], indexed: true, notice: 'query_filtering_deferred_to_m05' }` — NOT a soft-failure. Same rule as `search_packs_nl` / `query_run_history`.
+**Fail-open (§7):** lib-internal read / parse failures (graph.json exists but is truncated or malformed) collapse to `{ nodes: [], edges: [] }` at the lib layer with `indexed` still `true` — distinct from `codebase_graph_not_indexed` which is caller-addressable.
 
 #### `get_run_id`
 > Call this at the START of any session that will write code, if the current `runId` is not already in context from a session-start hook. Returns the current in-progress session's runId (UUID) which binds all subsequent tool calls, decisions, and context packs to a single durable record. Most other tools accept this runId as an argument. Call once per session and reuse the value.
@@ -2368,7 +2408,7 @@ The `tools/list` handler in `apps/mcp-server/src/handlers/tools-list.ts` is a pu
 
 Descriptions drift. The following safeguards exist:
 
-1. **Manifest unit tests.** Each `manifest.test.ts` asserts the description (a) starts with an imperative trigger phrase ("Call this"), (b) is between 40 and 80 words, (c) mentions the return shape. This is mechanical but catches the most common drift.
+1. **Manifest unit tests.** Each `manifest.test.ts` asserts the description via `assertManifestDescriptionValid` from `@contextos/shared/test-utils` — starts with an imperative trigger phrase ("Call this"), word count in 40–120 (soft target 40–80, hard max 120 per Q-02-6), char length in `[200, 800)`, mentions the return shape, and the manifest `name` matches the MCP pattern (and the folder name when supplied). Single helper, single source of truth for §24.3 — used by every ContextOS tool manifest in `apps/mcp-server/` and future `@contextos/tools-*` packages.
 2. **`tools/list` snapshot test.** `apps/mcp-server/__tests__/tools-list.snapshot.test.ts` snapshots the full `tools/list` response. A diff forces human review of every manifest change.
 3. **Description-PR checklist.** Any PR that changes a `manifest.ts` file triggers a CI bot comment asking the author to confirm `CLAUDE.md §5` is still correct. See `.github/workflows/tool-manifest-check.yml`.
 4. **Version stability.** Within a major version, descriptions may be clarified but not weakened. A tool's trigger phrase (the first sentence) is frozen for the major version. Adding a tool is always allowed; removing or renaming requires a major version bump.

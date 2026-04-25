@@ -1,0 +1,47 @@
+# Keep the Docker build context tight — only source and workspace
+# manifests need to be copied in. Everything else is either generated
+# inside the build (dist, node_modules) or irrelevant at runtime.
+
+# Build outputs
+dist
+build
+.turbo
+coverage
+
+# Test + local-dev artefacts
+__tests__
+*.test.ts
+*.test.js
+vitest.config.ts
+vitest.integration.config.ts
+.env
+.env.*
+!.env.example
+
+# Version control
+.git
+.github
+.gitignore
+
+# IDE / editor
+.vscode
+.idea
+.DS_Store
+
+# Docs (not needed at runtime; the app references paths relative to the
+# repo root when it needs them, and those paths are mounted via volumes
+# at dev time, not baked into the image)
+*.md
+!apps/mcp-server/README.md
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+
+# Node-tooling
+.nvmrc
+.npmrc
+.editorconfig
+biome.json
+turbo.json
+tsconfig.typecheck.json
