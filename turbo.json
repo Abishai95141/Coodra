@@ -21,13 +21,25 @@
     "test:unit": {
       "dependsOn": ["^build"],
       "outputs": [],
-      "inputs": ["src/**/*", "__tests__/unit/**/*", "vitest.config.ts", "package.json"]
+      "inputs": ["src/**/*", "__tests__/unit/**/*", "vitest.config.ts", "package.json"],
+      "env": ["CONTEXTOS_MODE", "CLERK_SECRET_KEY"]
     },
     "test:integration": {
       "dependsOn": ["^build"],
       "outputs": [],
       "inputs": ["src/**/*", "__tests__/integration/**/*", "vitest.config.ts", "package.json"],
-      "env": ["DATABASE_URL", "REDIS_URL", "CONTEXTOS_MODE"]
+      "env": [
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CONTEXTOS_MODE",
+        "CLERK_SECRET_KEY",
+        "CLERK_PUBLISHABLE_KEY",
+        "CLERK_JWT_ISSUER",
+        "LOCAL_HOOK_SECRET",
+        "MCP_SERVER_HOST",
+        "MCP_SERVER_PORT",
+        "MCP_SERVER_TRANSPORT"
+      ]
     },
     "clean": {
       "cache": false,
