@@ -12,5 +12,11 @@ export {
   type SqliteDb,
   type SqliteHandle,
 } from './client.js';
-export { MIGRATIONS_FOLDER, migratePostgres, migrateSqlite, resolveMigrationsFolder } from './migrate.js';
+export {
+  ensurePgVector,
+  MIGRATIONS_FOLDER,
+  migratePostgres,
+  migrateSqlite,
+  resolveMigrationsFolder,
+} from './migrate.js';
 export { postgresSchema, sqliteSchema } from './schema/index.js';

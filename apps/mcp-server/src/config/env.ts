@@ -87,6 +87,48 @@ const mcpServerEnvSchema = baseEnvSchema
       .describe('Transport selection at boot: stdio | http | both. Default both.'),
 
     /**
+     * Override the DB-dialect routing decision normally derived from
+     * `CONTEXTOS_MODE`. When set to `'solo'`, `createDb` will return
+     * SQLite even under `CONTEXTOS_MODE=team` — useful for local-dev
+     * verification of the team-mode auth chain without spinning up
+     * a Postgres container. When unset (the default), the team→Postgres
+     * routing in `packages/db/src/client.ts::createDb` runs as before.
+     *
+     * Closes verification finding §8.3 (the lighter-touch fix; the
+     * deeper architectural question — should `createDb` always return
+     * SQLite for local services per §1 of the architecture? — is
+     * flagged for a separate planning round).
+     */
+    CONTEXTOS_DB_OVERRIDE_MODE: z
+      .enum(['solo', 'team'])
+      .optional()
+      .describe('Override for the DB-dialect routing in createDb. Default: derived from CONTEXTOS_MODE.'),
+
+    /**
+     * Override for the on-disk `context_packs/` materialisation root.
+     * `lib/context-pack.ts` defaults to `<cwd>/docs/context-packs`,
+     * which is correct when the binary runs from the repo root and
+     * wrong everywhere else (e.g., a future `npx contextos-mcp-server`
+     * launched from an arbitrary directory). Operators set this when
+     * running outside the repo. Closes verification finding §8.5.
+     */
+    CONTEXTOS_CONTEXT_PACKS_ROOT: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Override for context-pack markdown materialisation root. Defaults to <cwd>/docs/context-packs.'),
+
+    /**
+     * Override for the Graphify index root. `lib/graphify.ts` defaults
+     * to `~/.contextos/graphify`. Closes verification finding §8.5.
+     */
+    CONTEXTOS_GRAPHIFY_ROOT: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('Override for graph.json lookups. Defaults to ~/.contextos/graphify.'),
+
+    /**
      * Shared secret that the local PostToolUse hook client uses to
      * authenticate itself to the HTTP transport. Consumed by S7b.
      */

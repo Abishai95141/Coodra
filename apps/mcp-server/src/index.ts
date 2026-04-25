@@ -10,6 +10,7 @@ import './bootstrap/ensure-stderr-logging.js';
 
 import { randomUUID } from 'node:crypto';
 
+import { ensurePgVector, migratePostgres, migrateSqlite } from '@contextos/db';
 import { createLogger } from '@contextos/shared';
 
 import { env } from './config/env.js';
@@ -79,15 +80,46 @@ async function main(): Promise<void> {
   // dev-null policy with the cache-backed evaluator) is a single-
   // line change here.
   const sharedLogger = createMcpLogger('root');
-  const dbClient = createDbClient({});
+  // CONTEXTOS_DB_OVERRIDE_MODE (verification finding §8.3 fix): if
+  // explicitly set, override the env-derived team→Postgres routing.
+  // Used for local dev that wants team-mode auth chain semantics + a
+  // SQLite store. Default behaviour (no override) is unchanged.
+  const dbClient = createDbClient(env.CONTEXTOS_DB_OVERRIDE_MODE ? { mode: env.CONTEXTOS_DB_OVERRIDE_MODE } : {});
   const dbHandle = dbClient.asInternalHandle();
+
+  // ---------------------------------------------------------------------
+  // Auto-migrate at boot. Both `migrateSqlite` and `migratePostgres` are
+  // idempotent (drizzle tracks state in `__drizzle_migrations` and skips
+  // already-applied migrations), so re-running on a warm DB is a no-op
+  // by row count. For Postgres team mode we also run `CREATE EXTENSION
+  // IF NOT EXISTS vector` BEFORE the migrator — migration 0000
+  // references `vector(384)` and 0001's safety-net `CREATE EXTENSION`
+  // runs too late on a brand-new database.
+  //
+  // Closes verification finding §8.1 — fresh users used to get
+  // `SQLITE_ERROR: no such table: projects` on the first tool call.
+  // ---------------------------------------------------------------------
+  if (dbHandle.kind === 'sqlite') {
+    migrateSqlite(dbHandle.db);
+  } else {
+    await ensurePgVector(dbHandle.db);
+    await migratePostgres(dbHandle.db);
+  }
+  bootLogger.info({ event: 'migrations_applied', kind: dbHandle.kind }, 'migrations idempotent-applied at boot');
+
   const auth = createAuthClient(env);
   const policy = createPolicyClient({ db: dbHandle });
   const featurePack = createFeaturePackStore({ db: dbHandle });
-  const contextPack = createContextPackStore({ db: dbHandle });
+  const contextPack = createContextPackStore({
+    db: dbHandle,
+    ...(env.CONTEXTOS_CONTEXT_PACKS_ROOT ? { contextPacksRoot: env.CONTEXTOS_CONTEXT_PACKS_ROOT } : {}),
+  });
   const runRecorder = createRunRecorder({ db: dbHandle });
   const sqliteVec = createSqliteVecClient({ db: dbHandle });
-  const graphify = createGraphifyClient({ db: dbHandle });
+  const graphify = createGraphifyClient({
+    db: dbHandle,
+    ...(env.CONTEXTOS_GRAPHIFY_ROOT ? { graphifyRoot: env.CONTEXTOS_GRAPHIFY_ROOT } : {}),
+  });
 
   const deps: ContextDeps = Object.freeze({
     db: dbClient.client,

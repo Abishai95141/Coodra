@@ -1,6 +1,6 @@
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
+import { sql } from 'drizzle-orm';
 import { migrate as betterSqliteMigrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { migrate as postgresMigrate } from 'drizzle-orm/postgres-js/migrator';
 
@@ -46,4 +46,20 @@ export async function migratePostgres(
  */
 export function resolveMigrationsFolder(dialect: 'sqlite' | 'postgres', packageRoot: string): string {
   return join(packageRoot, 'drizzle', dialect);
+}
+
+/**
+ * Ensure the pgvector extension exists on the target Postgres database.
+ *
+ * Migration `0000_*` references `vector(384)` BEFORE `0001_*` runs the
+ * `CREATE EXTENSION IF NOT EXISTS vector` safety net. On a brand-new
+ * database the type is unknown and the CREATE TABLE fails. The mcp-server
+ * boot path + the e2e test harness call this helper BEFORE
+ * `migratePostgres()` so 0000 finds the type defined.
+ *
+ * The `pgvector/pgvector:pg16` image bundles the extension binary; this
+ * just opts the database in. Idempotent (`IF NOT EXISTS`).
+ */
+export async function ensurePgVector(db: PostgresDb): Promise<void> {
+  await db.execute(sql`CREATE EXTENSION IF NOT EXISTS vector`);
 }
