@@ -160,8 +160,15 @@ jobs:
       - name: Approve build scripts
         run: pnpm rebuild
 
-      - name: Build @contextos/shared (required by e2e imports)
-        run: pnpm --filter @contextos/shared build
+      - name: Build @contextos/shared + @contextos/db (required by e2e imports)
+        # Both packages have `main: ./dist/index.js` and `exports`
+        # pointing into dist. The e2e tests import them as
+        # workspace:* deps; without the build, vitest can't resolve
+        # the entry points. CI runs them in dependency order — shared
+        # first because db depends on it transitively.
+        run: |
+          pnpm --filter @contextos/shared build
+          pnpm --filter @contextos/db build
 
       # `testcontainers` needs a Docker daemon. GitHub-hosted ubuntu
       # runners ship Docker pre-installed; just verify it before the
