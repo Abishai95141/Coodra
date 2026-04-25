@@ -97,6 +97,13 @@ jobs:
       DATABASE_URL: postgres://contextos:contextos_ci_password@127.0.0.1:5432/contextos
       REDIS_URL: redis://127.0.0.1:6379/0
       CONTEXTOS_MODE: team
+      # Solo-bypass sentinel: keeps `config/env.ts` `superRefine` happy
+      # under CONTEXTOS_MODE=team without supplying real Clerk creds.
+      # The sentinel is recognised by `auth.ts` and routes auth into
+      # the bypass path. Real keys are loaded from a local `.env` (gitignored).
+      # Required so test files that import `config/env.ts` (S16's
+      # `transports/http.test.ts`) can trigger the module's eager parse.
+      CLERK_SECRET_KEY: sk_test_replace_me
     steps:
       - name: Checkout
         uses: actions/checkout@v6
