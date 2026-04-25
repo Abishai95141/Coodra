@@ -126,8 +126,18 @@ jobs:
       - name: Approve build scripts
         run: pnpm rebuild
 
-      - name: Build @contextos/shared (required by @contextos/db imports)
-        run: pnpm --filter @contextos/shared build
+      - name: Build @contextos/shared + @contextos/db + @contextos/mcp-server
+        # `shared` first (db depends on it transitively); `db` next (its
+        # dist/migrate.js is consumed by both the integration suite and
+        # mcp-server's auto-migrate at boot); `mcp-server` last because
+        # the new `boot.test.ts` + `boot-db-override.test.ts` integration
+        # tests spawn `dist/index.js` as a stdio subprocess. Without the
+        # explicit build, `node dist/index.js` fails with ENOENT and the
+        # SDK Client times out with "Connection closed".
+        run: |
+          pnpm --filter @contextos/shared build
+          pnpm --filter @contextos/db build
+          pnpm --filter @contextos/mcp-server build
 
       - name: Integration tests (Postgres migrations)
         run: pnpm test:integration
