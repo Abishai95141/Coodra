@@ -25,6 +25,7 @@ import { createPolicyClient } from './lib/policy.js';
 import { createRunRecorder } from './lib/run-recorder.js';
 import { createSqliteVecClient } from './lib/sqlite-vec.js';
 import { registerAllTools } from './tools/index.js';
+import { type HttpTransportHandle, startHttpTransport } from './transports/http.js';
 import { startStdioTransport } from './transports/stdio.js';
 
 const bootLogger = createLogger('mcp-server.boot');
@@ -103,29 +104,70 @@ async function main(): Promise<void> {
   const registry = new ToolRegistry({ deps });
   registerAllTools(registry, { db: dbHandle, mode: env.CONTEXTOS_MODE });
 
-  const sessionId = `stdio:${randomUUID()}`;
-  const transport = await startStdioTransport({
-    registry,
-    serverName: SERVER_NAME,
-    serverVersion: SERVER_VERSION,
-    sessionId,
-  });
+  // ---------------------------------------------------------------------
+  // Transport selection (S16). `--transport` CLI flag overrides the env
+  // setting `MCP_SERVER_TRANSPORT`; default `both`. The flag is parsed
+  // here rather than in `config/env.ts` because env-only parsing would
+  // make CLI-driven overrides require a wrapper script.
+  // ---------------------------------------------------------------------
+  const cliTransport = parseTransportFlag(process.argv.slice(2));
+  const transportMode = cliTransport ?? env.MCP_SERVER_TRANSPORT;
+  const startStdio = transportMode === 'stdio' || transportMode === 'both';
+  const startHttp = transportMode === 'http' || transportMode === 'both';
+
+  bootLogger.info(
+    { event: 'transport_selection', transportMode, startStdio, startHttp },
+    'transport selection resolved',
+  );
+
+  const stdioSessionId = `stdio:${randomUUID()}`;
+  const stdioHandle = startStdio
+    ? await startStdioTransport({
+        registry,
+        serverName: SERVER_NAME,
+        serverVersion: SERVER_VERSION,
+        sessionId: stdioSessionId,
+      })
+    : null;
+
+  let httpHandle: HttpTransportHandle | null = null;
+  if (startHttp) {
+    httpHandle = await startHttpTransport({ registry, serverName: SERVER_NAME, serverVersion: SERVER_VERSION, env });
+  }
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     bootLogger.info({ event: 'shutdown_signal', signal }, 'shutting down');
-    try {
-      await transport.close();
-    } catch (err) {
-      bootLogger.error(
-        { event: 'shutdown_error', err: err instanceof Error ? err.message : String(err) },
-        'transport close threw',
-      );
+
+    // Drain in-flight setImmediate audit writes (S14 check_policy
+    // dispatches policy_decisions inserts via setImmediate). One tick
+    // gives them time to land before we close the DB.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    if (httpHandle) {
+      try {
+        await httpHandle.close();
+      } catch (err) {
+        bootLogger.error(
+          { event: 'shutdown_error', subsystem: 'http', err: err instanceof Error ? err.message : String(err) },
+          'http transport close threw',
+        );
+      }
+    }
+    if (stdioHandle) {
+      try {
+        await stdioHandle.close();
+      } catch (err) {
+        bootLogger.error(
+          { event: 'shutdown_error', subsystem: 'stdio', err: err instanceof Error ? err.message : String(err) },
+          'stdio transport close threw',
+        );
+      }
     }
     try {
       await dbClient.client.close();
     } catch (err) {
       bootLogger.error(
-        { event: 'shutdown_error', err: err instanceof Error ? err.message : String(err) },
+        { event: 'shutdown_error', subsystem: 'db', err: err instanceof Error ? err.message : String(err) },
         'db close threw',
       );
     }
@@ -138,6 +180,26 @@ async function main(): Promise<void> {
   process.once('SIGTERM', () => {
     void shutdown('SIGTERM');
   });
+}
+
+/**
+ * Parse the `--transport stdio|http|both` CLI flag (S16). Returns
+ * `null` if the flag is absent (caller falls back to env). Throws on
+ * an unrecognised value so a typo at boot fails loudly instead of
+ * silently defaulting.
+ */
+function parseTransportFlag(argv: ReadonlyArray<string>): 'stdio' | 'http' | 'both' | null {
+  const idx = argv.findIndex((a) => a === '--transport' || a === '-t');
+  let value: string | undefined;
+  if (idx >= 0 && idx + 1 < argv.length) {
+    value = argv[idx + 1];
+  } else {
+    const inline = argv.find((a) => a.startsWith('--transport='));
+    if (inline) value = inline.slice('--transport='.length);
+  }
+  if (value === undefined) return null;
+  if (value === 'stdio' || value === 'http' || value === 'both') return value;
+  throw new Error(`--transport: unrecognised value '${value}' (expected stdio | http | both)`);
 }
 
 main().catch((err: unknown) => {

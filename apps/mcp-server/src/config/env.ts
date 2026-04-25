@@ -51,10 +51,40 @@ const mcpServerEnvSchema = baseEnvSchema
     MCP_SERVER_PORT: z.coerce
       .number()
       .int()
-      .positive()
+      .min(0)
       .max(65535)
       .default(3100)
-      .describe('TCP port for the Streamable HTTP transport, loopback-bound in solo mode.'),
+      .describe(
+        'TCP port for the Streamable HTTP transport, loopback-bound in solo mode. Use 0 to ask the kernel for an ephemeral port (test harnesses).',
+      ),
+
+    /**
+     * Bind address for the HTTP transport (S16). Defaults to loopback
+     * (`127.0.0.1`) — solo mode is a single-developer concern and
+     * exposing the MCP port on a LAN interface would bypass every
+     * auth layer without operator intent. Team-mode operators set
+     * this explicitly (e.g. `0.0.0.0` behind a reverse proxy or a
+     * fly.io/Railway-assigned external interface).
+     */
+    MCP_SERVER_HOST: z
+      .string()
+      .min(1)
+      .default('127.0.0.1')
+      .describe(
+        'Bind host for the Streamable HTTP transport. Default 127.0.0.1 (solo / loopback). Team operators override to 0.0.0.0 or a private interface.',
+      ),
+
+    /**
+     * Which transports to start at boot (S16). Defaults to `both`
+     * (stdio + HTTP). `stdio` is the Claude-Code-launched-subprocess
+     * scenario; `http` is the hosted team-mode scenario; `both` is
+     * the default because dev sessions use both (stdio for the IDE,
+     * HTTP for the Hooks Bridge's PostToolUse round-trip).
+     */
+    MCP_SERVER_TRANSPORT: z
+      .enum(['stdio', 'http', 'both'])
+      .default('both')
+      .describe('Transport selection at boot: stdio | http | both. Default both.'),
 
     /**
      * Shared secret that the local PostToolUse hook client uses to

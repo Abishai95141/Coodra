@@ -865,3 +865,44 @@ The parallel structure is exact: S14 closed the S7b deferral for `recordPolicyDe
 **Rationale:** Closing deferrals at the first-caller slice is the discipline that prevents the codebase from accumulating helpers without call sites. A reserved method that is never invoked grows stale quickly — its cache, its error paths, and its docblock references drift from what the eventual caller actually needs. Landing the call site in the slice that motivates the method keeps the contract truthful.
 
 **Reference:** `apps/mcp-server/src/tools/query-codebase-graph/handler.ts` (flow step 2 — `ctx.graphify.getIndexStatus(slug)` before `expandContextBySlug`); `apps/mcp-server/__tests__/integration/tools/query-codebase-graph.test.ts` (order spy locks the call sequence); S7c entry in this log (2026-04-23) exporting `getIndexStatus` as a reserved slot. Parallel to 2026-04-24 19:00 S14 entry closing the S7b `recordPolicyDecision` deferral.
+
+## 2026-04-25 09:00 — S16: hybrid Node listener for `/mcp`, Hono for `/healthz` and 404 fallthrough
+
+**Decision:** `apps/mcp-server/src/transports/http.ts` builds a single `http.createServer()` listener that dispatches `/mcp` directly to `StreamableHTTPServerTransport.handleRequest(req, res, body)` — bypassing Hono. A Hono app handles `/healthz` and the 404 fallthrough, exposed to the listener via `getRequestListener(app.fetch)` from `@hono/node-server`. Auth runs inline in the Node dispatch BEFORE any body read, so unauthenticated requests are rejected without touching the SDK transport at all.
+
+**Rationale:** MCP's Streamable HTTP transport writes to Node `ServerResponse` directly because the response shape is JSON-or-SSE depending on the request. Hono's context contract returns a `Response` object, so handler-owned writes need a special `RESPONSE_ALREADY_SENT` sentinel from `@hono/node-server`. That sentinel is NOT in the package root's `exports` map (only `.` and `./serve-static` are exposed); deep imports like `@hono/node-server/utils/response` resolve under the current pnpm install but are not part of the package's public contract and would break under stricter `exports` enforcement. The hybrid solve trades a few lines of raw Node dispatch for a cleaner integration surface — Hono stays in the picture for non-MCP routes (today: `/healthz`, the 404 page; future: `/admin`, `/feature-flags`, etc).
+
+**Alternatives considered:** Pure Hono with deep import of `RESPONSE_ALREADY_SENT` (rejected — relies on unpublished exports). Skip Hono entirely; serve `/healthz` from raw Node (rejected — Hono is reasonable insurance for the next route's middleware needs). Use the SDK's Express adapter (rejected — Express is a much larger dep than Hono and we've already standardized on Hono for the Hooks Bridge per `essentialsforclaude/11-adrs.md` ADR-004). Wrap Hono around the entire request and use `c.executionCtx.passThroughOnException()` (rejected — that's a Cloudflare Workers API, not present in the Node adapter).
+
+**Reference:** `apps/mcp-server/src/transports/http.ts` lines 17-52 (design-decisions docblock); user 2026-04-25 directive ("continue with s16"); ADR-004 (Hono over Express for hot-path HTTP).
+
+## 2026-04-25 09:05 — S16: three-layer auth chain order locked, `/healthz` unauthed
+
+**Decision:** `/mcp` requests run through a three-layer auth chain in this exact order, with first-match-wins:
+
+1. **Solo-bypass** — when `CLERK_SECRET_KEY === 'sk_test_replace_me'` OR `CONTEXTOS_MODE === 'solo'`, identity is the frozen `SOLO_IDENTITY` (`user_dev_local` / `org_dev_local`). No headers are inspected.
+2. **X-Local-Hook-Secret** — request header value compared against `LOCAL_HOOK_SECRET` env via `crypto.timingSafeEqual` (constant-time, byte-length-safe via `Buffer.byteLength`). Identity source = `'local-hook'`.
+3. **Clerk JWT** — `Authorization: Bearer <jwt>` → `@clerk/backend::verifyToken` with the configured secret. On success, identity is constructed from the JWT payload (`sub`, `org_id`).
+4. **No match** → `401` response with `WWW-Authenticate: Bearer` header and structured body `{ error: 'unauthorized', reason: 'no_valid_auth_layer' }`.
+
+`/healthz` skips the chain entirely — it returns `200 ok` regardless of headers. This is deliberate: reverse proxies, load balancers, and Kubernetes liveness probes hit it without credentials, and gating it would break the deployment story.
+
+**Rationale:** The order is `system-architecture.md` §19 verbatim, locked by `context_memory/decisions-log.md` 2026-04-22 Q-02-1. Putting solo-bypass FIRST means a developer running `CONTEXTOS_MODE=solo` never has to think about Clerk — local dev is one env-var away from working without any external dependency. X-Local-Hook is second so the Hooks Bridge (Module 03) can attach the secret without needing a JWT round-trip on every PostToolUse. Clerk is the team-mode default and lands last because it's the most expensive (network round-trip on first call, JWKS cached after).
+
+The `WWW-Authenticate: Bearer` response header is RFC 7235-compliant and tells well-behaved clients exactly what auth scheme to retry with — useful for the future MCP-Inspector flow where Clerk SSO triggers a reauthentication.
+
+**Alternatives considered:** Reverse the order so Clerk is checked first (rejected — slow path becomes the default). Apply auth to `/healthz` too (rejected — breaks operational probing). Use a header allowlist for healthz (rejected — over-engineered). Issue a `403` instead of `401` on auth failure (rejected — `401` is the correct status for "no/invalid credentials"; `403` is for "valid credentials but insufficient permission").
+
+**Reference:** `apps/mcp-server/src/transports/http.ts::authenticate` (lines 81-108); `apps/mcp-server/src/lib/auth.ts::verifyClerkJwt` + `verifyLocalHookSecret`; `system-architecture.md §19` auth strategy; `context_memory/decisions-log.md` 2026-04-22 Q-02-1; user 2026-04-25 sign-off (Clerk test keys provided in chat for local dev — gitignored in `.env`, rotation reminder noted).
+
+## 2026-04-25 09:10 — S16: `MCP_SERVER_PORT` constraint loosened to allow port 0 (kernel-ephemeral) for tests
+
+**Decision:** Changed `config/env.ts::MCP_SERVER_PORT` from `.positive()` (i.e. `>= 1`) to `.min(0)`. Port `0` is a POSIX-standard sentinel meaning "kernel-assigned ephemeral port" and is accepted by Node's `server.listen()`. With this loosening, integration tests can pass `MCP_SERVER_PORT: 0` and `startHttpTransport` reads the actually-bound port back via `nodeServer.address()`, reflecting it in `HttpTransportHandle.port` and `HttpTransportHandle.url`.
+
+Without this change, parallel test workers in vitest would race on a fixed port and fail intermittently. Hard-coding a high random port per test would work but creates the same flake risk on a busy CI runner. Kernel-ephemeral assignment is the standard test-harness pattern for HTTP servers in Node.
+
+**Rationale:** The `.positive()` constraint expressed an operator concern ("don't accidentally bind nothing in production"), but `.min(0)` plus the `MCP_SERVER_HOST=127.0.0.1` default already enforce the spirit of that concern: production deployments set both to real values; the only callers that pass 0 are test harnesses that immediately read the bound port back. The descriptor on the schema field documents this.
+
+**Alternatives considered:** Keep `.positive()` and have tests assign random ports above 49152 (rejected — race risk on busy machines). Use a separate `MCP_SERVER_PORT_TEST` env var (rejected — schema bifurcation, no real benefit). Mock the listener entirely in tests (rejected — defeats the purpose of an integration test).
+
+**Reference:** `apps/mcp-server/src/config/env.ts::MCP_SERVER_PORT` schema; `apps/mcp-server/src/transports/http.ts` bound-port read-back via `nodeServer.address()`; `apps/mcp-server/__tests__/integration/transports/http.test.ts` harness uses `MCP_SERVER_PORT: 0`.

@@ -744,15 +744,87 @@ Empty results (index present, graph.json parses to empty arrays) → `{ ok: true
 
 **Commit:** `feat(mcp-server): S15 — tool query_codebase_graph (two soft-failures + GraphifyClient.expandContextBySlug) + §24.4 amendment`.
 
-### S16 — Transports + server entrypoint
+### S16 — Transports + server entrypoint (landed 2026-04-25)
 
-`apps/mcp-server/src/transports/stdio.ts` — JSON-RPC framed IO, Content-Length header, uses `@modelcontextprotocol/sdk/server/stdio.js`. **Pino logger redirected to `process.stderr`** so stdout carries only protocol frames. Unit test asserts 100-message round-trip with no stray stdout bytes.
+**Scope:** ships the Streamable HTTP transport alongside the existing stdio path, wires both through `src/index.ts` with a `--transport` CLI flag, and lands the three-layer auth chain (solo-bypass / X-Local-Hook / Clerk JWT) per §19. New deps: `hono@4.12.15` + `@hono/node-server@2.0.0`. No schema migration. No new MCP tool — this is transport infrastructure.
 
-`apps/mcp-server/src/transports/http.ts` — Hono app with `POST /mcp` (accepts JSON-RPC single or batch; responds `application/json` for unary or `text/event-stream` per MCP Streamable HTTP spec), `GET /mcp` (server→client stream leg), `GET /healthz`. Auth middleware from `lib/auth.ts` applied to `/mcp` only. Served via `@hono/node-server` `serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })` — loopback-only in solo mode.
+**Two noteworthy decisions (drove the implementation shape):**
 
-`apps/mcp-server/src/index.ts` — starts both transports concurrently. Parses `--transport stdio|http|both` flag (default `both`). Graceful shutdown on SIGINT/SIGTERM: drains in-flight requests, flushes pending policy_decisions writes, closes the DB.
+1. **Hybrid Node listener, not pure-Hono.** MCP's `StreamableHTTPServerTransport` writes to Node `ServerResponse` directly (response is JSON-or-SSE depending on the request shape). Hono's context contract expects the handler to return a `Response` object; `@hono/node-server` has a `RESPONSE_ALREADY_SENT` sentinel for handler-owned writes, but it is not re-exported from the package root, and deep imports break under tightened `exports` fields. The S16 solve dispatches `/mcp` via `createServer`'s listener directly (auth + body read + SDK transport) and delegates `/healthz` and the 404 fallthrough to Hono via `getRequestListener(app.fetch)`. Future non-MCP routes land naturally on the Hono side.
 
-**Commit:** `feat(mcp-server): stdio + Streamable HTTP transports + server entrypoint`.
+2. **Bound-port read-back for ephemeral-port testing.** Test harnesses use `MCP_SERVER_PORT=0` so the kernel assigns a port (avoids port collisions in parallel test workers). The schema's `.positive()` constraint was loosened to `.min(0)` to allow this, and `startHttpTransport` reads the actually-bound port back via `nodeServer.address()` and reflects it in the returned `HttpTransportHandle.url` — without this, every test would race on a fixed port.
+
+**Three-layer auth chain (§19 locked order, applied to `/mcp` only):**
+
+```
+1. solo-bypass    CLERK_SECRET_KEY === 'sk_test_replace_me' OR CONTEXTOS_MODE === 'solo'
+                  → identity = SOLO_IDENTITY (user_dev_local / org_dev_local)
+
+2. X-Local-Hook   request header `X-Local-Hook-Secret` matches `LOCAL_HOOK_SECRET` env
+                  via timingSafeEqual (constant-time)
+                  → identity source = 'local-hook'
+
+3. Clerk JWT      `Authorization: Bearer <jwt>` → @clerk/backend::verifyToken
+                  → identity = { userId: payload.sub, orgId: payload.org_id, source: 'clerk' }
+
+4. else           401 + WWW-Authenticate: Bearer + body { error: 'unauthorized', reason: 'no_valid_auth_layer' }
+```
+
+`/healthz` is unauthed — reverse proxies / load balancers probe it without a Clerk round-trip.
+
+**Routes shipped:**
+
+- `GET /healthz` → `200 ok` with `Cache-Control: no-store`. Hono.
+- `POST /mcp` → JSON-RPC 2.0 single request; response is `application/json` for unary calls or `text/event-stream` (SSE) when the SDK chooses streaming. Auth chain BEFORE body read.
+- `GET /mcp` → SSE server→client stream leg per MCP Streamable HTTP spec.
+- `DELETE /mcp` → session close per spec; SDK transport handles.
+- 404 fallthrough → JSON `{ error: 'not_found', path }`. Hono.
+
+**Body cap:** 1 MiB on `POST /mcp`. Prevents trivial DoS by closing the connection mid-read once the cap is exceeded.
+
+**Server entrypoint (`src/index.ts`):**
+
+- New `--transport stdio|http|both` CLI flag (or `-t`). Falls back to `MCP_SERVER_TRANSPORT` env var; default `both`. Throws on unrecognised value at boot.
+- Stdio + HTTP transports start concurrently when `both` is selected.
+- Graceful shutdown on SIGINT/SIGTERM: (a) one `setImmediate` tick to drain S14 audit-write queue, (b) close HTTP listener, (c) close stdio transport, (d) close DB. Errors at any step are logged and shutdown continues.
+
+**Env additions:**
+
+- `MCP_SERVER_HOST` — default `127.0.0.1` (loopback). Operators set `0.0.0.0` for team-mode behind a reverse proxy.
+- `MCP_SERVER_TRANSPORT` — enum `stdio | http | both`, default `both`.
+- `MCP_SERVER_PORT` constraint loosened to `.min(0)` for ephemeral-port test mode.
+
+**Tests added (+9 integration; unit unchanged at 231):**
+
+`__tests__/integration/transports/http.test.ts` (NEW, 9 tests, all using ephemeral port 0):
+1. `/healthz` returns 200 ok (no auth, headers).
+2. `/healthz` skips the auth chain — bogus Authorization header still returns 200.
+3. Unknown path → 404 JSON via Hono fallthrough.
+4. Solo-bypass: MCP `initialize` round-trip succeeds with no Authorization header; response has correct serverInfo.
+5. Team mode + no creds → 401 with `WWW-Authenticate: Bearer` and structured body.
+6. Team mode + malformed Bearer JWT → 401.
+7. Team mode + wrong `X-Local-Hook-Secret` → 401.
+8. Team mode + matching `X-Local-Hook-Secret` → 200 (initialize succeeds).
+9. Body > 1 MiB → connection rejected (status >= 400 or fetch error).
+
+Stdio transport tests unchanged — S16 didn't touch the stdio code path.
+
+**Decisions-log entries (3, timestamped 2026-04-25):**
+
+1. Hybrid Node listener vs pure-Hono routing — why and trade-offs.
+2. Three-layer auth chain order locked + `/healthz` unauthed.
+3. `MCP_SERVER_PORT` `.positive()` → `.min(0)` for kernel-ephemeral testing.
+
+**Gate:**
+
+- `pnpm install --frozen-lockfile` — 2 new deps (`hono` 4.12.15, `@hono/node-server` 2.0.0).
+- `pnpm --filter @contextos/db run check:migration-lock` — ok, 2 blocks verified.
+- `pnpm lint` — 0 errors, 1 pre-existing info (idempotency.ts:77:3).
+- `pnpm typecheck` — 5/5 green.
+- `pnpm test:unit` — 348/348 repo-wide (shared 75 + db 42 + mcp-server 231).
+- `pnpm --filter @contextos/mcp-server run test:integration` — 173/173 (was 164; +9 from new HTTP tests).
+
+**Commit:** `feat(mcp-server): S16 — Streamable HTTP transport + auth chain + entrypoint --transport flag`.
 
 ### S17 — Integration tests
 

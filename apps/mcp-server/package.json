@@ -27,9 +27,11 @@
     "@clerk/backend": "3.3.0",
     "@contextos/db": "workspace:*",
     "@contextos/shared": "workspace:*",
+    "@hono/node-server": "2.0.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "cockatiel": "3.2.1",
     "drizzle-orm": "^0.45.2",
+    "hono": "4.12.15",
     "picomatch": "4.0.2",
     "zod": "^4.3.6"
   },
