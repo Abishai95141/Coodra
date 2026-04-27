@@ -2,14 +2,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPostgresDb, type PostgresHandle } from '../../src/client.js';
 import { migratePostgres } from '../../src/migrate.js';
+import { dropAllPublicTables } from './_helpers/postgres-clean.js';
 
 /**
  * Integration smoke test: prove the generated Postgres migrations apply
  * cleanly against a live `pgvector/pgvector:pg16` container and that the
- * nine-table schema (Module-01 core + Module-02 additions) + the
- * hand-appended pgvector HNSW index show up afterwards. The CI job
- * seeds `DATABASE_URL` via a GitHub Actions service container; locally,
- * run `pnpm -w docker:up` and export the same URL.
+ * full schema (Module-01 core + Module-02 additions: `decisions` joins
+ * the previous nine-table set) + the hand-appended pgvector HNSW index
+ * show up afterwards. The CI job seeds `DATABASE_URL` via a GitHub
+ * Actions service container; locally, run `pnpm -w docker:up` and
+ * export the same URL.
  *
  * Skipped automatically when `DATABASE_URL` is not present so that this
  * file is safe to include in `pnpm test:integration` runs outside CI.
@@ -20,6 +22,7 @@ const isEnabled = typeof databaseUrl === 'string' && databaseUrl.length > 0;
 
 const SCHEMA_TABLES = [
   'context_packs',
+  'decisions',
   'feature_packs',
   'pending_jobs',
   'policies',
@@ -35,22 +38,10 @@ const SCHEMA_TABLES = [
 
   beforeAll(async () => {
     handle = createPostgresDb({ databaseUrl: databaseUrl as string });
-    // Clean slate per run. Drop in dependency order then recreate the vector
-    // extension so migrations run against a known state.
-    await handle.raw.unsafe(`
-      DROP TABLE IF EXISTS policy_decisions CASCADE;
-      DROP TABLE IF EXISTS policy_rules CASCADE;
-      DROP TABLE IF EXISTS policies CASCADE;
-      DROP TABLE IF EXISTS feature_packs CASCADE;
-      DROP TABLE IF EXISTS pending_jobs CASCADE;
-      DROP TABLE IF EXISTS context_packs CASCADE;
-      DROP TABLE IF EXISTS run_events CASCADE;
-      DROP TABLE IF EXISTS runs CASCADE;
-      DROP TABLE IF EXISTS projects CASCADE;
-      DROP TABLE IF EXISTS __drizzle_migrations CASCADE;
-      DROP SCHEMA IF EXISTS drizzle CASCADE;
-      CREATE EXTENSION IF NOT EXISTS vector;
-    `);
+    // Clean slate per run via the introspecting helper — enumerates every
+    // table from information_schema so the cleanup never goes stale when
+    // a future module adds a table (verification F3, 2026-04-27).
+    await dropAllPublicTables(handle.raw);
     await migratePostgres(handle.db);
   });
 
@@ -60,7 +51,7 @@ const SCHEMA_TABLES = [
     }
   });
 
-  it('creates the nine-table schema', async () => {
+  it('creates the canonical migration table set', async () => {
     const rows = await handle.raw<{ table_name: string }[]>`
       SELECT table_name
       FROM information_schema.tables

@@ -1,3 +1,4 @@
+import { runKeySegmentSchema } from '@contextos/shared';
 import { z } from 'zod';
 
 /**
@@ -8,6 +9,29 @@ import { z } from 'zod';
  * packs is single-namespace-by-slug" — the same slug convention the
  * MCP server uses for `feature-pack.get`). The handler resolves this
  * to `projects.id` via `projects.slug` unique lookup.
+ *
+ * F9 + F10 closure (verification 2026-04-27): the optional
+ * `agentSessionId` and `agentType` inputs let the bridge and MCP
+ * server agree on a single canonical `runs` row per logical agent
+ * session. Without them, the bridge writes `runs.session_id =
+ * event.session_id` (the agent's id) and MCP writes `runs.session_id
+ * = ctx.sessionId` (transport-generated `stdio-…`/`http-…`); the
+ * unique index `(project_id, session_id)` enforces uniqueness per
+ * pair, so each surface created its own row. With `agentSessionId`
+ * supplied the SAME row is found-or-inserted from both surfaces,
+ * fulfilling §1's "run = 1:1 with agent session" intent.
+ *
+ * Agents (or their harnesses) should pass:
+ *   - `agentSessionId` = the same `session_id` they fire at the
+ *     hooks bridge in the SessionStart payload.
+ *   - `agentType` = `claude_code | cursor | windsurf | unknown`
+ *     so the runs row's agent_type column is populated correctly
+ *     (closes F10 — without it, MCP-minted rows defaulted to
+ *     `unknown` regardless of which agent was active).
+ *
+ * Both fields are optional and backward-compatible: callers that
+ * omit them get the legacy behaviour (ctx.sessionId, transport-
+ * guess agentType).
  */
 export const getRunIdInputSchema = z
   .object({
@@ -16,6 +40,21 @@ export const getRunIdInputSchema = z
       .min(1, 'projectSlug is required')
       .max(128, 'projectSlug must be at most 128 characters')
       .describe('Project slug (same namespace as feature-pack slugs — single global slug per §24.4).'),
+    agentSessionId: runKeySegmentSchema
+      .max(256, 'agentSessionId must be ≤256 chars')
+      .optional()
+      .describe(
+        'Agent-supplied session id. When present, MCP uses this as runs.session_id ' +
+          'so the bridge SessionStart row and this MCP get_run_id call resolve to ONE ' +
+          'runs row. Omit to use the transport-generated sessionId (legacy).',
+      ),
+    agentType: z
+      .enum(['claude_code', 'cursor', 'windsurf', 'unknown'])
+      .optional()
+      .describe(
+        'Agent type stamp for the runs row. When present, overrides the transport guess ' +
+          '(which defaults to "unknown" for HTTP).',
+      ),
   })
   .strict()
   .describe('Input for contextos__get_run_id.');

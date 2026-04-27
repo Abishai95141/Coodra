@@ -370,6 +370,15 @@ export default defineConfig({
 
 - Mixing `pg` and `postgres` drivers in the same project requires separate Drizzle configurations; examples in docs show one driver per config. [techboostblog](https://techboostblog.com/blog/drizzle-orm-practical/)
 
+#### `createDb` local-vs-cloud routing (Module 03 S4)
+
+`packages/db/src/client.ts::createDb` takes a discriminated `kind: 'local' | 'cloud'` option.
+
+- `kind: 'local'` always returns a SQLite handle (regardless of `mode`). Used by every local service — `apps/mcp-server`, `apps/hooks-bridge`, `apps/web` — in BOTH solo and team mode. Matches the architectural rule from `system-architecture.md` §1: "local services always write to local SQLite."
+- `kind: 'cloud'` always returns a Postgres handle. Used by future cloud-side processes (Sync Daemon, cloud-api). Local code never picks this branch.
+- `mode` is preserved as an auth-strategy hint that flows through to the auth chain. It does NOT change DB choice.
+- Module 02 introduced a `CONTEXTOS_DB_OVERRIDE_MODE` env var as a stop-gap so a developer could exercise the team-mode auth chain locally without spinning up Postgres. Module 03 S4 makes the override unnecessary by separating `kind` from `mode`. The env knob is removed; existing callers passed it implicitly via `CONTEXTOS_MODE=team` and the new contract handles that case natively.
+
 ***
 
 ## Queues, Workers & Redis
@@ -1135,6 +1144,27 @@ export async function callBackend() {
 
 ## Validation, Schemas & Resilience
 
+### `@contextos/policy` (workspace package — landed Module 03 S3)
+
+**Version:** workspace-internal (no external pin). Lives at `packages/policy/`.
+**Role:** the cache-first policy evaluator + audit-write helper, shared by `apps/mcp-server` (via the `check_policy` tool + the registry's pre/post auto-wrap) and `apps/hooks-bridge` (via the pre-tool-use hook handler). Also owns the discriminated `PolicyClient` / `PolicyInput` / `PolicyResult` / `PolicyDenyError` types.
+
+**Why a new package (not `@contextos/shared/policy`):** `@contextos/db` already depends on `@contextos/shared`. Putting policy in shared would force shared to depend on `@contextos/db` (for `DbHandle` + the schema tables policy queries), creating a workspace cycle. A separate package that depends on both `shared` and `db` resolves the cycle cleanly. The original Module 03 plan (spec.md) said "policy lives in shared" — that wording is corrected in S3's commit; it's the only structural deviation.
+
+**Dep set:**
+
+- `@contextos/shared` (logger + `IdempotencyKey` value-shape).
+- `@contextos/db` (DbHandle + schema tables for SELECT policies/policy_rules + INSERT policy_decisions).
+- `cockatiel@3.2.1` exact (timeout + breaker fuse).
+- `drizzle-orm@^0.45.2` (query builder, matches db's pin).
+- `picomatch@4.0.2` exact (path-glob matching at cache-load time).
+
+**Subpath exports:** `.` (factories + audit helper) and `./types` (`PolicyClient`, `PolicyInput`, `PolicyResult`, `PolicyDenyError`).
+
+**Auth lives separately** — `packages/shared/src/auth/` (no DB dep, no new package needed). The `@clerk/backend` dep moved to shared in the same commit.
+
+***
+
 ### Zod
 
 **Version:** 4.3.6 (pinned 2026-04-22; bumped from 4.1.9 in the Module-01 Foundation commit that introduced `packages/shared`). [npmjs](https://www.npmjs.com/package/zod)
@@ -1213,11 +1243,11 @@ export const ENRICHMENT_JSON_SCHEMA = zodToJsonSchema(EnrichmentSchema, 'Enrichm
 
 ### cockatiel (circuit breakers & retries)
 
-**Version:** 3.2.1 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/cockatiel)
+**Version:** 3.2.1 (pinned **exact**; first installed in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b. Module 03 S3 (2026-04-25) moved the policy module — and with it the cockatiel breaker — to the new `@contextos/policy` workspace package; the dep migrated with the code. mcp-server now pulls cockatiel transitively through `@contextos/policy`. Hooks-bridge does the same — no separate breaker instance lives in the hooks-bridge tree. [npmjs](https://www.npmjs.com/package/cockatiel)
 **Install (exact pin):**
 
 ```bash
-pnpm --filter @contextos/mcp-server add cockatiel@3.2.1 --save-exact
+pnpm --filter @contextos/policy add cockatiel@3.2.1 --save-exact
 ```
 
 **Docs:** <https://www.npmjs.com/package/cockatiel>
@@ -1253,7 +1283,7 @@ async function evaluateWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
 
 **Gotchas**
 
-- Architecture mandates fail-open: when the breaker is open OR the timeout fuse trips, the caller must immediately return `{ decision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }` rather than propagate. See `apps/mcp-server/src/lib/policy.ts` for the canonical implementation.
+- Architecture mandates fail-open: when the breaker is open OR the timeout fuse trips, the caller must immediately return `{ decision: 'allow', reason: 'policy_check_unavailable', matchedRuleId: null }` rather than propagate. See `packages/policy/src/policy.ts` for the canonical implementation (moved from `apps/mcp-server/src/lib/policy.ts` in Module 03 S3).
 - `wrap(timeout, breaker)` applies the timeout to each attempt; `wrap(breaker, timeout)` would apply it to the whole breaker execution — keep the timeout on the inside.
 - `BrokenCircuitError` (thrown when the breaker is open) and `TaskCancelledError` (thrown on timeout) must both be caught at the boundary. Don't differentiate — both map to `allow` with the same reason.
 - `TimeoutStrategy.Aggressive` aborts the in-flight operation via `AbortSignal`; your callback must honour the signal argument cockatiel passes through. better-sqlite3 calls are synchronous so the signal is advisory — the breaker still counts them as failures on timeout.
@@ -1262,11 +1292,11 @@ async function evaluateWithBreaker<T>(fn: () => Promise<T>): Promise<T> {
 
 ### @clerk/backend (JWT verification, Node server)
 
-**Version:** 3.3.0 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent auth library, no caret per amendment-B discipline; techstack.md's original `^3.2.13` is superseded). [npmjs](https://www.npmjs.com/package/@clerk/backend)
+**Version:** 3.3.0 (pinned **exact**; first installed in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b. Module 03 S3 (2026-04-25) moved the auth module — and with it the dep — to `packages/shared/src/auth/`; the dep migrated with the code. mcp-server and hooks-bridge both pull `@clerk/backend` transitively through `@contextos/shared`. [npmjs](https://www.npmjs.com/package/@clerk/backend)
 **Install (exact pin):**
 
 ```bash
-pnpm --filter @contextos/mcp-server add @clerk/backend@3.3.0 --save-exact
+pnpm --filter @contextos/shared add @clerk/backend@3.3.0 --save-exact
 ```
 
 **Docs:** <https://clerk.com/docs/references/backend/overview>
@@ -1305,12 +1335,14 @@ const identity = {
 
 ### picomatch (glob matcher for policy-rule path matching)
 
-**Version:** 4.0.2 (pinned **exact** in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b — security-adjacent library used in policy rule matching, no caret per amendment-B discipline). [npmjs](https://www.npmjs.com/package/picomatch)
+**Version:** 4.0.2 (pinned **exact**; first installed in `apps/mcp-server/package.json` on 2026-04-23 during Module 02 S7b. Module 03 S3 (2026-04-25) moved the policy module to `@contextos/policy`; the policy-side picomatch dep moved with it. mcp-server keeps a separate direct dep on picomatch because `tools/get-feature-pack/handler.ts` uses it independently — that's a different consumer, unrelated to the policy-rule path matcher. [npmjs](https://www.npmjs.com/package/picomatch)
 **Install (exact pin):**
 
 ```bash
+pnpm --filter @contextos/policy add picomatch@4.0.2 --save-exact
+pnpm --filter @contextos/policy add -D @types/picomatch@4.0.2 --save-exact
+# mcp-server keeps its own (separate use site for feature-pack glob filtering):
 pnpm --filter @contextos/mcp-server add picomatch@4.0.2 --save-exact
-pnpm --filter @contextos/mcp-server add -D @types/picomatch@4.0.2 --save-exact
 ```
 
 **Docs:** <https://github.com/micromatch/picomatch>

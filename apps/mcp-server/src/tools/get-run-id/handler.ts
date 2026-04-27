@@ -142,6 +142,11 @@ async function autoCreateProject(deps: GetRunIdHandlerDeps, projectSlug: string)
   return resolved.projectId;
 }
 
+// NOTE: The bridge's RunRecorder uses the leaner `lookupRunId` helper
+// from @contextos/db (verification F8 closure, 2026-04-27) which returns
+// just the id. This local `selectLatestRun` keeps the wider RunRow
+// shape (id + status + startedAt) needed by `get_run_id` to decide
+// whether to return the existing in-progress row vs mint a new one.
 async function selectLatestRun(
   deps: GetRunIdHandlerDeps,
   projectId: string,
@@ -232,6 +237,14 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
   }
 
   return async function getRunIdHandler(input: GetRunIdInput, ctx: ToolContext): Promise<GetRunIdOutput> {
+    // F9 + F10 closure (verification 2026-04-27): when the caller
+    // supplies an agentSessionId / agentType, use those as the
+    // canonical session-binding values. Otherwise fall back to the
+    // transport-generated ctx.sessionId / ctx.agentType (legacy
+    // behaviour preserved for callers that omit the fields).
+    const effectiveSessionId = input.agentSessionId ?? ctx.sessionId;
+    const effectiveAgentType = input.agentType ?? ctx.agentType;
+
     const resolved = await resolveProjectId(deps, input.projectSlug);
 
     let projectId: string;
@@ -244,8 +257,8 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
         {
           event: 'get_run_id_project_not_found_team',
           projectSlug: input.projectSlug,
-          sessionId: ctx.sessionId,
-          agentType: ctx.agentType,
+          sessionId: effectiveSessionId,
+          agentType: effectiveAgentType,
         },
         'team-mode: project slug not registered — returning soft-failure',
       );
@@ -257,14 +270,14 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
     }
 
     // Existing-run path.
-    const existing = await selectLatestRun(deps, projectId, ctx.sessionId);
+    const existing = await selectLatestRun(deps, projectId, effectiveSessionId);
     if (existing) {
       if (existing.status !== 'in_progress') {
         handlerLogger.warn(
           {
             event: 'get_run_id_returning_non_in_progress',
             runId: existing.id,
-            sessionId: ctx.sessionId,
+            sessionId: effectiveSessionId,
             status: existing.status,
           },
           'get_run_id returning non-in-progress run; if this WARN grows common, consider migration 0003 to relax the runs unique index to (project_id, session_id, status)',
@@ -278,12 +291,12 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
     }
 
     // Create path.
-    const newId = generateRunKey({ projectId, sessionId: ctx.sessionId });
+    const newId = generateRunKey({ projectId, sessionId: effectiveSessionId });
     const inserted = await insertRun(deps, {
       id: newId,
       projectId,
-      sessionId: ctx.sessionId,
-      agentType: ctx.agentType,
+      sessionId: effectiveSessionId,
+      agentType: effectiveAgentType,
       mode: deps.mode,
     });
     if (inserted) {
@@ -292,9 +305,12 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
           event: 'get_run_id_created',
           runId: inserted.id,
           projectId,
-          sessionId: ctx.sessionId,
-          agentType: ctx.agentType,
+          sessionId: effectiveSessionId,
+          agentType: effectiveAgentType,
           mode: deps.mode,
+          // Surface whether the canonical fields came from input or ctx
+          // so ops can see adoption of the F9 contract.
+          source: input.agentSessionId !== undefined ? 'agent_supplied' : 'transport_default',
         },
         'get_run_id created a new runs row',
       );
@@ -308,14 +324,14 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
     // Concurrent insert won the race — the unique index rejected us,
     // and onConflictDoNothing returned 0 rows. Re-SELECT to get the
     // winning row.
-    const winner = await selectLatestRun(deps, projectId, ctx.sessionId);
+    const winner = await selectLatestRun(deps, projectId, effectiveSessionId);
     if (winner) {
       handlerLogger.info(
         {
           event: 'get_run_id_race_resolved',
           runId: winner.id,
           projectId,
-          sessionId: ctx.sessionId,
+          sessionId: effectiveSessionId,
         },
         'get_run_id concurrent-insert race resolved via re-SELECT',
       );
@@ -331,7 +347,7 @@ export function createGetRunIdHandler(deps: GetRunIdHandlerDeps) {
     // statements. Log and throw so the generic registry `handler_threw`
     // envelope surfaces.
     throw new Error(
-      `get_run_id: insert returned 0 rows and re-SELECT found nothing for (projectId=${projectId}, sessionId=${ctx.sessionId})`,
+      `get_run_id: insert returned 0 rows and re-SELECT found nothing for (projectId=${projectId}, sessionId=${effectiveSessionId})`,
     );
   };
 }

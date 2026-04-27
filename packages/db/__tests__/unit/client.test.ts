@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import process from 'node:process';
 
 import { ValidationError } from '@contextos/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +25,70 @@ describe('resolveSqlitePath', () => {
     const resolved = resolveSqlitePath('./test.db');
     expect(resolved.endsWith('/test.db')).toBe(true);
     expect(resolved.startsWith('/')).toBe(true);
+  });
+
+  /**
+   * Locks integration finding 2026-04-27 (post-08a walk): the bridge +
+   * mcp-server daemons spawned by `contextos start` were ignoring the
+   * CONTEXTOS_HOME plist env var and writing audit rows to the user's
+   * real `~/.contextos/data.db`. Doctor read the test home, daemons
+   * wrote elsewhere, the two surfaces silently disagreed.
+   */
+  describe('CONTEXTOS_HOME / CONTEXTOS_SQLITE_PATH precedence', () => {
+    const originals: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      originals.CONTEXTOS_SQLITE_PATH = process.env.CONTEXTOS_SQLITE_PATH;
+      originals.CONTEXTOS_HOME = process.env.CONTEXTOS_HOME;
+      delete process.env.CONTEXTOS_SQLITE_PATH;
+      delete process.env.CONTEXTOS_HOME;
+    });
+
+    afterEach(() => {
+      for (const [key, value] of Object.entries(originals)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    });
+
+    it('1) explicit `input` argument wins over both env vars', () => {
+      process.env.CONTEXTOS_SQLITE_PATH = '/env/sqlite/path/data.db';
+      process.env.CONTEXTOS_HOME = '/env/home/.contextos';
+      expect(resolveSqlitePath('/explicit/data.db')).toBe('/explicit/data.db');
+    });
+
+    it('2) CONTEXTOS_SQLITE_PATH env var wins over CONTEXTOS_HOME', () => {
+      process.env.CONTEXTOS_SQLITE_PATH = '/env/sqlite/path/data.db';
+      process.env.CONTEXTOS_HOME = '/env/home/.contextos';
+      expect(resolveSqlitePath(undefined)).toBe('/env/sqlite/path/data.db');
+    });
+
+    it('3) CONTEXTOS_HOME env var resolves to <home>/data.db when no other override', () => {
+      process.env.CONTEXTOS_HOME = '/env/home/.contextos';
+      expect(resolveSqlitePath(undefined)).toBe('/env/home/.contextos/data.db');
+    });
+
+    it('4) falls back to ~/.contextos/data.db when neither env var is set', () => {
+      const resolved = resolveSqlitePath(undefined);
+      expect(resolved).toMatch(/\.contextos\/data\.db$/);
+      // Must not be the test-home value when env was cleared.
+      expect(resolved.startsWith('/env/')).toBe(false);
+    });
+
+    it('treats empty-string env values as unset (defensive)', () => {
+      process.env.CONTEXTOS_SQLITE_PATH = '';
+      process.env.CONTEXTOS_HOME = '/env/home/.contextos';
+      expect(resolveSqlitePath(undefined)).toBe('/env/home/.contextos/data.db');
+    });
+
+    it('CONTEXTOS_SQLITE_PATH=:memory: passes through even with CONTEXTOS_HOME set', () => {
+      process.env.CONTEXTOS_SQLITE_PATH = ':memory:';
+      process.env.CONTEXTOS_HOME = '/env/home/.contextos';
+      expect(resolveSqlitePath(undefined)).toBe(':memory:');
+    });
   });
 });
 
@@ -159,33 +224,39 @@ describe('createSqliteDb + migrateSqlite on a file-backed DB', () => {
   });
 });
 
-describe('createDb (mode dispatch)', () => {
-  it('solo mode returns a sqlite handle', () => {
-    const handle = createDb({ mode: 'solo', sqlite: { path: ':memory:' } });
+describe('createDb (kind discriminator — Module 03 S4)', () => {
+  it("kind: 'local' returns a sqlite handle regardless of mode (mode is an auth-strategy hint only)", () => {
+    const handleSolo = createDb({ kind: 'local', mode: 'solo', sqlite: { path: ':memory:' } });
     try {
-      expect(handle.kind).toBe('sqlite');
+      expect(handleSolo.kind).toBe('sqlite');
     } finally {
-      if (handle.kind === 'sqlite') handle.close();
+      if (handleSolo.kind === 'sqlite') handleSolo.close();
+    }
+    const handleTeam = createDb({ kind: 'local', mode: 'team', sqlite: { path: ':memory:' } });
+    try {
+      expect(handleTeam.kind).toBe('sqlite');
+    } finally {
+      if (handleTeam.kind === 'sqlite') handleTeam.close();
     }
   });
 
-  it('team mode without databaseUrl throws ValidationError', () => {
-    const previousMode = process.env.CONTEXTOS_MODE;
+  it("kind: 'cloud' without databaseUrl throws ValidationError", () => {
     const previousUrl = process.env.DATABASE_URL;
     delete process.env.DATABASE_URL;
     try {
-      expect(() => createDb({ mode: 'team' })).toThrow(ValidationError);
+      expect(() => createDb({ kind: 'cloud', mode: 'team' })).toThrow(ValidationError);
     } finally {
-      if (previousMode !== undefined) process.env.CONTEXTOS_MODE = previousMode;
       if (previousUrl !== undefined) process.env.DATABASE_URL = previousUrl;
     }
   });
 
-  it('defaults to solo when CONTEXTOS_MODE is unset', () => {
+  it("defaults to kind: 'local' when no options are supplied", () => {
     const previousMode = process.env.CONTEXTOS_MODE;
+    const previousPath = process.env.CONTEXTOS_SQLITE_PATH;
     delete process.env.CONTEXTOS_MODE;
+    process.env.CONTEXTOS_SQLITE_PATH = ':memory:';
     try {
-      const handle = createDb({ sqlite: { path: ':memory:' } });
+      const handle = createDb();
       try {
         expect(handle.kind).toBe('sqlite');
       } finally {
@@ -193,6 +264,11 @@ describe('createDb (mode dispatch)', () => {
       }
     } finally {
       if (previousMode !== undefined) process.env.CONTEXTOS_MODE = previousMode;
+      if (previousPath !== undefined) {
+        process.env.CONTEXTOS_SQLITE_PATH = previousPath;
+      } else {
+        delete process.env.CONTEXTOS_SQLITE_PATH;
+      }
     }
   });
 });

@@ -35,6 +35,14 @@
     "./test-utils": {
       "types": "./dist/test-utils/index.d.ts",
       "import": "./dist/test-utils/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
+    "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
+      "import": "./dist/hooks/index.js"
     }
   },
   "files": [
@@ -49,6 +57,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@clerk/backend": "3.3.0",
     "pino": "^10.3.1",
     "zod": "^4.3.6"
   },

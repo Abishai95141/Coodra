@@ -1,3 +1,5 @@
+import type { IdempotencyKey } from '@contextos/shared';
+
 /**
  * Per-tool idempotency-key builder contract.
  *
@@ -59,27 +61,24 @@ export interface IdempotencyContext {
 /**
  * Signature every tool registration must declare.
  *
- * The shape is a discriminated-return rather than a bare string
- * so the framework can statically distinguish read-only calls
- * (which skip DB dedupe) from mutating ones.
+ * Returns a discriminated-shape result rather than a bare string so the
+ * framework can statically distinguish read-only calls (which skip DB
+ * dedupe) from mutating ones. Read-only → `{ kind: 'readonly', key }`;
+ * mutating → `{ kind: 'mutating', key }` (the framework forwards the
+ * key to the handler's call context and expects DB operations to use it
+ * for ON CONFLICT dedupe).
  */
-export interface IdempotencyKeyBuilder<Input> {
-  /**
-   * Produces the per-call idempotency key.
-   *
-   * Return `{ kind: 'readonly', key }` for tools that do not write
-   * durable state (the key is still logged for tracing). Return
-   * `{ kind: 'mutating', key }` for every tool that may insert or
-   * mutate a row — the framework will then forward the key to the
-   * tool's handler as part of its call context and expect the
-   * handler's DB operations to use it for ON CONFLICT dedupe.
-   */
-  (input: Input, ctx: IdempotencyContext): IdempotencyKey;
-}
+export type IdempotencyKeyBuilder<Input> = (input: Input, ctx: IdempotencyContext) => IdempotencyKey;
 
-export type IdempotencyKey =
-  | { readonly kind: 'readonly'; readonly key: string }
-  | { readonly kind: 'mutating'; readonly key: string };
+// `IdempotencyKey` (the discriminated value-shape) moved to
+// `@contextos/shared/idempotency` in Module 03 S3 so the cross-package
+// `PolicyInput` (in `@contextos/policy`) can reference it without
+// depending on this mcp-server-specific framework. The framework-level
+// `IdempotencyKeyBuilder<Input>` + `IdempotencyContext` +
+// `assertIdempotencyKeyBuilder` helpers stay here — those are tool-
+// registration concerns, not wire-shape concerns. New consumers
+// import from `@contextos/shared`.
+export type { IdempotencyKey };
 
 /**
  * Runtime validator — called at registration time by the registry.

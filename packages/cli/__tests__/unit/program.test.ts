@@ -1,0 +1,122 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildProgram } from '../../src/program.js';
+
+describe('buildProgram — full surface (post-S8)', () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`__exit__:${code ?? 0}`);
+    }) as never);
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+  });
+
+  it('registers all 7 subcommands (init, start, stop, status, doctor, team login, team logout)', () => {
+    const program = buildProgram();
+    const top = program.commands.map((c) => c.name()).sort();
+    expect(top).toEqual(['doctor', 'init', 'start', 'status', 'stop', 'team']);
+
+    const team = program.commands.find((c) => c.name() === 'team');
+    expect(team).toBeDefined();
+    const sub = team?.commands.map((c) => c.name()).sort() ?? [];
+    expect(sub).toEqual(['login', 'logout']);
+  });
+
+  it('wires `doctor` to the real runDoctor handler (S3 wiring)', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunDoctor = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:0');
+    };
+    const program = buildProgram({ runDoctor: fakeRunDoctor });
+    await expect(program.parseAsync(['node', 'contextos', 'doctor', '--json'])).rejects.toThrow('__exit__:0');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ json: true });
+  });
+
+  it('wires `init` to the real runInit handler (S5 wiring) — passes flags through', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunInit = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:0');
+    };
+    const program = buildProgram({ runInit: fakeRunInit });
+    await expect(
+      program.parseAsync(['node', 'contextos', 'init', '--project-slug', 'demo', '--dry-run']),
+    ).rejects.toThrow('__exit__:0');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ projectSlug: 'demo', dryRun: true });
+  });
+
+  it('wires `start` to the real runStart handler (S7 wiring)', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunStart = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:0');
+    };
+    const program = buildProgram({ runStart: fakeRunStart });
+    await expect(program.parseAsync(['node', 'contextos', 'start', '--no-mcp'])).rejects.toThrow('__exit__:0');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ mcp: false });
+  });
+
+  it('wires `stop` to the real runStop handler (S7 wiring)', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunStop = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:0');
+    };
+    const program = buildProgram({ runStop: fakeRunStop });
+    await expect(program.parseAsync(['node', 'contextos', 'stop', '--service', 'mcp-server'])).rejects.toThrow(
+      '__exit__:0',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ service: 'mcp-server' });
+  });
+
+  it('wires `status` to the real runStatus handler (S8 wiring)', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunStatus = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:0');
+    };
+    const program = buildProgram({ runStatus: fakeRunStatus });
+    await expect(program.parseAsync(['node', 'contextos', 'status', '--json'])).rejects.toThrow('__exit__:0');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ json: true });
+  });
+
+  it('wires `team login` to the real handler (S8 stub) — passes token + --server', async () => {
+    const calls: Array<unknown> = [];
+    const fakeRunTeamLogin = async (opts: unknown) => {
+      calls.push(opts);
+      throw new Error('__exit__:2');
+    };
+    const program = buildProgram({ runTeamLogin: fakeRunTeamLogin });
+    await expect(
+      program.parseAsync(['node', 'contextos', 'team', 'login', 'tok-abc', '--server', 'https://x.example']),
+    ).rejects.toThrow('__exit__:2');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ token: 'tok-abc', server: 'https://x.example' });
+  });
+
+  it('wires `team logout` to the real handler (S8 stub)', async () => {
+    let called = false;
+    const fakeRunTeamLogout = async () => {
+      called = true;
+      throw new Error('__exit__:2');
+    };
+    const program = buildProgram({ runTeamLogout: fakeRunTeamLogout });
+    await expect(program.parseAsync(['node', 'contextos', 'team', 'logout'])).rejects.toThrow('__exit__:2');
+    expect(called).toBe(true);
+  });
+
+  it('exposes `--version` (placeholder VERSION until S2 prebuild lands)', () => {
+    const program = buildProgram();
+    expect(program.version()).toBeTruthy();
+    expect(program.version()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});

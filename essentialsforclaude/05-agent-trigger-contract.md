@@ -6,7 +6,7 @@ The ContextOS MCP server exposes 26 tools. Their `tools/list` manifest — with 
 
 ## 5.1 Session start — FIRST, in parallel, before any other tool call
 
-1. `contextos__get_run_id { projectSlug }` — obtains the `runId` that binds every subsequent call in this session. Cache the result; reuse it.
+1. `contextos__get_run_id { projectSlug, agentSessionId?, agentType? }` — obtains the `runId` that binds every subsequent call in this session. Cache the result; reuse it. **Pass `agentSessionId` set to the same `session_id` you fire at the hooks-bridge SessionStart hook**, plus `agentType` (`claude_code | cursor | windsurf`). Without these, MCP creates a separate `runs` row keyed on the transport-generated sessionId — the bridge SessionStart row and this MCP `runs` row will not agree. Closes verification F9 (run-identity reconciliation) and F10 (`agent_type='unknown'` on MCP-minted rows).
 2. `contextos__get_feature_pack { projectSlug }` — loads architecture, conventions, permitted files, gotchas.
 3. `contextos__query_run_history { projectSlug, status: 'in_progress', limit: 1 }` — checks whether a previous session left work in-flight.
 4. `contextos__search_packs_nl { projectSlug, query: <brief summary of what you are about to build> }` — retrieves prior context packs on the topic so you don't duplicate or contradict past work.

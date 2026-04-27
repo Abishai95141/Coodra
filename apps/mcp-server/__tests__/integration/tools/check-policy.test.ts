@@ -215,7 +215,8 @@ describe('check_policy — no_rule_matched path', () => {
     expect(rows[0]?.agentType).toBe('claude_code');
     expect(rows[0]?.eventType).toBe('PreToolUse');
     expect(rows[0]?.toolName).toBe('Write');
-    expect(rows[0]?.idempotencyKey).toBe('pd:sess_nrm:Write:PreToolUse');
+    // F14 (2026-04-27): no toolUseId supplied → 'no-turn' fallback
+    expect(rows[0]?.idempotencyKey).toBe('pd:sess_nrm:no-turn:Write:PreToolUse');
   });
 });
 
@@ -390,7 +391,8 @@ describe('check_policy — idempotent audit dedupe', () => {
 
     const rows = await h.handle.db.select().from(sqliteSchema.policyDecisions);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.idempotencyKey).toBe('pd:sess_dup:Write:PreToolUse');
+    // F14 (2026-04-27): no toolUseId supplied → 'no-turn' fallback
+    expect(rows[0]?.idempotencyKey).toBe('pd:sess_dup:no-turn:Write:PreToolUse');
   });
 
   it('same (toolName, eventType) across different sessionIds produces two rows', async () => {
@@ -416,7 +418,7 @@ describe('check_policy — idempotent audit dedupe', () => {
     const rows = await h.handle.db.select().from(sqliteSchema.policyDecisions);
     expect(rows).toHaveLength(2);
     const keys = rows.map((r) => r.idempotencyKey).sort();
-    expect(keys).toEqual(['pd:sess_one:Write:PreToolUse', 'pd:sess_two:Write:PreToolUse']);
+    expect(keys).toEqual(['pd:sess_one:no-turn:Write:PreToolUse', 'pd:sess_two:no-turn:Write:PreToolUse']);
   });
 });
 

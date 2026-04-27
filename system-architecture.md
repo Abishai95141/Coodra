@@ -71,6 +71,8 @@ The previous AI plan was designed for a public SaaS at scale. Wrong mental model
 
 **Mode detection:** Each service reads `CONTEXTOS_MODE` from `.env` or `~/.contextos/config.json`. In both solo and team modes, **local services always write to local SQLite** — the storage adapter returned by `createDb()` is always `better-sqlite3` on the developer's machine. `team` mode adds the Sync Daemon (which has its own Postgres connection for pushing unsynced records to the cloud) and switches the **cloud-deployed services** (cloud API, BullMQ workers) to use Postgres. All local service logic is identical across modes; only the cloud services differ.
 
+**What "local services always write to local SQLite" means in code (Module 03 S4 / verification F11):** `apps/mcp-server/src/lib/db.ts` and `apps/hooks-bridge/src/lib/db.ts` both pass `kind: 'local'` to `@contextos/db::createDb` unconditionally. There is **no env knob, no flag, no boot path** that gives either binary a Postgres handle. The Module 02 stop-gap `CONTEXTOS_DB_OVERRIDE_MODE` was removed in M03 S4. Cloud writes are owned exclusively by the future Sync Daemon and Module 05 NL Assembly's embeddings-ingest worker — services that don't exist yet. If a future verification brief or test asks to "boot the binary against Postgres," that's a category error: the binaries are SQLite-only by design, and the integration is exercised through `@contextos/db`'s own `kind: 'cloud'` test path (`packages/db/__tests__/integration/cloud-mode-write.test.ts`).
+
 ---
 
 ## 2. Service Inventory
@@ -351,10 +353,24 @@ These are historical facts. Mutability creates data loss risk. If a record needs
 ```
 runs              → run:{projectId}:{sessionId}:{uuid}
 run_events        → {sessionId}-{toolUseId}-{phase}
-policy_decisions  → pd:{sessionId}:{toolName}:{eventType}
+policy_decisions  → pd:{sessionId}:{toolUseId}:{toolName}:{eventType}
 context_packs     → one per runId (existence check before insert)
 knowledge_edges   → unique(projectId, sourceType, sourceId, targetType, targetId, edgeType)
 ```
+
+> **F14 closure (2026-04-27 verification).** The original
+> `policy_decisions` formula was `pd:{sessionId}:{toolName}:{eventType}`,
+> which collapsed legitimately distinct tool invocations within a
+> session — e.g., Write to file A (deny) and Write to file B (allow)
+> shared the key, the second row dropped on the UNIQUE index, and the
+> audit trail lost the second decision. SOC2 / NHI governance depends
+> on every decision having a row, so `toolUseId` is now part of the key.
+> Retry dedupe (same toolUseId on the same tool/event in the same
+> session) still collapses to one row. Legacy callers that omit
+> toolUseId fall back to the `'no-turn'` sentinel; both
+> `apps/hooks-bridge` (Claude Code / Cursor / Windsurf turn ids) and
+> `apps/mcp-server::check_policy` (optional `toolUseId` input field)
+> now thread the value through.
 
 **Index strategy (Postgres team mode):**
 ```sql
@@ -947,30 +963,32 @@ An agent touching `src/middleware/auth.ts` can retrieve the auth module's featur
 
 ## 18. LLM Enrichment Strategy
 
-### Two-Tier Provider Model
+### Two-Tier Provider Model (amended 2026-04-24 — Gemini is the managed path; Anthropic deprecated)
 
 ```
-Tier 1 — Local (default, no API key needed):
+Tier 1 — Local (solo default, no API key needed):
   Ollama running on developer's machine
   Model: llama3.1:8b (recommended) or mistral:7b-instruct
   Purpose: structured JSON extraction for context pack summaries
 
-Tier 2 — Cloud (override, requires API key):
-  ANTHROPIC_API_KEY → claude-3-5-haiku-20241022
-  GEMINI_API_KEY    → gemini-1.5-flash
-  Priority: Anthropic > Gemini (if both set, Anthropic is used)
+Tier 2 — Managed cloud (team-mode default, our key):
+  GEMINI_API_KEY → gemini-1.5-flash
+  Used by the team-mode hosted NL Assembly service with the org-owned key.
+
+Anthropic Claude was the previous Tier-2 default and is no longer the
+documented path. The env var slot may stay as an undocumented advanced
+override but is not recommended. See decisions-log 2026-04-24 — "Managed
+LLM in team mode is Gemini, not Anthropic."
 ```
 
 ### Runtime Provider Selection
 
 ```python
 def _select_provider(self) -> Optional[LLMProvider]:
-    if os.getenv("ANTHROPIC_API_KEY"):
-        return AnthropicProvider()
     if os.getenv("GEMINI_API_KEY"):
-        return GeminiProvider()
+        return GeminiProvider()              # team-mode managed path
     if self._ollama_available():
-        return OllamaProvider(model="llama3.1:8b")
+        return OllamaProvider(model="llama3.1:8b")  # solo default
     return None  # enrichment skipped, AST-only mode
 
 def _ollama_available(self) -> bool:
@@ -1092,6 +1110,20 @@ Fail fast: TypeScript errors block everything. Zero tolerance on type errors.
 
 These are deliberate gaps — not omissions. Each requires new information before a decision is sound.
 
+> **2026-04-24 amendment:** Two prior open decisions are now closed by user directive — see the "Resolved (kept here for traceability)" sub-table below. Two new constraints land at the same time: team mode is hosted by us (no BYO-cloud variant in v1), and the managed LLM is Gemini (not Anthropic). See `context_memory/decisions-log.md` 2026-04-24 entries.
+
+### Resolved (kept here for traceability)
+
+| Decision | Resolution (2026-04-24) |
+|---|---|
+| Hosted vs BYO-cloud team service | **Hosted by us only in v1.** Single managed Supabase Postgres + Upstash Redis + Railway/Fly.io stack. BYO-cloud is a post-launch Enterprise variant. Per user directive — "make the team service hosted by us." |
+| Security: RLS and local secret permissions | **Closed in favor of single Postgres + RLS:** every team-scoped table carries `org_id`; Supabase Row-Level Security policies (`WHERE org_id = (auth.jwt()->>'org_id')::text`) enforce isolation at the DB layer. Local-mode secret-permission half stays open — `~/.contextos/config.json` MUST be `chmod 600` and the CLI (Module 08a) writes it with that mode. |
+| Pricing / monetization | **Out of scope for v1.** No Stripe, no `subscriptions` / `usage_quotas` tables, no metering. Per user directive 2026-04-24 — "forget about monetary setup, only focus on building the working product." |
+| Marketing / distribution site | **Out of scope.** No `contextos.dev` HTML or landing page in this repo. Module 08b removed. CLI is the only install surface in scope (Module 08a). |
+| Solo-mode feature gating | **No gating.** Solo has full feature parity for everything technically possible without a hosted backend. Per user directive 2026-04-24 — "no restrictions." |
+
+### Still open
+
 | Decision | What to resolve first |
 |---|---|
 | Embedding model for vector search | Benchmark all-MiniLM-L6-v2 vs e5-small vs bge-small on context pack similarity quality |
@@ -1099,10 +1131,9 @@ These are deliberate gaps — not omissions. Each requires new information befor
 | Graphify output format stability | Does Graphify's `graph.json` schema change across versions? Need versioning or a schema validation step in the adapter. |
 | Windsurf `post_cascade_response` as session end proxy | This event fires after each Cascade response, not only at IDE close. Need to decide if each response is a session segment or if session end requires a different signal. |
 | sqlite-vec upgrade path to team Postgres | When a solo user upgrades to team mode, local sqlite-vec embeddings must be migrated to pgvector. Recommended: re-embed from stored text (the source text is always persisted; re-running the embedding model is cheap). Direct float32 blob export is theoretically possible but requires matching model + normalization exactly. |
-| MCP remote transport (future) | When remote MCP over HTTP becomes important for team setups, the MCP server needs HTTPS + Clerk auth on the `/mcp` endpoint. Design deferred until there are paying team accounts. |
+| MCP remote transport (future) | When remote MCP over HTTP becomes important for team setups, the MCP server needs HTTPS + Clerk auth on the `/mcp` endpoint. Design deferred until team mode reaches GA. |
 | Sync table subset | Explicitly define which tables are synced local → cloud: `runs`, `run_events`, `context_packs`, `policy_decisions` (append-only, safe to replicate). Not synced: `feature_packs`, `policy_rules` (cloud is the single writer for these in team mode; local is a pull-only cache). If the sync scope expands, consider a change-data-capture (CDC) or logical-replication-driven approach instead of polling `WHERE synced_at IS NULL`. |
 | Aggregated metrics / observability | The event log captures raw data but there is no plan for aggregated metrics (policy violation rates, enrichment failure rates, pack assembly latency distributions). Reserve a `usage_aggregates` table or a Prometheus `/metrics` endpoint now — even if unpopulated — so the slot exists when monitoring becomes important. |
-| Security: RLS and local secret permissions | Supabase Postgres has Row-Level Security (RLS) available. Add org-scoped RLS policies on every table (`WHERE org_id = auth.jwt()->'org_id'`) to prevent cross-org data leaks at the DB layer. In local mode, `~/.contextos/config.json` contains the `LOCAL_HOOK_SECRET`; ensure it is created with `chmod 600` (`rw-------`) so only the owning user can read it on shared machines. |
 | JIRA OAuth token encryption at rest | `integration_tokens.access_token` and `refresh_token` must not be stored as plaintext. Options: (a) Supabase `pgcrypto` `pgp_sym_encrypt` with a key from a secrets manager, (b) application-level AES-256-GCM with a `CONTEXTOS_TOKEN_KEY` env var rotated quarterly, (c) store only a handle and keep tokens in a KMS/Vault. Decision deferred until team mode ships; until then, dev-only tokens use (b) with a random key per environment. |
 | JIRA state sync — webhook-derived vs. poll-derived | Webhook delivery is best-effort (Atlassian retries but can drop). A nightly reconciliation job that calls `jira_search_issues` for every active integration and reconciles against `integration_events` closes the gap. Not needed for v1 if webhooks stay reliable; instrument webhook delivery rate first and add reconciliation only if drift is observed. |
 | Multi-site Atlassian access | A single Atlassian user may have access to multiple Atlassian sites (`cloudid`s). The OAuth token is global; each API call must include the right `cloudid` in the URL. The `integrations` table stores one row per (org, cloudid) pair so teams can connect multiple sites; the UI picks the right site per project via `feature_packs.content.jiraSiteId`. |
@@ -2285,9 +2316,9 @@ These are the tools every project using ContextOS exposes. They bind the agent t
 
 **Returns (soft-failure):** `{ ok: false, error: 'project_not_found', howToFix: string }` — the `projectSlug` is not registered. **Project lookup miss is NOT fail-open** — §7 fail-open covers evaluator faults, not caller-addressable errors. Module 03 (Hooks Bridge) should treat a `project_not_found` response as `allow` for hook-dispatch; otherwise a missing project registration would silently block all work (see `context_memory/decisions-log.md` 2026-04-24 S14 entry).
 
-**Latency target:** <10 ms on the critical path. The audit-row INSERT is dispatched via `setImmediate(...)` and fires AFTER the handler returns — `policy_decisions` visibility lags the response. Retries on the same `(sessionId, toolName, eventType)` triple dedupe on the `policy_decisions.idempotency_key` UNIQUE index via `ON CONFLICT DO NOTHING`.
+**Latency target:** <10 ms on the critical path. The audit-row INSERT is dispatched via `setImmediate(...)` and fires AFTER the handler returns — `policy_decisions` visibility lags the response. Retries on the same `(sessionId, toolUseId, toolName, eventType)` tuple dedupe on the `policy_decisions.idempotency_key` UNIQUE index via `ON CONFLICT DO NOTHING`. Distinct `toolUseId` values within a session land distinct rows — required for audit-trail integrity (F14).
 
-**Storage:** audit row written to `policy_decisions` (key format `pd:{sessionId}:{toolName}:{eventType}` per §4.3). `toolInputSnapshot` is JSON-serialised and truncated to 8 KiB with a `…[truncated:N]` suffix — prevents audit-table bloat from large-body tool inputs while preserving original-size forensics.
+**Storage:** audit row written to `policy_decisions` (key format `pd:{sessionId}:{toolUseId}:{toolName}:{eventType}` per §4.3 / F14 closure). The `toolUseId` input is optional on the MCP `check_policy` tool — agent harnesses pass the same `tool_use_id` they fire at the hooks-bridge so the audit row dedupes correctly across surfaces. Legacy callers that omit it fall back to the `'no-turn'` sentinel. `toolInputSnapshot` is JSON-serialised and truncated to 8 KiB with a `…[truncated:N]` suffix — prevents audit-table bloat from large-body tool inputs while preserving original-size forensics.
 
 **Cache (S14 upgrade):** rule cache is keyed per-projectId (`Map<projectId, …>`) — one project's cached rules don't mask another's. TTL unchanged at 60s. The S7b-era `'all'` sentinel is retained as a `__global__` fallback for pre-S14 callers (registry auto-wrap) that omit `projectId`.
 

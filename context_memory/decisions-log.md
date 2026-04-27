@@ -950,3 +950,118 @@ This is the kind of latent encoding bug that integration tests at the wrong gran
 **Alternatives considered:** Update `get_run_id` to accept colon-bearing sessionIds (rejected — breaks the runId encoding which other handlers parse). URL-encode the sessionId in runIds (rejected — runId is a primary key; round-trip encoding is fragile). Accept the bug as latent because nothing currently chains transport→get_run_id (rejected — production usage WILL chain that path; lock the contract now).
 
 **Reference:** `apps/mcp-server/src/transports/http.ts` line 165 (`http-${uuid}`); `apps/mcp-server/src/index.ts` line 123 (`stdio-${uuid}`); `apps/mcp-server/src/tools/get-run-id/handler.ts` validation throw on colon-bearing sessionId; `__tests__/e2e/full-session.test.ts` (the test that exposed it on first run); user 2026-04-25 e2e directive.
+
+## 2026-04-25 14:30 — Module 03 begins; 15-slice plan approved per docs/feature-packs/03-hooks-bridge/
+
+**Decision:** Module 03 (Hooks Bridge) starts on a fresh `feat/03-hooks-bridge` branch off `main` (`f496cc5`). Slice plan: S1 docs (this commit) → S2 context memory → S3 extract policy+auth to shared → S4 createDb local|cloud refactor (closes verification §8.3) → S5 scaffold apps/hooks-bridge → S6 per-agent adapters + HookEvent + normalizeSessionId (closes §8.6) → S7 pre-tool policy → S8 post-tool RunRecorder → S9 SessionStart/Stop → S10 UserPromptSubmit → S11 adapter shell scripts → S12 .mcp.json wiring → S13 cross-mode + cloud-mode integration → S14 full-session e2e → S15 closeout pack.
+
+**Rationale:** Linear build order per `essentialsforclaude/08-implementation-order.md` §8.1 — Module 03 depends on Modules 01 + 02 and is itself a prerequisite for 04, 05, 06, 07, 08a. The slicing keeps each commit ≤ one cohesive concern and per amendment-B keeps reference docs in sync. The carryover absorption (§8.3 in S4, §8.6 in S6) lands inside the natural code touchpoints rather than as a separate cleanup pass.
+
+**Alternatives considered:** Defer §8.3 to a Module 04 sync-daemon design slice (rejected — Module 03's hooks-bridge IS a local service that needs to write to local SQLite in BOTH solo and team mode; closing the architectural contradiction here is non-blocking but feels right alongside the new local service). Defer §8.6 to a future "validation hardening" pass (rejected — Module 03 introduces three new external boundaries that take sessionIds; locking the schema-layer validation now means each new adapter is built correct, not retrofitted). Skip the docs commit as redundant with the chat-attached plan (rejected — feature-pack docs are the durable contract every future agent reads).
+
+**Reference:** `docs/feature-packs/03-hooks-bridge/{spec,implementation,techstack}.md`; `docs/verification/2026-04-25-module-01-02-verification.md` §8.3 + §8.6 carryover; `essentialsforclaude/08-implementation-order.md` §8.1 module table; commits `3a76f23` (S1), `5b6b13d` (pre-S1 scope updates).
+
+## 2026-04-25 14:45 — Pre-S1 commit absorbs orphan 2026-04-24 user-directive scope updates + Module 08a placeholder
+
+**Decision:** Before the S1 docs commit, a `chore(scope): apply 2026-04-24 user-directive scope updates + Module 08a placeholder` commit (`5b6b13d`) lands on `feat/03-hooks-bridge` to capture three orphan-but-valuable file modifications from a prior session (`essentialsforclaude/08-implementation-order.md` — Module 08a inserted between 03 and 04 + four "out of every module" scope items; `system-architecture.md` §18 — Tier-2 LLM amended to Gemini-not-Anthropic; `context_memory/pending-user-actions.md` — enriched GitHub App registration steps + GEMINI_API_KEY entry) along with the untracked-but-substantial `docs/feature-packs/08a-cli/` directory (344 lines of placeholder feature-pack docs) and a `.gitignore` entry for `.claude/`.
+
+**Rationale:** These edits represent meaningful prior-session scope clarification work that never reached `main`. Discarding via stash-forever would lose them; landing as a separate context-memory commit on Module 03's branch keeps the scope record durable and unblocks Module 03's plan (which references "Module 08a" for the §8.5 deferral and the Gemini-not-Anthropic decision). They're doc-only, no code risk.
+
+**Alternatives considered:** Discard via `git restore` (rejected — destroys real prior work). Land them on `main` directly via a separate PR (rejected — main is squash-merged history; cherry-picking them onto a fresh branch is the same end state but with extra ceremony). Keep them stashed indefinitely (rejected — stashes go stale and get dropped when other work happens).
+
+**Reference:** commit `5b6b13d`; `docs/feature-packs/08a-cli/`; `essentialsforclaude/08-implementation-order.md` Module 08a sequencing rationale.
+
+## 2026-04-25 15:00 — Module 03 S3: policy lives in new `@contextos/policy` package, NOT `@contextos/shared/policy`
+
+**Decision:** Module 03 S3 deviates from spec.md's original wording ("policy moves to `packages/shared/src/policy/`") and instead creates a new workspace package `@contextos/policy` (`packages/policy/`) for the policy evaluator. Auth still moves to `packages/shared/src/auth/` as planned (no DB dep, no cycle risk).
+
+**Rationale:** `@contextos/db` already depends on `@contextos/shared` (for `createLogger` + `InternalError` + `ValidationError`). Putting the policy module in shared would force shared to depend on `@contextos/db` (for `DbHandle` + the schema tables the evaluator queries), creating a workspace cycle. A new package that depends on both `shared` and `db` is the structurally correct resolution. Auth has no DB dependency — only `@clerk/backend` + node-builtin `crypto.timingSafeEqual` — so it lives in shared as planned.
+
+`IdempotencyKey` (the discriminated `{ kind, key }` value-shape) also moves to `packages/shared/src/idempotency.ts` so the cross-package `PolicyInput.idempotencyKey` field can reference it without depending on the mcp-server-specific framework. Tool-registration concerns (`IdempotencyKeyBuilder<Input>`, `IdempotencyContext`, `assertIdempotencyKeyBuilder`) stay in mcp-server's `framework/idempotency.ts`.
+
+The `auth-chain.test.ts` test file moved from `apps/mcp-server/__tests__/unit/lib/` to `packages/shared/__tests__/unit/auth/` so `vi.mock('@clerk/backend')` actually intercepts. When the test lived in mcp-server, the mock applied only to that file's resolution context; the dist of the `@contextos/shared/auth` module imported `@clerk/backend` through a different resolution path and bypassed the mock. Moving the test to the same package as the implementation fixed it without needing vitest `deps.inline` gymnastics. The `McpServerEnv` parameter type was replaced with `AuthEnv` (a structural subset declared in shared/auth/types) so the test no longer reaches into mcp-server.
+
+**Alternatives considered:**
+- Break `@contextos/db`'s shared dependency by inlining the three primitives db consumes (rejected — duplicates `InternalError` / `ValidationError` / `createLogger` across packages, breaking single-source-of-truth for error types).
+- Use type-only imports of db in shared/policy (rejected — policy imports `postgresSchema` and `sqliteSchema` as runtime values for query construction; type-only doesn't work).
+- Lazy-import db at call time inside shared/policy (rejected — ESM doesn't support synchronous lazy import; async lazy adds latency to the policy hot path).
+- Put policy directly in `@contextos/db` (rejected — conflates schema/migrations with domain logic; also pulls cockatiel + picomatch into the db package's surface).
+- Keep policy in mcp-server and have hooks-bridge import from a peer app (rejected — hooks-bridge depending on mcp-server breaks CQRS pattern 1: write surface should not depend on read surface).
+
+**Reference:** new `packages/policy/` workspace package; updated `apps/mcp-server/{src/lib/policy.ts, src/framework/policy-wrapper.ts}` re-export shims; `packages/shared/{src/auth/, src/idempotency.ts}` additions; `docs/feature-packs/03-hooks-bridge/{spec.md, implementation.md S3, techstack.md}` rewritten to reflect the new shape; `External api and library reference.md` new `@contextos/policy` subsection under Validation/Schemas/Resilience + module-location notes on cockatiel/@clerk/backend/picomatch subsections (amendment B).
+
+## 2026-04-25 15:18 — Module 03 S4: createDb takes a kind discriminator; mode no longer dictates DB routing (closes verification §8.3)
+
+**Decision:** `packages/db/src/client.ts::createDb` is refactored from `{ mode?: 'solo'|'team', sqlite?, postgres? }` to a discriminated union `{ kind: 'local', mode?, sqlite? } | { kind: 'cloud', mode?, postgres? }`. `kind: 'local'` always returns SQLite; `kind: 'cloud'` always returns Postgres; `mode` is an auth-strategy hint and does NOT change DB choice. The Module 02 `CONTEXTOS_DB_OVERRIDE_MODE` env knob is removed — the new signature makes it unnecessary.
+
+`apps/mcp-server/src/lib/db.ts::createDbClient` always passes `kind: 'local'` because mcp-server is a local service per `system-architecture.md` §1. The boot path defends with `if (dbHandle.kind !== 'sqlite') throw` so a future wiring bug would surface immediately rather than silently degrade. The old `apps/mcp-server/__tests__/integration/boot-db-override.test.ts` is renamed to `boot-team-mode-local-sqlite.test.ts` and rewritten to assert the new contract: `CONTEXTOS_MODE=team` boots on SQLite without any override env var.
+
+**Rationale:** `system-architecture.md` §1 is unambiguous: local services always write to local SQLite, in both solo and team mode. Cloud Postgres is reached by separate cloud-side processes (Sync Daemon, cloud-api) that hold their own handles. The Module 02 `mode → DB` coupling contradicted that rule; the verification report flagged it as the §8.3 finding. The override env knob was a stop-gap. Now the code finally matches the architecture, and `mode` is free to mean what it always should have meant — "which auth strategy do I use?" — orthogonal to dialect choice.
+
+**Alternatives considered:**
+- Keep `mode → DB` coupling and document it (rejected — directly contradicts architecture §1).
+- Make the discriminator implicit — auto-derive `kind` from `mode` (rejected — same coupling, same problem).
+- Add a third `kind: 'inferred'` that reads env (rejected — env-driven dispatch is fragile, the override knob already showed why).
+- Keep `mode` optional everywhere (kept it optional; the change is to `kind` becoming the dispatch axis, with `mode` retained as a free-form hint).
+
+**Reference:** `packages/db/src/client.ts` (refactored CreateDbOptions + createDb); `apps/mcp-server/src/{lib/db.ts, config/env.ts (CONTEXTOS_DB_OVERRIDE_MODE removed), index.ts (boot path always-local)}`; `apps/mcp-server/__tests__/integration/boot-team-mode-local-sqlite.test.ts` (renamed + rewritten); `packages/db/__tests__/unit/client.test.ts` (kind-discriminator coverage replacing the old mode-dispatch tests); `docs/DEVELOPMENT.md` "Local team-mode auth dev" rewritten; `docs/verification/2026-04-25-module-01-02-verification.md` §11 appendix marks §8.3 closed; `External api and library reference.md` Drizzle subsection adds a "createDb local-vs-cloud routing" note.
+
+## 2026-04-25 16:00 — Module 03 S5: scaffolded apps/hooks-bridge with Hono + auth chain inheritance
+
+**Decision:** Created `apps/hooks-bridge/` workspace package — Hono service on `127.0.0.1:3101` per `system-architecture.md` §3.5. Mirrors mcp-server's bootstrap shape (stderr-logging guard, Zod-validated env, lib/db factory always passing kind: 'local'). The three POST /v1/hooks/{claude-code,windsurf,cursor} routes are mounted with the three-layer auth chain extracted to `@contextos/shared/auth` in S3. GET /healthz is unauthed.
+
+**Rationale:** Pairs with mcp-server (read surface) per CQRS pattern 1. Module 03's whole point is to land this service before any of the per-agent adapter, RunRecorder, or policy-enforcement code can be wired — the scaffold is the load-bearing first slice. Choosing the same layout as mcp-server (config/env, bootstrap, lib, app, index) means a future maintainer reading either app's code can navigate the other in seconds.
+
+**Test architecture:** vi.mock('@clerk/backend') in hooks-bridge's auth-chain integration test was deliberately removed — the same pattern that bit Module 03 S3 (mock doesn't reach the dist's transitive import). The Clerk path's wire code is exercised in `packages/shared/__tests__/unit/auth/auth.test.ts` where the mock applies natively. hooks-bridge tests stay at chain-order granularity: solo-bypass / X-Local-Hook-Secret / no-auth-401 / wrong-secret-401 / bad-Bearer-401 / all-three-routes-share-chain.
+
+**Reference:** `apps/hooks-bridge/{package.json, tsconfig.json, tsconfig.typecheck.json, vitest.config.ts, vitest.integration.config.ts, src/{bootstrap,config,lib,app,index}.ts, __tests__/{unit/config/env.test.ts, integration/{healthz,auth-chain}.test.ts}}`; `.github/workflows/ci.yml` (integration + e2e jobs build hooks-bridge dist).
+
+## 2026-04-25 16:30 — Module 03 S6: per-agent adapters + HookEvent + normalizeSessionId (closes verification §8.6)
+
+**Decision:** Built `packages/shared/src/hooks/` with: `event.ts` (HookEventSchema + HookEvent type per §3.4), `normalize-session-id.ts` (the single function that sanitises agent-supplied session ids at the hooks-bridge boundary), `payloads/{claude-code,windsurf,cursor}.ts` (Zod schemas with `.strict()` rejecting unknown top-level fields), `adapters/{claude-code,windsurf,cursor}.ts` (per-agent normalizers producing HookEvent or null), and `index.ts` (barrel). New subpath export `./hooks` on `@contextos/shared/package.json`. Wired the adapters into hooks-bridge routes in `apps/hooks-bridge/src/app.ts` with fail-open on Zod parse failure (returns `permissionDecision: 'allow'` + `reason: 'invalid_hook_payload'` + WARN log).
+
+**§8.6 closure:** the Module 02 commit `315c41d` introduced `runKeySegmentSchema` and used it at the MCP registry boundary, protecting the read surface. Module 03 S6 extends the same invariant to the write surface: every hooks-bridge ingress runs the agent-supplied session_id (Claude Code's `session_id`, Windsurf's `trajectory_id`, Cursor's `conversation_id`) through `normalizeSessionId(raw)`, which sanitises Windows-reserved chars + whitespace + collapses double-hyphens + ends with `runKeySegmentSchema.parse(...)` (defence-in-depth — empty result throws). The carryover that the Module 02 verification report flagged as "Hooks Bridge ingress is the place this needs to land" is now landed.
+
+**Adapter pattern (§16 pattern 12):** the three adapters produce HookEvents that match across the four downstream-relevant fields (eventPhase, toolName, filePath, rawAt) for semantically-equivalent inputs. Adding a new agent in the future is one new payload schema + one new adapter + one new shell script — zero agent-specific code downstream of the adapter. Locked by `__tests__/unit/hooks/adapter-parity.test.ts`.
+
+**Tool-name normalization:** Windsurf's `agent_action_name` is the lifecycle marker (pre_write_code), not the tool name. The adapter maps it to the same vocabulary Claude Code uses (Write, Edit, Bash, Read, MCP, user_prompt) so policy rules don't need per-agent matching. Cursor passes `tool_name` through as-is, matching Claude Code's convention.
+
+**Cursor payload note:** Cursor's hook system is newer + less stable than Claude Code's or Windsurf's; the schema reflects the shape ContextOS observes today. `.strict()` rejects unknown fields — drift surfaces as a parse failure with fail-open, not a silent misroute.
+
+**Three Windsurf events deliberately unmapped:** `post_read_code`, `post_user_prompt`, `pre_cascade_response` per `system-architecture.md` §3.3 mapping table. Adapter returns `null` for those; route returns `{ decision: 'allow' }` without invoking dispatch — preserves the "ack but don't process" semantic.
+
+**Reference:** `packages/shared/src/hooks/{event.ts, normalize-session-id.ts, payloads/{claude-code,windsurf,cursor}.ts, adapters/{claude-code,windsurf,cursor}.ts, index.ts}`; `packages/shared/package.json` (./hooks subpath export); `apps/hooks-bridge/src/app.ts` (route handlers wired through Zod validate + adapter + dispatch); 5 test files under `packages/shared/__tests__/unit/hooks/` (24 tests); `apps/hooks-bridge/__tests__/integration/adapters.test.ts` (7 tests covering happy-path + Zod rejection + non-JSON + unmapped event + deny propagation across all three agents); `docs/verification/2026-04-25-module-01-02-verification.md` §11 marks §8.6 closed in S6.
+
+## 2026-04-25 16:45 — Module 03 S7: pre-tool policy enforcement + project resolver (cwd → slug → projects.id)
+
+**Decision:** Built the pre-tool-use handler at `apps/hooks-bridge/src/handlers/pre-tool-use.ts`. Composed via `apps/hooks-bridge/src/lib/dispatch.ts`'s `composeDispatch({ preToolUse })` which routes by `eventPhase`: `'pre'` → real policy enforcement; everything else → S8/S9 stubs (returns allow until those slices wire RunRecorder + lifecycle handlers). The dispatch is plumbed into `buildApp({ env, dispatch })` in `index.ts`.
+
+**Project resolver:** the policy evaluator filters `policies.project_id` against a UUID, but `.contextos.json` and tools speak in slugs. The resolver at `apps/hooks-bridge/src/lib/resolve-project-slug.ts` does the two-stage lookup — cwd → slug (read `<cwd>/.contextos.json`) → projects.id (DB SELECT) — with separate 60s caches per stage. On any failure (file missing, schema mismatch, DB error, slug not registered): returns `{ slug: undefined, projectId: undefined }` and the policy evaluator falls back to its `__global__` cache slot (loads every project's rules unfiltered). Soft-fail by design: the policy still runs at coarser scope.
+
+**Fail-open posture (spec acceptance #13):** the handler explicitly catches `policy.evaluate` throws and returns `{ permissionDecision: 'allow', permissionDecisionReason: 'policy_check_unavailable' }`. The cockatiel breaker + timeout fuse already inside `@contextos/policy::createPolicyClient` provides the underlying fail-open; this handler's catch is the second line. Three fail-open paths covered by unit tests: evaluator throws, project slug undefined, wrong eventPhase (defensive belt-and-suspenders).
+
+**§4.3 idempotency-key shape:** `${event.sessionId}-${event.turnId ?? 'no-turn'}-pre`. The `'no-turn'` sentinel handles SessionStart events that may legitimately lack a turn (S9 will use it). Wrapped in `{ kind: 'mutating' as const }` because pre-tool-use writes `policy_decisions` (S8 lands the actual setImmediate audit dispatch — this slice focused on the decision path).
+
+**Tests:** 4 unit tests in `__tests__/unit/handlers/pre-tool-use.test.ts` (fail-open paths from spec acceptance #13). 4 integration tests in `__tests__/integration/handlers/pre-tool-use.test.ts` boot a real SQLite (with sqlite-vec extension loaded — required by migration 0001), seed one project + one policy + one deny rule (`Write` to `src/auth/**`), then exercise: claude-code Write to src/auth/x.ts → deny; claude-code Write to src/utils/y.ts → allow; cursor Write to src/auth/x.ts → deny (cross-agent rule applies); claude-code PostToolUse → allow (S8 stub).
+
+**Gotcha caught:** initial test seeded `projects` row without `org_id`; schema requires it (NOT NULL). Fixed by adding `orgId: 'org_dev_local'`. Also caught: passing `slug` as `projectId` in PolicyInput would fail rule matching since the evaluator filters `policies.project_id` (UUID), not slug — added the slug→id lookup to the resolver.
+
+**Reference:** `apps/hooks-bridge/src/{handlers/pre-tool-use.ts, lib/{resolve-project-slug.ts,dispatch.ts}, index.ts}`; `apps/hooks-bridge/__tests__/{unit/handlers/pre-tool-use.test.ts, integration/handlers/pre-tool-use.test.ts}`. `apps/mcp-server/src/tools/check-policy/handler.ts::resolveProjectId` is the precedent for the slug→id pattern.
+
+## 2026-04-25 17:00 — Module 03 S8: post-tool RunRecorder + policy_decisions audit; sha256 id replaces architecture's hyphen-separated key
+
+**Decision:** Built `apps/hooks-bridge/src/lib/run-recorder.ts` with two methods — `recordPostToolUse(event)` writing `run_events` and `recordPolicyDecision({event, projectId, ...})` writing `policy_decisions`. Both methods are sync-return; the actual DB write goes through `setImmediate` (or a test-injected schedule). Wired into `app.ts` via `composeDispatch({ preToolUse, postToolUse })` — `eventPhase === 'post'` now routes through the real handler. Pre-tool handler also accepts an optional RunRecorder and schedules the audit-write per call.
+
+**run_events.id shape — the architecture deviation:** `system-architecture.md §4.3` specifies `{sessionId}-{toolUseId}-{phase}` as the run-event idempotency key. `@contextos/shared::generateRunEventKey` enforces this shape and rejects hyphens in the segments (`assertRunEventKeySegment` throws on `:` or `-`). But Module 03 S6's `normalizeSessionId` produces hyphen-rich session ids by design — every Windows-reserved char + whitespace + colon is replaced with a hyphen. Result: every hook ingress fails the run-event key build with `ValidationError: sessionId must not contain ':' or '-'`.
+
+Resolution: build the id as `re_` + sha256(sessionId + '|' + toolUseId + '|' + phase).slice(0, 32). The hash captures the same uniqueness contract while accepting any input. Architecture's stated SHAPE is preserved in spirit (deterministic per-event triple); the wire form differs.
+
+**Why not just relax the shared validator?** The validator protects two consumers: hooks-bridge run_events (this slice) AND any future code path that wants to construct a deterministic event key for parsing. Relaxing the validator silently changes the parse contract for the latter. The local recorder hash keeps the boundary contract narrow — hooks-bridge owns its own id shape. shared/idempotency stays strict for callers who need parseable keys.
+
+**8KB tool_input clamp:** `clampToolInput(value)` JSON-serialises and truncates to 8 * 1024 Unicode code points via `Array.from(s).slice(0, N).join('')`. Unicode code-point safe — a multi-byte char at position 8191 stays intact. Same clamp shape Module 02's policy_decisions audit uses.
+
+**runId is best-effort:** PostToolUse may arrive before SessionStart creates the `runs` row. The recorder calls a (currently no-op) `lookupRunId` and writes `runId: null` if no match. The schema's `ON DELETE SET NULL` is exactly the design that supports this. S9 (SessionStart/Stop) will own the runs lookup; the recorder's `lookupRunId` is wired but currently passes `projectSlug: undefined` — projectSlug threading lands when the post-tool-use handler grows the project resolver.
+
+**Test schedule contract:** `RunRecorder.schedule` accepts `(cb: () => Promise<void>) => void`. Default fires-and-forgets via setImmediate; test override pushes the returned promise onto a tracked `pending` array, and the test calls `await drain()` before assertions. Production setImmediate is proven idempotent by the SQL layer; sync drain just removes timing flakiness from the suite.
+
+**Reference:** `apps/hooks-bridge/src/lib/run-recorder.ts`, `apps/hooks-bridge/src/handlers/post-tool-use.ts`, `apps/hooks-bridge/src/lib/dispatch.ts` (composer extended), `apps/hooks-bridge/src/handlers/pre-tool-use.ts` (audit-write wiring), `apps/hooks-bridge/src/index.ts` (createRunRecorder wiring); `apps/hooks-bridge/__tests__/{unit/handlers/post-tool-use.test.ts, integration/handlers/post-tool-use.test.ts}` (3 idempotency + clamp tests).

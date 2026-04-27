@@ -121,3 +121,27 @@ function assertRunEventKeySegment(value: unknown, field: string): asserts value 
     throw new ValidationError(`${field} must not contain ':' or '-' (run-event-key separators)`);
   }
 }
+
+/**
+ * Discriminated idempotency-key shape used by every consumer that
+ * computes an idempotency key for a tool / hook call.
+ *
+ * Module 03 S3 moved this type from `apps/mcp-server/src/framework/
+ * idempotency.ts` here so the cross-package `PolicyInput` type (in
+ * `@contextos/policy/types`) can reference it without depending on
+ * the mcp-server-specific framework. The mcp-server framework keeps
+ * its `IdempotencyKeyBuilder<Input>` + `IdempotencyContext` +
+ * `assertIdempotencyKeyBuilder` helpers (those are tool-registration
+ * concerns); only the wire-level value-shape moves.
+ *
+ *   `kind: 'readonly'` — caller does not perform durable writes.
+ *   `kind: 'mutating'` — handler will INSERT/UPDATE; the key is the
+ *      ON CONFLICT target.
+ *
+ * Length constraint (≤ 200 chars) is enforced by the runtime probe in
+ * mcp-server's framework, not here, because it's a framework rule
+ * rather than a wire-shape rule.
+ */
+export type IdempotencyKey =
+  | { readonly kind: 'readonly'; readonly key: string }
+  | { readonly kind: 'mutating'; readonly key: string };

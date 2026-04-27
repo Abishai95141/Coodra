@@ -27,9 +27,13 @@ const checkPolicyIdempotencyKey: IdempotencyKeyBuilder<CheckPolicyInput> = (inpu
   const sessionId = typeof input?.sessionId === 'string' && input.sessionId.length > 0 ? input.sessionId : 'probe';
   const toolName = typeof input?.toolName === 'string' && input.toolName.length > 0 ? input.toolName : 'probe';
   const eventType = typeof input?.eventType === 'string' && input.eventType.length > 0 ? input.eventType : 'probe';
+  // F14 closure (2026-04-27): include toolUseId so distinct invocations
+  // within a session don't collide on the registry-level dedupe (which
+  // mirrors the DB audit-key shape).
+  const toolUseId = typeof input?.toolUseId === 'string' && input.toolUseId.length > 0 ? input.toolUseId : 'no-turn';
   return {
     kind: 'mutating',
-    key: `pd:${sessionId}:${toolName}:${eventType}`.slice(0, 200),
+    key: `pd:${sessionId}:${toolUseId}:${toolName}:${eventType}`.slice(0, 200),
   };
 };
 

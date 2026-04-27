@@ -29,3 +29,9 @@ Uncertainty is normal. What matters is resolving it with the right source. Follo
 
 - **Research online (no need to ask):** library versions, API shapes, doc URLs, published examples, deprecation notices, error-code semantics, rate-limit behaviours.
 - **Ask the user (do not research or guess):** which provider to use when multiple are viable, which tier/paid plan to pick, whether to ship a feature now vs. defer, whether to accept a breaking change, destructive operations, anything from `02-agent-human-boundary.md` §2.2.
+
+## 4.5 Before writing a verification or e2e plan that boots a binary against Postgres
+
+Closes verification finding F11 (`docs/verification/2026-04-27-module-01-02-03-verification.md`).
+
+`apps/mcp-server` and `apps/hooks-bridge` are SQLite-only by design — both unconditionally call `createDb({ kind: 'local' })`. There is no env knob, no flag, no boot path that yields a Postgres handle (M03 S4 explicitly removed `CONTEXTOS_DB_OVERRIDE_MODE`). Before authoring a verification step or test that says "boot the binary against Postgres," confirm by reading `apps/*/src/lib/db.ts`. If the apps you're targeting still pass `kind: 'local'`, the cloud-write path lives only in `@contextos/db::createDb({ kind: 'cloud' })` and is exercised through the package's own integration tests.

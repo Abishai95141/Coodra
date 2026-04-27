@@ -103,14 +103,40 @@ function expandHome(path: string): string {
   return path;
 }
 
-/** Resolve the effective SQLite path, applying defaults and home-expansion. */
+/**
+ * Resolve the effective SQLite path, applying defaults and home-expansion.
+ *
+ * Precedence (highest first), per integration finding 2026-04-27 (post-08a
+ * walk):
+ *   1. `input` argument (explicit caller override; e.g. `contextos doctor`
+ *      passes `<contextos-home>/data.db` directly).
+ *   2. `CONTEXTOS_SQLITE_PATH` env var (per-process override).
+ *   3. `CONTEXTOS_HOME` env var (per-machine umbrella; bridge + mcp-server
+ *      daemons spawned by `contextos start` get this through the plist /
+ *      systemd unit / fallback environment block so they write to the
+ *      same data.db the CLI tools read from).
+ *   4. `~/.contextos/data.db` (per-user fallback).
+ *
+ * Why this layering matters: pre-fix, daemons spawned by the CLI ignored
+ * `CONTEXTOS_HOME` for the DB path and resolved `~/.contextos/data.db`
+ * against the OS user's homedir — so the daemon wrote audit rows to
+ * a DB at one path while doctor + status read from another path. Test
+ * environments that set `CONTEXTOS_HOME=/tmp/...` saw daemons silently
+ * polluting the user's real `~/.contextos/data.db`.
+ */
 export function resolveSqlitePath(input: string | undefined): string {
-  const raw = input ?? process.env.CONTEXTOS_SQLITE_PATH ?? '~/.contextos/data.db';
-  if (raw === ':memory:') {
-    return raw;
+  if (input !== undefined && input !== '') {
+    return input === ':memory:' ? ':memory:' : resolve(expandHome(input));
   }
-  const expanded = expandHome(raw);
-  return resolve(expanded);
+  const sqlitePathEnv = process.env.CONTEXTOS_SQLITE_PATH;
+  if (sqlitePathEnv !== undefined && sqlitePathEnv !== '') {
+    return sqlitePathEnv === ':memory:' ? ':memory:' : resolve(expandHome(sqlitePathEnv));
+  }
+  const contextosHomeEnv = process.env.CONTEXTOS_HOME;
+  if (contextosHomeEnv !== undefined && contextosHomeEnv !== '') {
+    return resolve(join(expandHome(contextosHomeEnv), 'data.db'));
+  }
+  return resolve(expandHome('~/.contextos/data.db'));
 }
 
 /**
@@ -217,34 +243,64 @@ export function createPostgresDb(options: CreatePostgresDbOptions): PostgresHand
   };
 }
 
-export interface CreateDbOptions {
-  /** `'solo' | 'team'`. When omitted, reads `CONTEXTOS_MODE` then falls back to `'solo'`. */
-  mode?: 'solo' | 'team';
-  /** SQLite-specific knobs. Ignored when the resolved mode is `'team'`. */
-  sqlite?: CreateSqliteDbOptions;
-  /** Postgres-specific knobs. Required when the resolved mode is `'team'`. */
-  postgres?: CreatePostgresDbOptions;
-}
+/**
+ * Discriminated factory options.
+ *
+ * `kind: 'local'` always returns SQLite. Used by every local service —
+ * `apps/mcp-server`, `apps/hooks-bridge`, `apps/web` (Module 04) — in
+ * BOTH solo and team mode. `system-architecture.md §1` is unambiguous
+ * here: "In both solo and team modes, **local services always write to
+ * local SQLite**." Module 03 S4 makes the code match the architecture.
+ *
+ * `kind: 'cloud'` always returns Postgres. Used by the future Sync
+ * Daemon and the future cloud-api. Local code never picks this branch.
+ *
+ * `mode` (`'solo' | 'team'`) is a hint for any caller that wants to
+ * branch on auth strategy or future logging tags. It does NOT dictate
+ * DB choice. Module 02 S4's `CONTEXTOS_DB_OVERRIDE_MODE` env knob —
+ * introduced as a stop-gap for the team-mode-auth + sqlite local-dev
+ * scenario — is removed in Module 03 S4 because the new `kind`
+ * discriminator makes the override unnecessary.
+ *
+ * Closes verification finding §8.3.
+ */
+export type CreateDbOptions =
+  | {
+      readonly kind: 'local';
+      readonly mode?: 'solo' | 'team';
+      readonly sqlite?: CreateSqliteDbOptions;
+    }
+  | {
+      readonly kind: 'cloud';
+      readonly mode?: 'solo' | 'team';
+      readonly postgres?: CreatePostgresDbOptions;
+    };
 
 /**
- * Mode-dispatching factory. Module 01 ships this wired for local services:
- * solo mode → SQLite; team mode → Postgres. Services that always want one
- * specific dialect should call `createSqliteDb` / `createPostgresDb`
- * directly; the Sync Daemon in Module 03+ holds both simultaneously.
+ * Discriminated factory. `kind: 'local'` → SQLite (regardless of `mode`),
+ * `kind: 'cloud'` → Postgres. The Sync Daemon (Module 03+) is the only
+ * process that holds both simultaneously; it constructs each handle
+ * directly via `createSqliteDb` / `createPostgresDb` rather than going
+ * through this factory twice.
+ *
+ * Default behaviour when `kind` is omitted: `'local'`. This matches
+ * Module 01's "always SQLite for local services" architectural note
+ * and keeps the call sites that pass nothing (test harnesses) on the
+ * SQLite path.
  */
-export function createDb(options: CreateDbOptions = {}): DbHandle {
-  const mode = options.mode ?? (process.env.CONTEXTOS_MODE === 'team' ? 'team' : 'solo');
-  if (mode === 'team') {
-    if (!options.postgres) {
-      const databaseUrl = process.env.DATABASE_URL;
-      if (!databaseUrl) {
-        throw new ValidationError(
-          'createDb: mode=team requires either options.postgres.databaseUrl or the DATABASE_URL env var',
-        );
-      }
-      return createPostgresDb({ databaseUrl });
+export function createDb(options: CreateDbOptions = { kind: 'local' }): DbHandle {
+  if (options.kind === 'cloud') {
+    if (options.postgres) {
+      return createPostgresDb(options.postgres);
     }
-    return createPostgresDb(options.postgres);
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new ValidationError(
+        'createDb: kind=cloud requires either options.postgres.databaseUrl or the DATABASE_URL env var',
+      );
+    }
+    return createPostgresDb({ databaseUrl });
   }
+  // kind: 'local' (default).
   return createSqliteDb(options.sqlite ?? {});
 }

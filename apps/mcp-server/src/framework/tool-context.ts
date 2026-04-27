@@ -1,4 +1,6 @@
+import type { PolicyClient } from '@contextos/policy';
 import type { Logger } from '@contextos/shared';
+import type { AuthClient, Identity } from '@contextos/shared/auth';
 
 import type { IdempotencyKey } from './idempotency.js';
 
@@ -64,60 +66,13 @@ export interface DbClient {
   close(): Promise<void>;
 }
 
-/** Caller identity. Returned by `AuthClient.getIdentity` / `requireIdentity`. */
-export interface Identity {
-  readonly userId: string;
-  readonly orgId: string | null;
-  /** How the identity was resolved — audit trail. */
-  readonly source: 'solo-bypass' | 'clerk' | 'local-hook';
-}
-
-/**
- * Auth abstraction. The solo-bypass module (`createSoloAuthClient`)
- * and the Clerk-backed module (`createClerkAuthClient`, landing in
- * S7b) both satisfy this interface. Tool code never branches on mode
- * — `index.ts` picks the factory once and the handler uses whatever
- * it gets through `ctx.auth`.
- */
-export interface AuthClient {
-  /** Returns the current identity, or null if no caller is attached. */
-  getIdentity(): Promise<Identity | null>;
-  /**
-   * Like `getIdentity` but throws `UnauthorizedError` when missing.
-   * Tools that strictly require an identity call this; tools that
-   * optionally customise behaviour (e.g. per-user context) call
-   * `getIdentity` and branch on null.
-   */
-  requireIdentity(): Promise<Identity>;
-}
-
-/** Policy evaluation, as consumed by tools after the registry-level wrapper. */
-export interface PolicyClient {
-  /**
-   * Raw policy evaluation — usually tools do not call this directly
-   * because the registry already wraps every call in pre/post policy
-   * checks. Exposed here for tools that need to probe a hypothetical
-   * tool call (e.g. `record_decision` asking 'would an agent be
-   * allowed to run write_file under the current policy?').
-   */
-  evaluate(input: {
-    readonly toolName: string;
-    readonly phase: 'pre' | 'post';
-    readonly sessionId: string;
-    readonly input: unknown;
-    readonly idempotencyKey: IdempotencyKey;
-    /**
-     * Project scope for the evaluation. Additive-optional in S14
-     * (user sign-off 2026-04-24) to close the S7b deferral note at
-     * `lib/policy.ts`'s cache-key comment. Auto-wrap callers omit
-     * this and hit the `__global__` cache slot with every-project
-     * rules loaded; `check_policy` supplies the real projectId so
-     * the cache keys per project and `loadRules` filters by
-     * `policies.project_id`. See also `PolicyInput.projectId`.
-     */
-    readonly projectId?: string;
-  }): Promise<{ decision: 'allow' | 'deny'; reason: string; matchedRuleId: string | null }>;
-}
+// `Identity`, `AuthClient` moved to `@contextos/shared/auth` and
+// `PolicyClient` moved to `@contextos/policy` in Module 03 S3 so
+// `apps/hooks-bridge` can use the same shapes without depending on
+// `apps/mcp-server`. Re-exported here so existing imports
+// (`import type { Identity } from '../framework/tool-context.js'`)
+// keep compiling. Imported above for use in the local interfaces.
+export type { AuthClient, Identity, PolicyClient };
 
 /** Feature-Pack store. Implemented (stub) in `lib/feature-pack.ts`, real impl in S7c. */
 export interface FeaturePackStore {

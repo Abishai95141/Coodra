@@ -87,24 +87,6 @@ const mcpServerEnvSchema = baseEnvSchema
       .describe('Transport selection at boot: stdio | http | both. Default both.'),
 
     /**
-     * Override the DB-dialect routing decision normally derived from
-     * `CONTEXTOS_MODE`. When set to `'solo'`, `createDb` will return
-     * SQLite even under `CONTEXTOS_MODE=team` — useful for local-dev
-     * verification of the team-mode auth chain without spinning up
-     * a Postgres container. When unset (the default), the team→Postgres
-     * routing in `packages/db/src/client.ts::createDb` runs as before.
-     *
-     * Closes verification finding §8.3 (the lighter-touch fix; the
-     * deeper architectural question — should `createDb` always return
-     * SQLite for local services per §1 of the architecture? — is
-     * flagged for a separate planning round).
-     */
-    CONTEXTOS_DB_OVERRIDE_MODE: z
-      .enum(['solo', 'team'])
-      .optional()
-      .describe('Override for the DB-dialect routing in createDb. Default: derived from CONTEXTOS_MODE.'),
-
-    /**
      * Override for the on-disk `context_packs/` materialisation root.
      * `lib/context-pack.ts` defaults to `<cwd>/docs/context-packs`,
      * which is correct when the binary runs from the repo root and

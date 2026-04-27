@@ -15,13 +15,13 @@ Format:
 
 ---
 
-## 2026-04-22 20:58 — Install Docker Desktop (DUE NOW — Module 02 integration tests)
+## 2026-04-22 20:58 — Install Docker Desktop (PERSISTENT — Module 02 + 03 + future testcontainers tests)
 
 **What is needed:** A running Docker daemon on the dev machine.
-**Why:** Module 02 is in progress. From S17 onward the integration tests spawn a `pgvector/pgvector:pg16` container via `@testcontainers/postgresql`. Without Docker, `pnpm --filter @contextos/mcp-server test:integration` cannot run locally and the Module 02 acceptance gate fails on item AC-5. CI does not need Docker install because GitHub's `ubuntu-latest` runners ship with a Docker daemon.
+**Why:** Module 02 already merged with testcontainers-backed Postgres tests (`pgvector/pgvector:pg16`) running in CI; locally the same suite needs Docker. Module 03 inherits this dependency for the cloud-mode-write integration test in S13 + the cross-mode test. Future modules continue to add testcontainers-backed integration tests. CI does not need Docker install because GitHub's `ubuntu-latest` runners ship with a Docker daemon.
 **Steps:** Install Docker Desktop for macOS from <https://www.docker.com/products/docker-desktop> and start it. Verify with `docker --version` and `docker info`.
 **What to paste back:** Output of `docker --version` (expected format: `Docker version 24.x.x, build ...`).
-**Blocking module:** Module 02 (MCP Server integration tests, starting at S17).
+**Blocking module:** None blocking right now (Module 02 + 03 unit/CI suites pass without local Docker — only the local integration test command needs it).
 
 ## 2026-04-22 20:58 — Provision Clerk project (needed by Module 04 OR first team-mode flip, whichever is earlier) — S7b-refreshed 2026-04-24
 
@@ -39,34 +39,112 @@ Format:
 **What to paste back:** Nothing now. When the CLI module ships, the `lib/auth.ts::verifyLocalHookSecret` integration will switch to reading `~/.contextos/config.json` first, env var second.
 **Blocking module:** None for Module 02. Follow-up for Module 07 / dedicated distribution module.
 
-## 2026-04-22 14:27 — Provision team-mode cloud infra before team deploy
+## 2026-04-24 14:00 — Provision team-mode hosted infra before team deploy (we host, no BYO)
 
-**What is needed:** Supabase Postgres project (pgvector enabled), Upstash Redis database, Railway or Fly.io account, production domain + DNS.
-**Why:** Team-mode cloud deploy per `system-architecture.md` §13.
-**Steps:** Create accounts on the respective dashboards; provision one project per service. Populate `.env.production` locally (never committed) with the resulting URLs / keys.
-**What to paste back:** Confirmation per service (names only, not secrets).
+**What is needed:** Supabase Postgres project (pgvector extension enabled), Upstash Redis database, Railway OR Fly.io account, Clerk production project. **One stack per environment**, owned by you (the project lead). Per directive 2026-04-24 the team service is hosted by us — there is no BYO-cloud variant in v1.
+**Why:** Team-mode cloud deploy per `system-architecture.md` §13. Multi-tenant model: single Postgres with `org_id` RLS isolating teams.
+**Steps:**
+  1. Supabase: create project at <https://supabase.com/dashboard>. In SQL editor: `CREATE EXTENSION IF NOT EXISTS vector;`. Grab `DATABASE_URL` (pooled connection string).
+  2. Upstash: create Redis DB at <https://console.upstash.com>. Grab `REDIS_URL` (rediss:// TLS connection string).
+  3. Railway or Fly.io: create account; one app each for `mcp-server`, `hooks-bridge`, `web` (and later `nl-assembly`, `semantic-diff`).
+  4. Clerk: create production project at <https://clerk.com>; enable Google + GitHub + Microsoft OAuth providers + email/password fallback (per directive 2026-04-24).
+  5. Populate `.env.production` locally (never committed) with the resulting URLs / keys.
+**What to paste back:** Confirmation per service (project names only, not secrets).
 **Blocking module:** Team-mode cloud deploy (post-Module-04).
 
-## 2026-04-22 14:27 — Anthropic + (optional) Gemini / OpenAI API keys before Module 05
+## 2026-04-24 14:00 — `GEMINI_API_KEY` before Module 05 (Anthropic NOT required)
 
-**What is needed:** `ANTHROPIC_API_KEY` (required); optionally `GEMINI_API_KEY` and/or `OPENAI_API_KEY`.
-**Why:** NL Assembly Tier-3 enrichment and Semantic Diff narrative use Claude as the primary LLM (per `system-architecture.md` §18).
-**Steps:** Create keys at <https://console.anthropic.com> (and optionally <https://aistudio.google.com/app/apikey>, <https://platform.openai.com/api-keys>). Paste into `.env` locally.
-**What to paste back:** Confirmation that `ANTHROPIC_API_KEY` is populated (do NOT paste the key).
-**Blocking module:** Module 05 (NL Assembly) Tier-3; Module 06 (Semantic Diff) narrative.
+**What is needed:** `GEMINI_API_KEY` from Google AI Studio.
+**Why:** Per directive 2026-04-24 the managed LLM path is Gemini, not Anthropic. Solo mode continues to support Ollama (local, no key needed). Team mode's NL Assembly Tier-2 calls Gemini with our key.
+**Steps:** Create a key at <https://aistudio.google.com/app/apikey>. Free tier is sufficient for early dev. Paste into `.env` locally as `GEMINI_API_KEY=...`.
+**What to paste back:** Confirmation that `GEMINI_API_KEY` is populated (do NOT paste the key itself).
+**Blocking module:** Module 05 (NL Assembly) Tier-2 in team mode. Solo mode unaffected.
 
-## 2026-04-22 14:27 — GitHub App registration before §23 GitHub tools ship (post-Module-02 integration module)
+## 2026-04-24 14:00 — GitHub App registration — concrete steps (DUE before §23 integration module)
 
-**What is needed:** A GitHub App registered at <https://github.com/settings/apps>, installed on the target org, with App ID, webhook secret, client ID, client secret, and private-key PEM.
-**Why:** All 10 GitHub MCP tools in `system-architecture.md` §23 authenticate as a GitHub App (per `External api and library reference.md` → GitHub Governance & Context Layer).
-**Steps:** Register an App, add webhook URL (will be the Module-03 Hooks Bridge URL), configure required permissions (per §23), install on at least one repo, generate and download the private key.
-**What to paste back:** `GITHUB_APP_ID`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (populated in `.env`), and the PEM uploaded to the agreed secret store (never committed).
-**Blocking module:** Post-Module-02 GitHub integration module (Module 02 explicitly does NOT ship JIRA/GitHub tools per directive Step 2 non-goals; those land in a dedicated integration module after Module 02 merges).
+**What is needed:** A GitHub App registered on github.com, installed on at least one test repository, with: App ID, App slug, webhook secret, OAuth client ID, OAuth client secret, and the App's private-key PEM downloaded.
 
-## 2026-04-22 14:27 — Atlassian OAuth 2.0 (3LO) app registration before §22 JIRA tools ship (post-Module-02 integration module)
+**Why:** All 10 GitHub MCP tools in `system-architecture.md` §23 authenticate as a GitHub App (App-level webhooks + per-installation tokens). Without this you cannot test PR/branch-protection/CODEOWNERS flows end-to-end.
+
+**Concrete step-by-step (the exact answer to "what should I do"):**
+
+1. **Decide the scope.** For your dev work: register the App under your **personal account** at <https://github.com/settings/apps> → "New GitHub App". For an org you manage: <https://github.com/organizations/{org}/settings/apps> → "New GitHub App".
+2. **Fill the App form:**
+   - **GitHub App name:** `ContextOS Local Dev` (must be globally unique on github.com — append a suffix if taken).
+   - **Homepage URL:** `https://github.com/Abishai95141/Coodra` (or any valid URL — required field, not validated for the App's function).
+   - **Callback URL:** `http://localhost:3101/v1/oauth/github/callback` (Module 03's Hooks Bridge will own this route; it doesn't have to exist yet for App creation).
+   - **Webhook URL:** for local dev you have two paths:
+     - **Path A (recommended):** install **smee.io** as a webhook proxy: visit <https://smee.io/new>, copy the URL it generates, paste into the GitHub App's Webhook URL. Locally: `npx smee-client --url <smee-url> --target http://localhost:3101/v1/webhooks/github`.
+     - **Path B:** use **cloudflared** or **ngrok** to expose your localhost. Equivalent UX, slightly heavier setup.
+   - **Webhook secret:** generate a random 64-char hex string with `openssl rand -hex 32` and paste it. **Save this string** — GitHub does NOT show it again after the App is created.
+3. **Set repository permissions** (the granular ones the §23 tools use):
+   - Contents: **Read**
+   - Pull requests: **Read & Write** (Write is needed to post PR comments — required for the `github_post_pr_comment` tool)
+   - Issues: **Read**
+   - Metadata: **Read** (auto-selected, can't be turned off)
+   - Checks: **Read**
+   - Administration: **Read** (for branch-protection introspection — §23.3 / §23.4)
+4. **Set organization permissions** (only relevant if you registered the App under an org):
+   - Members: **Read** (for resolving CODEOWNERS user/team handles to identities)
+5. **Subscribe to events:**
+   - `Pull request`
+   - `Pull request review`
+   - `Pull request review comment`
+   - `Push`
+   - `Issues`
+   - `Issue comment`
+   - `Branch protection rule`
+   - `Repository`
+6. **Where can this GitHub App be installed?**
+   - For dev work: **"Only on this account"**.
+   - For production multi-tenant team mode: **"Any account"** (lets paying customers install on their orgs). You will likely register **two separate Apps** — one dev (`ContextOS Local Dev`, "Only on this account"), one production (`ContextOS`, "Any account"). Don't reuse one App for both — leaks dev webhooks into prod.
+7. **Click "Create GitHub App."**
+8. **Generate a private key** on the App's settings page → "Private keys" → "Generate a private key". A `.pem` file downloads. **Store this securely** — GitHub does NOT keep a copy.
+9. **Note the App ID** (top of the App settings page, e.g. `1234567`) and the **App slug** (the URL slug GitHub assigned, e.g. `contextos-local-dev`).
+10. **Install the App** on at least one test repo: App settings page → "Install App" sidebar → choose your account → select repos. After install, note the **Installation ID** (visible in the URL after install: `https://github.com/settings/installations/<id>`, or via the GitHub API).
+11. **Add to `.env` locally** (never committed):
+    ```
+    GITHUB_APP_ID=<the numeric App ID>
+    GITHUB_APP_SLUG=<the URL slug>
+    GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"   # single-line, \n-escaped
+    GITHUB_APP_WEBHOOK_SECRET=<the openssl rand -hex 32 string from step 2>
+    GITHUB_APP_INSTALLATION_ID=<the installation ID from step 10>
+    GITHUB_APP_CLIENT_ID=<from App settings — only needed for the user-OAuth flow, optional in dev>
+    GITHUB_APP_CLIENT_SECRET=<from App settings — generate via "Generate a new client secret">
+    ```
+**What to paste back:** Confirmation that all six required env vars (`GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_WEBHOOK_SECRET`, `GITHUB_APP_INSTALLATION_ID`, plus the smee.io URL if using Path A) are populated. Do NOT paste secrets themselves.
+
+**Blocking module:** Post-Module-02 / post-Module-03 GitHub integration module. Module 02 explicitly does NOT ship JIRA/GitHub tools per directive Step 2 non-goals; those land in a dedicated integration module after Module 03 merges (because the webhook-receive surface lives in the Hooks Bridge).
+
+## 2026-04-22 14:27 — Atlassian OAuth 2.0 (3LO) app registration before §22 JIRA tools ship (deferred)
 
 **What is needed:** An Atlassian Cloud Developer Console app with OAuth 2.0 (3LO) enabled, client ID, client secret, and a registered webhook.
 **Why:** All 8 JIRA MCP tools in `system-architecture.md` §22 authenticate via 3LO.
-**Steps:** Register at <https://developer.atlassian.com/console/myapps/>, enable Jira Cloud Platform scopes, set callback URL (Module-03 Hooks Bridge URL), generate a webhook secret.
+**Steps:** Register at <https://developer.atlassian.com/console/myapps/>, enable Jira Cloud Platform scopes, set callback URL (Module-03 Hooks Bridge URL), generate a webhook secret. **Lower priority than the GitHub App** — JIRA integration is optional in v1; users can adopt ContextOS without ever connecting JIRA.
 **What to paste back:** `ATLASSIAN_CLIENT_ID`, `ATLASSIAN_CLIENT_SECRET`, `ATLASSIAN_WEBHOOK_SECRET` populated in `.env`.
-**Blocking module:** Post-Module-02 JIRA integration module (Module 02 explicitly does NOT ship JIRA/GitHub tools per directive Step 2 non-goals; those land in a dedicated integration module after Module 02 merges).
+**Blocking module:** Post-Module-02 JIRA integration module (lower priority than the GitHub App).
+
+## 2026-04-24 14:00 — npm scope claim for `@contextos` before Module 08a publish
+
+**What is needed:** Reserve the `@contextos` npm scope (or pick an alternative scope if taken).
+**Why:** Module 08a's CLI is `@contextos/cli`. The scope must be claimed before the publish-flag-day at the end of 08a.
+**Steps:** Visit <https://www.npmjs.com/signup>, sign in (or create an org), then create the `@contextos` org at <https://www.npmjs.com/org/create>. If `@contextos` is taken, pick `@coodra` or another available scope and update the workspace package names in the same commit.
+**What to paste back:** Confirmation of the scope claimed (just the name).
+**Blocking module:** Module 08a S9 publish-flag-day (the package builds and runs without the scope; only `npm publish` requires it).
+
+## 2026-04-24 14:00 — Anthropic MCP marketplace listing (post-08a)
+
+**What is needed:** Submission of `@contextos/cli` to the Anthropic MCP marketplace (when the marketplace opens to third-party submissions).
+**Why:** Discovery channel — Claude Code users will browse the marketplace before they search npm.
+**Steps:** Watch <https://docs.anthropic.com/> for the marketplace submission portal launch. When live, follow the submission steps with `@contextos/cli` as the package name. No action required from you today.
+**What to paste back:** Submission confirmation when the marketplace accepts the listing.
+**Blocking module:** None (post-launch ops, not on the critical path).
+
+## 2026-04-27 11:25 — Schedule Module 03.1 (Durable Audit Outbox) before Module 04
+
+**What is needed:** A scheduling decision — Module 03.1 (Durable Audit Outbox) lands BEFORE Module 04 (Web App).
+**Why:** Today every audit row written by the bridge and by MCP `check_policy` is dispatched via `setImmediate(...)` after the HTTP response returns. The dispatch is in-process and not durable — SIGTERM mid-PreToolUse, kill -9, OOM, or deploy restart between response and audit-write loses the row. This was tolerable through M01–M03 because policy decisions are advisory and idempotency keys protect retries, but Module 04's audit-trail UI is the first read surface that surfaces "every decision in this run" — missing rows show up as gaps in the timeline. SOC2 readiness assumes the audit log is complete, not best-effort. F14 fixed audit-trail integrity at the key-shape layer; F8 fixed it at the FK layer; this module fixes it at the durability layer.
+**Design seed:** the `pending_jobs` table already exists in both SQLite and Postgres schemas (since M01) as the transactional outbox seed. No schema change required; the worker is the only new code.
+**Steps:** confirm scheduling — Module 03.1 lands BEFORE Module 04. The full spec will be written when scheduled; placeholder is at `docs/feature-packs/03.1-durable-outbox/`.
+**What to paste back:** "schedule 03.1 before 04" (or "land 04 first and queue 03.1 after if you decide the gap is tolerable for v1").
+**Blocking module:** Module 04 (Web App). Landing 04 first locks in audit-trail UI contracts that this module is meant to fix.

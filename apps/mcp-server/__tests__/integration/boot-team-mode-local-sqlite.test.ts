@@ -6,17 +6,19 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * Verification finding §8.3 fix: CONTEXTOS_DB_OVERRIDE_MODE.
+ * Verification finding §8.3 (closed in Module 03 S4).
  *
- * Before this fix, running the binary with `CONTEXTOS_MODE=team` failed
- * at boot with `createDb: mode=team requires DATABASE_URL` — there was
- * no production-binary path to exercise team-mode auth chain locally
- * without spinning up Postgres.
+ * Module 02 introduced `CONTEXTOS_DB_OVERRIDE_MODE` as a stop-gap so a
+ * dev could exercise the team-mode auth chain locally with a SQLite
+ * store. Module 03 S4 made the override unnecessary by refactoring
+ * `createDb` to take a `kind: 'local' | 'cloud'` discriminator —
+ * `mode` is now an auth-strategy hint that does NOT change DB routing.
  *
- * After the fix, setting `CONTEXTOS_DB_OVERRIDE_MODE=solo` decouples
- * the auth-mode decision (env CONTEXTOS_MODE) from the DB-dialect
- * decision (createDb routing). This test boots the binary with that
- * combination and asserts the server starts + tools/list works.
+ * This test boots the binary with `CONTEXTOS_MODE=team` (no override
+ * env var, none exists anymore) and asserts the server starts on
+ * SQLite — proves the new createDb default routing matches the
+ * architecture's "local services always write to local SQLite" rule
+ * (§1) instead of the previous team→Postgres misrouting.
  */
 
 const ROOT = resolve(__dirname, '..', '..', '..', '..');
@@ -42,8 +44,11 @@ beforeAll(async () => {
       NODE_ENV: 'test',
       LOG_LEVEL: 'error',
       CONTEXTOS_MODE: 'team',
-      CONTEXTOS_DB_OVERRIDE_MODE: 'solo',
+      // No CONTEXTOS_DB_OVERRIDE_MODE — that knob was removed in S4.
+      // The new createDb({ kind: 'local' }) defaulting in
+      // apps/mcp-server/src/lib/db.ts is what makes this work.
       CLERK_SECRET_KEY: 'sk_test_replace_me',
+      CLERK_PUBLISHABLE_KEY: 'pk_test_xxx',
       CONTEXTOS_LOG_DESTINATION: 'stderr',
       CONTEXTOS_SQLITE_PATH: sqlitePath,
     } as Record<string, string>,
@@ -65,22 +70,26 @@ afterAll(async () => {
   }
 }, 30_000);
 
-describe('boot — CONTEXTOS_DB_OVERRIDE_MODE=solo + CONTEXTOS_MODE=team (finding §8.3)', () => {
-  it('binary boots with team-mode auth + sqlite store; tools/list returns 9 tools; tool reaches DB without error', async () => {
+describe('boot — CONTEXTOS_MODE=team with no override knob (finding §8.3 closed)', () => {
+  it('binary boots with team-mode auth + sqlite store; tools/list returns 9 tools', async () => {
     const { tools } = await h.client.listTools();
     expect(tools.length).toBe(9);
-    // Under CONTEXTOS_MODE=team, get_run_id does NOT auto-create projects
-    // (per S8) — unknown slug → soft-failure project_not_found. That's
-    // the contract; what we're verifying here is that:
-    //   (a) the binary booted with sqlite (didn't fail at createDb).
+  });
+
+  it('tool runs end-to-end against sqlite — DB read path executed (proves no Postgres connection attempted)', async () => {
+    // Under CONTEXTOS_MODE=team with the solo-bypass sentinel, get_run_id
+    // routes through the team-mode auth path but the project must still
+    // be registered explicitly — unknown slug → soft-failure
+    // project_not_found. The exact contract is:
+    //   (a) the binary booted (didn't fail at createDb opening Postgres).
     //   (b) the tool ran end-to-end against sqlite (transport ok:true).
     //   (c) the soft-failure envelope shape is canonical, proving the
-    //       DB read path actually executed.
-    const result = await h.client.callTool({ name: 'get_run_id', arguments: { projectSlug: 'override-test' } });
+    //       DB read path actually executed against a real sqlite handle.
+    const result = await h.client.callTool({ name: 'get_run_id', arguments: { projectSlug: 'team-mode-test' } });
     const text = (result.content as ReadonlyArray<{ text: string }>)[0]?.text ?? '{}';
     const parsed = JSON.parse(text) as { ok: boolean; data?: { ok: boolean; error?: string; howToFix?: string } };
-    expect(parsed.ok).toBe(true); // transport ok
-    expect(parsed.data?.ok).toBe(false); // domain soft-failure under team mode
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data?.ok).toBe(false);
     expect(parsed.data?.error).toBe('project_not_found');
     expect(parsed.data?.howToFix).toBeTruthy();
   });

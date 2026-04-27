@@ -10,7 +10,7 @@ import './bootstrap/ensure-stderr-logging.js';
 
 import { randomUUID } from 'node:crypto';
 
-import { ensurePgVector, migratePostgres, migrateSqlite } from '@contextos/db';
+import { ensureGlobalProject, migrateSqlite } from '@contextos/db';
 import { createLogger } from '@contextos/shared';
 
 import { env } from './config/env.js';
@@ -80,32 +80,41 @@ async function main(): Promise<void> {
   // dev-null policy with the cache-backed evaluator) is a single-
   // line change here.
   const sharedLogger = createMcpLogger('root');
-  // CONTEXTOS_DB_OVERRIDE_MODE (verification finding §8.3 fix): if
-  // explicitly set, override the env-derived team→Postgres routing.
-  // Used for local dev that wants team-mode auth chain semantics + a
-  // SQLite store. Default behaviour (no override) is unchanged.
-  const dbClient = createDbClient(env.CONTEXTOS_DB_OVERRIDE_MODE ? { mode: env.CONTEXTOS_DB_OVERRIDE_MODE } : {});
+  // Local services always write to local SQLite (system-architecture §1).
+  // `mode` is an auth-strategy hint that flows through to the auth
+  // chain; it does NOT change the DB routing here. Module 03 S4 closed
+  // verification §8.3 by removing the previous CONTEXTOS_DB_OVERRIDE_MODE
+  // stop-gap — the new createDb({ kind: 'local' }) signature makes the
+  // override unnecessary.
+  const dbClient = createDbClient({ mode: env.CONTEXTOS_MODE });
   const dbHandle = dbClient.asInternalHandle();
 
   // ---------------------------------------------------------------------
-  // Auto-migrate at boot. Both `migrateSqlite` and `migratePostgres` are
-  // idempotent (drizzle tracks state in `__drizzle_migrations` and skips
-  // already-applied migrations), so re-running on a warm DB is a no-op
-  // by row count. For Postgres team mode we also run `CREATE EXTENSION
-  // IF NOT EXISTS vector` BEFORE the migrator — migration 0000
-  // references `vector(384)` and 0001's safety-net `CREATE EXTENSION`
-  // runs too late on a brand-new database.
+  // Auto-migrate at boot. `migrateSqlite` is idempotent (drizzle tracks
+  // state in `__drizzle_migrations` and skips already-applied migrations),
+  // so re-running on a warm DB is a no-op by row count.
+  //
+  // mcp-server is a LOCAL service per system-architecture §1 — it always
+  // writes to local SQLite. Postgres migration is owned by cloud-side
+  // processes (future Sync Daemon, cloud-api) that hold their own
+  // `kind: 'cloud'` handles.
   //
   // Closes verification finding §8.1 — fresh users used to get
   // `SQLITE_ERROR: no such table: projects` on the first tool call.
   // ---------------------------------------------------------------------
-  if (dbHandle.kind === 'sqlite') {
-    migrateSqlite(dbHandle.db);
-  } else {
-    await ensurePgVector(dbHandle.db);
-    await migratePostgres(dbHandle.db);
+  if (dbHandle.kind !== 'sqlite') {
+    throw new Error(
+      `mcp-server requires a local sqlite handle but createDbClient returned kind='${dbHandle.kind}'. This is a wiring bug.`,
+    );
   }
+  migrateSqlite(dbHandle.db);
   bootLogger.info({ event: 'migrations_applied', kind: dbHandle.kind }, 'migrations idempotent-applied at boot');
+
+  // F7 closure (verification 2026-04-27): seed the __global__ sentinel
+  // project so `check_policy` can audit decisions for unregistered
+  // projectSlugs without violating policy_decisions.project_id NOT
+  // NULL FK. Idempotent.
+  await ensureGlobalProject(dbHandle);
 
   const auth = createAuthClient(env);
   const policy = createPolicyClient({ db: dbHandle });

@@ -1,3 +1,4 @@
+import { runKeySegmentSchema } from '@contextos/shared';
 import { z } from 'zod';
 
 /**
@@ -38,12 +39,28 @@ import { z } from 'zod';
 export const checkPolicyInputSchema = z
   .object({
     projectSlug: z.string().min(1, 'projectSlug is required').max(256),
-    sessionId: z.string().min(1, 'sessionId is required').max(256),
+    // F5 closure (2026-04-27 verification): the framework PerCallContext
+    // layer validates sessionId via runKeySegmentSchema, but a direct MCP
+    // caller passing `sessionId: "has:colon"` previously bypassed that
+    // gate. Applying the same schema here closes the gap defensively —
+    // the bridge's normalizeSessionId pre-sanitises agent-supplied ids,
+    // so this fires only on direct callers and on a regression in the
+    // bridge boundary.
+    sessionId: runKeySegmentSchema
+      .max(256, 'sessionId must be ≤256 chars')
+      .describe('Stable session id for this transport. Must not contain `:` (run-key separator).'),
     agentType: z.string().min(1, 'agentType is required').max(64),
     eventType: z.enum(['PreToolUse', 'PostToolUse']),
     toolName: z.string().min(1, 'toolName is required').max(256),
     toolInput: z.record(z.string(), z.unknown()),
     runId: z.string().min(1).max(256).optional(),
+    // F14 closure (2026-04-27 verification): per-invocation turn id
+    // (Claude Code `tool_use_id`, Cursor `tool_call_id`, Windsurf
+    // `execution_id`). Threads into the audit-row idempotency key so
+    // distinct invocations of the same tool within a session land
+    // distinct policy_decisions rows. Optional for backward
+    // compatibility — absent → `'no-turn'` fallback.
+    toolUseId: z.string().min(1).max(256).optional(),
   })
   .strict()
   .describe('Input for contextos__check_policy.');

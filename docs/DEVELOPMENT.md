@@ -117,26 +117,98 @@ cp .mcp.dev.json .mcp.json   # then restart Claude Code once
 After the swap, edit a tool description, save, call the tool from a
 fresh Claude Code message — observe the new description.
 
-### Local team-mode auth dev (without Postgres)
+### Local team-mode auth dev
 
-Closes verification finding §8.3.
+Closes verification finding §8.3 (final fix landed in Module 03 S4).
 
-The production binary couples `CONTEXTOS_MODE=team` to a Postgres
-connection (per `packages/db/src/client.ts::createDb`). To exercise
-the team-mode auth chain locally without spinning up Postgres, set
-`CONTEXTOS_DB_OVERRIDE_MODE=solo` in addition to `CONTEXTOS_MODE=team`:
+Local services always write to local SQLite per `system-architecture.md` §1 — in BOTH solo and team mode. `CONTEXTOS_MODE` is an auth-strategy hint (solo bypass vs Clerk) and does NOT change DB routing. Module 02 introduced a `CONTEXTOS_DB_OVERRIDE_MODE` env knob as a stop-gap; Module 03 S4 made it unnecessary by refactoring `createDb` to take a `kind: 'local' | 'cloud'` discriminator. The knob is removed.
+
+To exercise the team-mode auth chain locally:
 
 ```bash
 CONTEXTOS_MODE=team \
 CLERK_SECRET_KEY=sk_test_replace_me \
-CONTEXTOS_DB_OVERRIDE_MODE=solo \
+CLERK_PUBLISHABLE_KEY=pk_test_xxx \
 pnpm --filter @contextos/mcp-server dev
 ```
 
-The auth client routes through the bypass branch (because the secret
-is the sentinel), the DB stays SQLite, and tools/list returns all 9
-tools. Use this for local UI smoke tests where you want to exercise
-the team-mode auth surface but don't need real Clerk JWTs.
+The auth client routes through the solo-bypass branch (because the secret is the sentinel), the DB stays SQLite, and `tools/list` returns all 9 tools. Use this for local UI smoke tests where you want to exercise the team-mode auth surface but don't need real Clerk JWTs.
+
+### Iterating on Module 03 (Hooks Bridge)
+
+The Hooks Bridge is a separate Hono service on `127.0.0.1:3101`. Claude Code POSTs PreToolUse / PostToolUse / SessionStart / Stop / UserPromptSubmit events to it via the `hooks` block in `.mcp.json`. To run live:
+
+```bash
+# Terminal 1 — bridge in watch mode
+LOCAL_HOOK_SECRET=$(openssl rand -hex 24) \
+  pnpm --filter @contextos/hooks-bridge dev
+
+# Terminal 2 — tail the bridge log to watch hooks land
+# (the bridge writes pino JSON to stderr by default)
+
+# In your shell that launches Claude Code, export the same secret:
+export LOCAL_HOOK_SECRET=<paste from terminal 1>
+
+# Restart Claude Code so it re-reads .mcp.json with the new hooks block.
+# Trigger any agent action (read a file, bash command, etc.) and confirm
+# the bridge logs `hook_ingress` events.
+```
+
+For Windsurf / Cursor adapters, run `bash scripts/hook-adapters/install.sh` to copy the shell adapters into the IDE's hooks directory. The adapter scripts read `LOCAL_HOOK_SECRET` and `HOOKS_BRIDGE_PORT` from the environment. (Module 08a's `contextos init` CLI will automate this.)
+
+### Iterating on the CLI (Module 08a)
+
+`@contextos/cli` is a regular workspace TypeScript package — same `tsc → dist/` pipeline as `@contextos/shared` and every other package. There is no separate build tool. Module 08a Decision 5 ships it as a published npm package (`@contextos/cli`); the publish step itself is out of 08a scope.
+
+For contributors working on the CLI itself, **do not** `npm i -g @contextos/cli` from a published version — you'd shadow your local edits with the registry copy. Instead, invoke the workspace bin directly:
+
+```bash
+# One-time per branch
+pnpm --filter @contextos/cli build       # tsc — writes packages/cli/dist/
+
+# Run any subcommand against the freshly-built dist
+pnpm --filter @contextos/cli exec contextos --help
+pnpm --filter @contextos/cli exec contextos doctor
+pnpm --filter @contextos/cli exec contextos init --dry-run
+
+# Faster edit/run loop — runs from src/ via tsx, no rebuild needed
+pnpm --filter @contextos/cli dev doctor
+```
+
+The `pnpm --filter @contextos/cli exec <cmd>` form resolves the workspace's `node_modules/.bin/contextos` symlink (which `pnpm install` wires when the package's `bin` field is present), so it always invokes the dist you just built. The `dev <cmd>` script runs the command via `tsx` against `src/index.ts` so file edits land without a rebuild — useful when iterating on a single command. Use the built form for end-to-end tests and snapshot assertions.
+
+`contextos init` writes to `~/.contextos/` (or `$XDG_CONFIG_HOME/contextos/` on Linux when set, per Decision 2) and to the cwd's `<repo>/.{contextos.json,mcp.json,env}`. When iterating, run `init --dry-run` first to print what it would write without touching disk. Re-running `init` against an already-initialised project is non-destructive by default (Decision 3 — idempotent merge); use `--force` only when you want to overwrite user edits with the baseline.
+
+When testing daemon lifecycle (`start` / `stop`), prefer a tmp project root and a non-default `~/.contextos/` location to avoid colliding with your own real install:
+
+```bash
+HOME=/tmp/contextos-dev-home \
+XDG_CONFIG_HOME=/tmp/contextos-dev-xdg \
+pnpm --filter @contextos/cli exec contextos init --project-slug devtest
+```
+
+### Why I can't boot the binaries against Postgres (F11)
+
+Closes verification finding F11 (`docs/verification/2026-04-27-module-01-02-03-verification.md`).
+
+`apps/mcp-server` and `apps/hooks-bridge` are SQLite-only by design (`system-architecture.md §1`). Their `lib/db.ts` files unconditionally call `createDb({ kind: 'local' })` — there is no env knob, no flag, no boot path that yields a Postgres handle. The Module 02 stop-gap `CONTEXTOS_DB_OVERRIDE_MODE` was removed in M03 S4.
+
+If you need to exercise the cloud-write path, it lives in `@contextos/db::createDb({ kind: 'cloud', postgres: { databaseUrl } })` and is tested in `packages/db/__tests__/integration/cloud-mode-write.test.ts`. Future modules (Sync Daemon, Module 05 NL Assembly's embeddings-ingest worker) will ship services that boot against Postgres directly — but those services don't exist yet, and the local mcp-server/hooks-bridge binaries never will.
+
+### Context Pack file conventions (F13)
+
+Closes verification finding F13 (`docs/verification/2026-04-27-module-01-02-03-verification.md`).
+
+Two folders, two purposes:
+
+| Path | What lives there | Tracked? |
+|---|---|---|
+| `~/.contextos/packs/` | Auto-saved per-pack markdown produced by every `save_context_pack` call. Filename: `{date}-{sanitised-runId}.md`. | No — gitignored via `.contextos/`. |
+| `<repo>/docs/context-packs/` | Hand-curated module closeouts: the canonical, agent-readable record of "what shipped in Module N". One file per module, named like `2026-04-26-module-03-hooks-bridge.md` (no `-run-` segment). | Yes — committed. |
+
+Override the runtime root via `CONTEXTOS_CONTEXT_PACKS_ROOT=/path/to/dir` (env) or `contextPacksRoot` on `createContextPackStore({...})` (code). The new default keeps runtime artefacts out of any repo so closeout commits don't need to add or ignore stray auto-saved files.
+
+`docs/context-packs/*-run-*.md` is also defensively gitignored — if an agent overrides the root to point at the repo, those files still won't end up tracked.
 
 ### Running a single package
 

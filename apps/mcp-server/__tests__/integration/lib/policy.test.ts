@@ -107,13 +107,23 @@ describe('lib/policy — createPolicyClient construction contract (S7b)', () => 
   });
 });
 
-describe('lib/policy — buildPolicyDecisionIdempotencyKey (S7b, §4.3 lock)', () => {
-  it('formats as pd:{sessionId}:{toolName}:{eventType}', () => {
+describe('lib/policy — buildPolicyDecisionIdempotencyKey (S7b, §4.3 lock; F14 2026-04-27)', () => {
+  it('formats as pd:{sessionId}:{toolUseId}:{toolName}:{eventType} (F14)', () => {
+    const key = buildPolicyDecisionIdempotencyKey({
+      sessionId: 'sess_abc',
+      toolUseId: 'tu_42',
+      toolName: 'write_file',
+      eventType: 'PreToolUse',
+    });
+    expect(key).toBe('pd:sess_abc:tu_42:write_file:PreToolUse');
+  });
+
+  it('legacy callers (no toolUseId) get `no-turn` fallback', () => {
     const key = buildPolicyDecisionIdempotencyKey({
       sessionId: 'sess_abc',
       toolName: 'write_file',
       eventType: 'PreToolUse',
     });
-    expect(key).toBe('pd:sess_abc:write_file:PreToolUse');
+    expect(key).toBe('pd:sess_abc:no-turn:write_file:PreToolUse');
   });
 });

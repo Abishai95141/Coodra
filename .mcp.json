@@ -1,6 +1,6 @@
 {
-  "_comment": "ContextOS MCP server — stdio transport (Module 02 S5 walking skeleton). Only the 'ping' tool is live in this slice; the full eight contextos__* tools land in S6–S15. The HTTP (Streamable HTTP) transport is deferred to S16 and will be added as a second entry under mcpServers when ready. CONTEXTOS_LOG_DESTINATION=stderr is load-bearing — the stdio transport reserves stdout for JSON-RPC frames and a single stray log byte on stdout corrupts the protocol.",
-  "_implementedBy": "Module 02 (see docs/feature-packs/02-mcp-server/)",
+  "_comment": "ContextOS MCP server (Module 02) + Hooks Bridge (Module 03). The MCP server is a stdio subprocess; the Hooks Bridge listens on http://127.0.0.1:3101 and Claude Code POSTs to it for PreToolUse / PostToolUse / SessionStart / Stop / UserPromptSubmit events. The X-Local-Hook-Secret header authenticates each POST against LOCAL_HOOK_SECRET in the bridge's env. CONTEXTOS_LOG_DESTINATION=stderr is load-bearing for the MCP stdio transport — a single stray log byte on stdout corrupts the protocol.",
+  "_implementedBy": "Modules 02 + 03 (see docs/feature-packs/{02-mcp-server,03-hooks-bridge}/)",
   "mcpServers": {
     "contextos": {
       "type": "stdio",
@@ -11,5 +11,42 @@
         "CONTEXTOS_MODE": "solo"
       }
     }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "Stop": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ]
   }
 }

@@ -35,7 +35,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@contextos/db": "workspace:*",
+    "@contextos/hooks-bridge": "workspace:*",
     "@contextos/mcp-server": "workspace:*",
+    "@contextos/policy": "workspace:*",
     "@contextos/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@vitest/coverage-v8": "^4.1.5",

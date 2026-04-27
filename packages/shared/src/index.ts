@@ -16,6 +16,7 @@ export {
   type GenerateRunKeyArgs,
   generateRunEventKey,
   generateRunKey,
+  type IdempotencyKey,
   RUN_EVENT_KEY_PATTERN,
   RUN_KEY_PATTERN,
   type RunPhase,

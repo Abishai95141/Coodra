@@ -170,6 +170,10 @@ export function createCheckPolicyHandler(deps: CheckPolicyHandlerDeps) {
         agentType: input.agentType,
         eventType: input.eventType,
         toolName: input.toolName,
+        // F14 closure (2026-04-27): forward the agent's tool_use_id so
+        // the audit-row idempotency key distinguishes distinct
+        // invocations within one session.
+        ...(input.toolUseId !== undefined ? { toolUseId: input.toolUseId } : {}),
         toolInputSnapshot,
         permissionDecision: evalResult.decision,
         matchedRuleId: evalResult.matchedRuleId,

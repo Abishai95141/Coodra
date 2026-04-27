@@ -18,10 +18,10 @@ import { createDbClient } from '../../../src/lib/db.js';
  *
  * ---------------------------------------------------------------------------
  * TEST-WRITER GUARD: always pass `contextPacksRoot=<tmpdir>` when you
- * construct `createContextPackStore` in a test. The default
- * (`process.cwd() + /docs/context-packs`) writes into the actual repo
- * tree from wherever vitest spawns — leaking test files into
- * `apps/mcp-server/docs/context-packs/` or the repo root. `mkdtempSync(
+ * construct `createContextPackStore` in a test. F13 closure (2026-04-27)
+ * changed the default from `process.cwd() + /docs/context-packs` to
+ * `~/.contextos/packs/` — still NOT what test scratch space wants
+ * (would land under the developer's home dir). `mkdtempSync(
  * join(tmpdir(), 'cp-'))` is the idiom this harness uses; copy it.
  * ---------------------------------------------------------------------------
  */

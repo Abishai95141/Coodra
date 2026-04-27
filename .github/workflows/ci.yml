@@ -126,21 +126,41 @@ jobs:
       - name: Approve build scripts
         run: pnpm rebuild
 
-      - name: Build @contextos/shared + @contextos/db + @contextos/mcp-server
-        # `shared` first (db depends on it transitively); `db` next (its
-        # dist/migrate.js is consumed by both the integration suite and
-        # mcp-server's auto-migrate at boot); `mcp-server` last because
-        # the new `boot.test.ts` + `boot-db-override.test.ts` integration
-        # tests spawn `dist/index.js` as a stdio subprocess. Without the
-        # explicit build, `node dist/index.js` fails with ENOENT and the
-        # SDK Client times out with "Connection closed".
+      - name: Build @contextos/* in dependency order
+        # `shared` first (db + policy depend on it transitively); `db`
+        # next (its dist/migrate.js is consumed by both apps' auto-migrate
+        # at boot); `policy` next (apps consume it); `mcp-server` and
+        # `hooks-bridge` last because their integration tests may spawn
+        # `dist/index.js` as a subprocess. Without the explicit build,
+        # `node dist/index.js` fails with ENOENT and the SDK Client / HTTP
+        # client times out with "Connection closed".
         run: |
           pnpm --filter @contextos/shared build
           pnpm --filter @contextos/db build
+          pnpm --filter @contextos/policy build
           pnpm --filter @contextos/mcp-server build
+          pnpm --filter @contextos/hooks-bridge build
 
-      - name: Integration tests (Postgres migrations)
+      - name: Integration tests (Postgres migrations + hooks-bridge auth chain + mcp-server boot)
         run: pnpm test:integration
+
+  hook-adapter-smoke:
+    name: hook-adapter shell scripts (windsurf + cursor)
+    runs-on: ${{ matrix.os }}
+    needs: verify
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run hook-adapter smoke test
+        # Spawns a Python mock bridge, pipes fixture payloads into
+        # each adapter, asserts exit codes (0 / 2 / 0-fail-open).
+        # Only requires bash + curl + python3 — no Node, no pnpm.
+        run: bash scripts/hook-adapters/__tests__/smoke.sh
 
   e2e:
     name: end-to-end (manifest + transport + idempotency + full session)
@@ -170,15 +190,19 @@ jobs:
       - name: Approve build scripts
         run: pnpm rebuild
 
-      - name: Build @contextos/shared + @contextos/db (required by e2e imports)
-        # Both packages have `main: ./dist/index.js` and `exports`
+      - name: Build @contextos/* in dependency order (required by e2e imports)
+        # All packages have `main: ./dist/index.js` and `exports`
         # pointing into dist. The e2e tests import them as
         # workspace:* deps; without the build, vitest can't resolve
-        # the entry points. CI runs them in dependency order — shared
-        # first because db depends on it transitively.
+        # the entry points. Module 03 S14 will spawn hooks-bridge as
+        # a subprocess for the full-session lifecycle test, so include
+        # its dist here too — keeps each slice self-contained.
         run: |
           pnpm --filter @contextos/shared build
           pnpm --filter @contextos/db build
+          pnpm --filter @contextos/policy build
+          pnpm --filter @contextos/mcp-server build
+          pnpm --filter @contextos/hooks-bridge build
 
       # `testcontainers` needs a Docker daemon. GitHub-hosted ubuntu
       # runners ship Docker pre-installed; just verify it before the

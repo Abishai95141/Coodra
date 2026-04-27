@@ -28,7 +28,25 @@ describe('check_policy — manifest contract', () => {
 });
 
 describe('check_policy — idempotency-key shape', () => {
-  it('is mutating + matches DB audit key (pd:{sessionId}:{toolName}:{eventType})', () => {
+  it('is mutating + matches DB audit key (pd:{sessionId}:{toolUseId}:{toolName}:{eventType}) — F14 (2026-04-27)', () => {
+    const reg = createCheckPolicyToolRegistration({ db: fakeDb });
+    const key = reg.idempotencyKey(
+      {
+        projectSlug: 'p',
+        sessionId: 'sess_abc',
+        agentType: 'claude_code',
+        eventType: 'PreToolUse',
+        toolName: 'Write',
+        toolInput: { file_path: '/tmp/x' },
+        toolUseId: 'tu_42',
+      },
+      { sessionId: 'sess_abc', receivedAt: new Date(0) },
+    );
+    expect(key.kind).toBe('mutating');
+    expect(key.key).toBe('pd:sess_abc:tu_42:Write:PreToolUse');
+  });
+
+  it('legacy callers (no toolUseId) fall back to "no-turn" segment', () => {
     const reg = createCheckPolicyToolRegistration({ db: fakeDb });
     const key = reg.idempotencyKey(
       {
@@ -41,11 +59,10 @@ describe('check_policy — idempotency-key shape', () => {
       },
       { sessionId: 'sess_abc', receivedAt: new Date(0) },
     );
-    expect(key.kind).toBe('mutating');
-    expect(key.key).toBe('pd:sess_abc:Write:PreToolUse');
+    expect(key.key).toBe('pd:sess_abc:no-turn:Write:PreToolUse');
   });
 
-  it('retry with same (sessionId, toolName, eventType) triple produces identical key', () => {
+  it('retry with same (sessionId, toolUseId, toolName, eventType) tuple produces identical key', () => {
     const reg = createCheckPolicyToolRegistration({ db: fakeDb });
     const a = reg.idempotencyKey(
       {
@@ -55,6 +72,7 @@ describe('check_policy — idempotency-key shape', () => {
         eventType: 'PreToolUse',
         toolName: 'Write',
         toolInput: { a: 1 },
+        toolUseId: 'tu_x',
       },
       { sessionId: 's', receivedAt: new Date(0) },
     );
@@ -66,10 +84,40 @@ describe('check_policy — idempotency-key shape', () => {
         eventType: 'PreToolUse',
         toolName: 'Write',
         toolInput: { a: 2 }, // different toolInput — does NOT change key
+        toolUseId: 'tu_x',
       },
       { sessionId: 's', receivedAt: new Date(0) },
     );
     expect(a.key).toBe(b.key);
+  });
+
+  it('distinct toolUseIds in the same session yield distinct keys (F14 audit-trail integrity)', () => {
+    const reg = createCheckPolicyToolRegistration({ db: fakeDb });
+    const a = reg.idempotencyKey(
+      {
+        projectSlug: 'p',
+        sessionId: 's',
+        agentType: 'claude_code',
+        eventType: 'PreToolUse',
+        toolName: 'Write',
+        toolInput: { file_path: '/tmp/a.ts' },
+        toolUseId: 'tu_1',
+      },
+      { sessionId: 's', receivedAt: new Date(0) },
+    );
+    const b = reg.idempotencyKey(
+      {
+        projectSlug: 'p',
+        sessionId: 's',
+        agentType: 'claude_code',
+        eventType: 'PreToolUse',
+        toolName: 'Write',
+        toolInput: { file_path: '/tmp/b.ts' },
+        toolUseId: 'tu_2',
+      },
+      { sessionId: 's', receivedAt: new Date(0) },
+    );
+    expect(a.key).not.toBe(b.key);
   });
 
   it('different eventType yields distinct key (Pre vs Post)', () => {
@@ -120,7 +168,8 @@ describe('check_policy — idempotency-key shape', () => {
     // biome-ignore lint/suspicious/noExplicitAny: probe sweep sends minimal shapes
     const key = reg.idempotencyKey({} as any, { sessionId: 'sess', receivedAt: new Date(0) });
     expect(key.kind).toBe('mutating');
-    expect(key.key).toBe('pd:probe:probe:probe');
+    // F14 (2026-04-27): toolUseId segment lands as 'no-turn' for empty input.
+    expect(key.key).toBe('pd:probe:no-turn:probe:probe');
   });
 });
 

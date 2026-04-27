@@ -1,19 +1,25 @@
-import { UnauthorizedError, ValidationError } from '@contextos/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-import type { McpServerEnv } from '../../../src/config/env.js';
+import type { AuthEnv } from '../../../src/auth/types.js';
+import { UnauthorizedError, ValidationError } from '../../../src/errors/index.js';
 
 /**
- * Unit tests for `src/lib/auth.ts` — the per-chain pieces:
+ * Unit tests for `packages/shared/src/auth/auth.ts` — the per-chain
+ * pieces:
  *   - `createAuthClient(env)`     → dispatcher
  *   - `verifyLocalHookSecret(...)` → constant-time compare
  *   - `verifyClerkJwt(token, env)` → @clerk/backend::verifyToken adapter
  *
- * `@clerk/backend::verifyToken` is hoist-mocked so the tests exercise
- * the real wire code in `auth.ts` without hitting any real Clerk
- * tenant. That is not a shallow proxy — it's the SDK's own mocking
- * surface. Live Clerk validation is a Module 04 precondition
+ * `@clerk/backend::verifyToken` is hoist-mocked. The mock resolves
+ * inside this package's own vitest run, so the import the auth source
+ * does (`import { verifyToken as clerkVerifyToken } from '@clerk/backend'`)
+ * is intercepted. Live Clerk validation is a Module 04 precondition
  * (see `context_memory/pending-user-actions.md`).
+ *
+ * Module 03 S3 moved this test from `apps/mcp-server/__tests__/unit/
+ * lib/auth-chain.test.ts` so it lives next to the implementation.
+ * The only substantive change is replacing `McpServerEnv` (which is
+ * a superset of what the auth helpers need) with `AuthEnv` — the
+ * structural subset that lives in shared.
  */
 
 const mockVerifyToken = vi.hoisted(() => vi.fn());
@@ -31,18 +37,13 @@ const {
   SOLO_IDENTITY,
   verifyClerkJwt,
   verifyLocalHookSecret,
-} = await import('../../../src/lib/auth.js');
+} = await import('../../../src/auth/auth.js');
 
-function baseEnv(overrides: Partial<McpServerEnv> = {}): McpServerEnv {
+function baseEnv(overrides: Partial<AuthEnv> = {}): AuthEnv {
   return {
-    NODE_ENV: 'test',
-    LOG_LEVEL: 'info',
-    HOSTNAME: 'test',
     CONTEXTOS_MODE: 'solo',
-    CONTEXTOS_LOG_DESTINATION: 'stderr',
-    MCP_SERVER_PORT: 3100,
     ...overrides,
-  } as McpServerEnv;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -184,9 +185,7 @@ describe('verifyClerkJwt', () => {
   });
 
   it('throws UnauthorizedError when the payload has no sub', async () => {
-    mockVerifyToken.mockResolvedValueOnce({
-      /* no sub */
-    });
+    mockVerifyToken.mockResolvedValueOnce({});
     const env = baseEnv({
       CONTEXTOS_MODE: 'team',
       CLERK_SECRET_KEY: 'sk_test_real',
@@ -216,7 +215,7 @@ describe('verifyClerkJwt', () => {
 });
 
 // Sanity: existing factories still work unchanged.
-describe('S7a factories (regression)', () => {
+describe('factories (regression)', () => {
   it('createSoloAuthClient returns solo identity', async () => {
     const auth = createSoloAuthClient();
     await expect(auth.getIdentity()).resolves.toEqual(SOLO_IDENTITY);

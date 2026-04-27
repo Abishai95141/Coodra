@@ -54,12 +54,12 @@ See `docs/DEVELOPMENT.md` for the running-services playbook (added as each modul
 |--------|------|--------|
 | 01 | Foundation | ✅ complete (`docs/context-packs/2026-04-22-module-01-foundation.md`) |
 | 02 | MCP Server | ✅ complete (`docs/context-packs/2026-04-25-module-02-mcp-server.md`) |
-| 03 | Hooks Bridge | 🔨 next |
-| 04 | Web App | ⏳ blocked on 03 |
+| 03 | Hooks Bridge | ✅ complete (`docs/context-packs/2026-04-26-module-03-hooks-bridge.md`) |
+| 08a | CLI (`@contextos/cli`) | 🔨 next (placeholder spec at `docs/feature-packs/08a-cli/`) |
+| 04 | Web App | ⏳ blocked on 08a |
 | 05 | NL Assembly (Python) | ⏳ blocked on 03 |
 | 06 | Semantic Diff (Python) | ⏳ blocked on 03 |
-| 07 | VS Code Extension | ⏳ blocked on 03, 04 |
-| 08a | CLI (`@contextos/cli`) | ⏳ blocked on 03 |
+| 07 | VS Code Extension | ⏳ blocked on 04, 08a |
 
 Build order and "complete" criteria: `essentialsforclaude/08-implementation-order.md`.
 

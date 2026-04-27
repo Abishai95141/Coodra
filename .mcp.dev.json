@@ -1,6 +1,6 @@
 {
-  "_comment": "ContextOS MCP server — DEV profile. Runs the server under `tsx watch` from src/ so changes hot-reload without an IDE restart. Closes verification finding §8.2 (subprocess staleness). For prod-shaped boot, use `.mcp.json` which points at dist/index.js. Copy this file over `.mcp.json` and restart Claude Code once to switch profiles.",
-  "_implementedBy": "Module 02 verification fixes (2026-04-25)",
+  "_comment": "ContextOS — DEV profile (live-reload). Runs both the MCP server and the Hooks Bridge under `tsx watch` so source changes hot-reload without an IDE restart. Closes verification finding §8.2 + Module 03 hooks-bridge dev iteration. For prod-shaped boot, use `.mcp.json` which points at the built dist/. Copy this file over `.mcp.json` and restart Claude Code once to switch profiles. The bridge is launched separately (`pnpm --filter @contextos/hooks-bridge dev`); this file only configures the MCP subprocess + the hook routing.",
+  "_implementedBy": "Module 02 verification fixes + Module 03 (2026-04-25)",
   "mcpServers": {
     "contextos": {
       "type": "stdio",
@@ -12,5 +12,42 @@
         "CLERK_SECRET_KEY": "sk_test_replace_me"
       }
     }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "Stop": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "type": "http",
+        "url": "http://127.0.0.1:3101/v1/hooks/claude-code",
+        "headers": { "X-Local-Hook-Secret": "${LOCAL_HOOK_SECRET}" }
+      }
+    ]
   }
 }

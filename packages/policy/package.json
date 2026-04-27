@@ -1,0 +1,42 @@
+{
+  "name": "@contextos/policy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ContextOS policy engine — cache-first rule evaluator backed by policies + policy_rules, fail-open with cockatiel timeout + breaker, plus the recordPolicyDecision audit-write helper. Consumed by apps/mcp-server (check_policy tool) and apps/hooks-bridge (pre-tool ingress).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "lint": "biome check .",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@contextos/db": "workspace:*",
+    "@contextos/shared": "workspace:*",
+    "cockatiel": "3.2.1",
+    "drizzle-orm": "^0.45.2",
+    "picomatch": "4.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/picomatch": "4.0.2"
+  }
+}

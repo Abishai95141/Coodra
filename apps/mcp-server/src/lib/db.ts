@@ -1,4 +1,4 @@
-import { type CreateDbOptions, createDb, type DbHandle } from '@contextos/db';
+import { type CreateSqliteDbOptions, createDb, type DbHandle } from '@contextos/db';
 
 import type { DbClient } from '../framework/tool-context.js';
 import { createMcpLogger } from './logger.js';
@@ -21,9 +21,14 @@ import { createMcpLogger } from './logger.js';
  *     `index.ts` shutdown hook and error paths both call it; the
  *     registry does not.
  *
- * Mode dispatch: delegates to `@contextos/db::createDb`, which honours
- * `options.mode` / `CONTEXTOS_MODE`. S7a consumes solo SQLite; S7b/c
- * will start exercising team Postgres for integration tests in S17.
+ * Always-local routing: Module 03 S4 closed verification §8.3 by
+ * making `createDb({ kind: 'local' })` the only call site for this
+ * factory. Per `system-architecture.md §1`, local services always
+ * write to local SQLite — in BOTH solo and team mode. Team-mode auth
+ * (Clerk + LOCAL_HOOK_SECRET) ships through the auth chain at the
+ * HTTP boundary, NOT through the DB layer. Cloud Postgres is reached
+ * by future cloud-side processes (Sync Daemon, cloud-api) that
+ * construct their own `createDb({ kind: 'cloud' })` handles.
  *
  * Factory pattern (S7a user directive): no module-level DB instance
  * is exported. Each `createDbClient` call opens a fresh handle so
@@ -43,11 +48,20 @@ const dbLibLogger = createMcpLogger('lib-db');
  */
 export type InternalDbHandle = DbHandle;
 
-export interface CreateDbClientOptions extends CreateDbOptions {
+export interface CreateDbClientOptions {
+  /**
+   * Auth-strategy hint. `'solo'` → solo bypass; `'team'` → Clerk JWT.
+   * Does NOT change DB routing — local services always run on SQLite.
+   * Defaulted from `CONTEXTOS_MODE` in `src/index.ts`; tests pass it
+   * explicitly when they want to exercise the team-mode auth path.
+   */
+  readonly mode?: 'solo' | 'team';
+  /** SQLite-specific knobs forwarded to `createSqliteDb`. */
+  readonly sqlite?: CreateSqliteDbOptions;
   /**
    * Marker used by the stdout-purity integration test to spin up a
    * throwaway `:memory:` DB. Not used in production — `index.ts`
-   * passes nothing and lets `createDb` pick up `CONTEXTOS_MODE`.
+   * passes nothing for this field.
    */
   readonly _testOverrideInMemory?: boolean;
 }
@@ -70,13 +84,17 @@ export interface CreatedDbClient {
 }
 
 export function createDbClient(options: CreateDbClientOptions = {}): CreatedDbClient {
-  const { _testOverrideInMemory, ...dbOptions } = options;
-  const handle: DbHandle = _testOverrideInMemory
+  const handle: DbHandle = options._testOverrideInMemory
     ? createDb({
+        kind: 'local',
         mode: 'solo',
         sqlite: { path: ':memory:', loadVecExtension: false, skipPragmas: true },
       })
-    : createDb(dbOptions);
+    : createDb({
+        kind: 'local',
+        ...(options.mode !== undefined ? { mode: options.mode } : {}),
+        ...(options.sqlite !== undefined ? { sqlite: options.sqlite } : {}),
+      });
 
   let closed = false;
   const close = async (): Promise<void> => {

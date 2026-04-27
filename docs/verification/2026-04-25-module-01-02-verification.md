@@ -380,3 +380,30 @@ The 545-test suite proves the parts. This verification proves the whole works as
 This document is the evidence the Module 02 Context Pack will reference.
 
 — Claude Opus 4.7 (1M context), 2026-04-25
+
+---
+
+## 11. Findings closed (appendix)
+
+Tracked closures of the §8 findings as Module 02's follow-on commits and Module 03's slices land.
+
+### Module 02 — closed in-module before squash to main
+
+| Finding | Closed by commit | Note |
+|---|---|---|
+| §8.1 Auto-migrate at boot | `187c844` | mcp-server's `index.ts` now runs `migrateSqlite` (or `migratePostgres` + `ensurePgVector` for cloud-mode handles) idempotently before any handler. |
+| §8.2 Stale IDE subprocess + `.mcp.dev.json` | `811fcc8` | DEVELOPMENT.md "Iterating on MCP server source" + `.mcp.dev.json` live-reload profile. |
+| §8.4 Pack filename Windows-reserved chars | `9f730ae` | `contextPackFilename` sanitises `[<>:"/\\|?*]`. |
+| §8.5 Env-overridable roots | `187c844` | `CONTEXTOS_CONTEXT_PACKS_ROOT` + `CONTEXTOS_GRAPHIFY_ROOT`. (First-run UX wrapper deferred to Module 08a CLI.) |
+| §8.6 sessionId no-colon validation | `315c41d` | `runKeySegmentSchema` consumed at the registry boundary; `assertRunKeySegment` retained as belt-and-suspenders. |
+
+### Module 03 — closed in `feat/03-hooks-bridge`
+
+| Finding | Closed in | Note |
+|---|---|---|
+| §8.3 createDb couples team-mode to Postgres | S4 (this branch) | `createDb` now takes a `kind: 'local' \| 'cloud'` discriminator. Local services always run on SQLite — in BOTH solo and team mode — matching `system-architecture.md` §1. The Module 02 stop-gap `CONTEXTOS_DB_OVERRIDE_MODE` env knob is removed. mcp-server's `lib/db.ts::createDbClient` always passes `kind: 'local'`; the boot test renamed to `boot-team-mode-local-sqlite.test.ts` proves the new contract end-to-end. |
+| §8.6 follow-up — universal `runKeySegmentSchema` enforcement at every boundary | S6 (this branch) | `packages/shared/src/hooks/normalize-session-id.ts` is the only function that touches an agent-supplied session id at the hooks-bridge boundary. Every per-agent adapter (`adapters/{claude-code,windsurf,cursor}.ts`) calls `normalizeSessionId(raw)`, which sanitises Windows-reserved chars + whitespace + collapses `--` and ends with `runKeySegmentSchema.parse(...)` (defence-in-depth — an empty result throws). Closes the deeper carryover from Module 02 commit `315c41d` (which protected the MCP read surface) by extending the same invariant to the write surface. |
+
+### Still deferred
+
+- §8.5 follow-up — richer `contextos init` UX (writing `.env` + `.contextos.json` + adapter symlinks on first run) lands with **Module 08a (CLI)**, not Module 03.
