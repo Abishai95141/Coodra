@@ -18,6 +18,7 @@ import { createSessionStartHandler } from './handlers/session-start.js';
 import { createUserPromptSubmitHandler } from './handlers/user-prompt-submit.js';
 import { createHooksBridgeDbClient, resolveSqlitePathFromEnv } from './lib/db.js';
 import { composeDispatch } from './lib/dispatch.js';
+import { createKillSwitchEvaluator } from './lib/kill-switch-evaluator.js';
 import { createBridgeDispatchHandler } from './lib/outbox-dispatch.js';
 import { createProjectSlugResolver } from './lib/resolve-project-slug.js';
 import { createRunRecorder } from './lib/run-recorder.js';
@@ -84,7 +85,18 @@ async function main(): Promise<void> {
   });
   outboxWorker.start();
   bootLogger.info({ event: 'outbox_worker_started' }, 'OutboxWorker started; pending_jobs draining');
-  const preToolUse = createPreToolUseHandler({ policy, projectSlugResolver, db: dbClient.handle, runRecorder });
+  // Module 08b S2 (2026-05-03): kill-switch evaluator wired BEFORE the
+  // policy chain in pre-tool-use. 5s in-process cache so pause/resume
+  // feels instantaneous to the operator (the policy client's own 60s
+  // cache stays in place for the policy-rule path that runs after).
+  const killSwitchEvaluator = createKillSwitchEvaluator({ db: dbClient.handle });
+  const preToolUse = createPreToolUseHandler({
+    policy,
+    projectSlugResolver,
+    db: dbClient.handle,
+    runRecorder,
+    killSwitchEvaluator,
+  });
   const postToolUse = createPostToolUseHandler({ runRecorder, projectSlugResolver, db: dbClient.handle });
   const sessionStart = createSessionStartHandler({
     runRecorder,

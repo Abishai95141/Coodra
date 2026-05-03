@@ -73,3 +73,10 @@ S1 closeout (this commit): `kill_switches` table + migration `0007_*` + 5 helper
 - [HH:mm] S1 — wrote `__tests__/integration/kill-switches.test.ts` with 9 fixtures (7 spec + 2 bonus for invariant validation + paused_at ordering); first run failed Fixture 7 (re-resume idempotency) because SQLite `.update()` doesn't return rows — fixed by using `RunResult.changes` to detect zero-row updates
 - [HH:mm] S1 — appended `External api and library reference.md` Drizzle subsection: `kill_switches` polymorphic-scope pattern + soft-resume + 5s bridge cache TTL + local-only-in-M08b note
 - [HH:mm] S1 — typecheck + lint + 54/54 unit + 9/9 integration green; ready to commit
+- [HH:mm] S1 committed (`27c69f8`): kill_switches schema + helpers
+- [HH:mm] S2 — wrote `apps/hooks-bridge/src/lib/kill-switch-evaluator.ts` (factory with 5s TTL cache, fail-open on DB throw, polymorphic-scope `findKillSwitchMatchingEvent` consumer)
+- [HH:mm] S2 — modified `apps/hooks-bridge/src/handlers/pre-tool-use.ts` to consult evaluator BEFORE policy chain; hard-mode → deny + reason `kill_switch_paused:<id>`, soft-mode → allow + same reason + audit row via `runRecorder.recordPolicyDecision`
+- [HH:mm] S2 — wired `createKillSwitchEvaluator` into `apps/hooks-bridge/src/index.ts` boot path
+- [HH:mm] S2 — wrote `__tests__/unit/lib/kill-switch-evaluator.test.ts` (10 fixtures: 8 spec + 2 bonus for invalidate + null-project-key)
+- [HH:mm] S2 — wrote `__tests__/integration/handlers/kill-switch-pre-tool-use.test.ts` (5 fixtures: hard-global, soft-global, tool-scoped, project-scoped, post-resume policy fall-through)
+- [HH:mm] S2 — lint clean, typecheck clean, 46/46 bridge unit tests + 34/34 key integration tests (incl. existing default-policy-tool-coverage + pre-tool-use suites) green

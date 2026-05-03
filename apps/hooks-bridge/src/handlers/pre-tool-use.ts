@@ -4,6 +4,7 @@ import { createLogger } from '@coodra/contextos-shared';
 import type { HookEvent } from '@coodra/contextos-shared/hooks';
 
 import type { HookDispatchResult } from '../app.js';
+import type { KillSwitchEvaluator } from '../lib/kill-switch-evaluator.js';
 import type { ProjectSlugResolver } from '../lib/resolve-project-slug.js';
 import type { RunRecorder } from '../lib/run-recorder.js';
 
@@ -29,6 +30,22 @@ import type { RunRecorder } from '../lib/run-recorder.js';
  *     with full decision context. (S8 lands the audit write — this
  *     slice focuses on the decision path itself.)
  *
+ * **Module 08b S2 (2026-05-03) — kill-switch short-circuit.** When a
+ * `KillSwitchEvaluator` is wired in (`deps.killSwitchEvaluator`), the
+ * handler consults it BEFORE the policy chain on every PreToolUse:
+ *
+ *   - hard-mode match → return `permissionDecision: 'deny'` + reason
+ *     `kill_switch_paused:<id>`. The policy chain is skipped entirely.
+ *   - soft-mode match → return `permissionDecision: 'allow'` + the
+ *     same reason. The audit row is still recorded (operator wants
+ *     observability) but enforcement is bypassed.
+ *   - no match → fall through to the existing policy chain unchanged.
+ *
+ * The evaluator's own DB-throw path returns `null` (fail open), so a
+ * kill_switches table outage degrades gracefully into the policy
+ * chain. See `apps/hooks-bridge/src/lib/kill-switch-evaluator.ts`
+ * for the cache + failure-mode semantics.
+ *
  * `eventPhase !== 'pre'` is treated as a contract violation — the
  * dispatcher should only call this handler for pre events. Handler
  * returns allow + reason 'event_phase_mismatch' as a defensive belt-
@@ -43,6 +60,13 @@ export interface CreatePreToolUseHandlerDeps {
   readonly db: DbHandle;
   /** Optional — if provided, the handler schedules a policy_decisions audit-write per call. */
   readonly runRecorder?: RunRecorder;
+  /**
+   * Optional Module 08b S2 short-circuit. When wired, the handler
+   * consults the evaluator BEFORE the policy chain. When omitted
+   * (e.g. legacy tests, pre-M08b binaries) the kill-switch step is
+   * skipped entirely and only the policy chain runs.
+   */
+  readonly killSwitchEvaluator?: KillSwitchEvaluator;
 }
 
 export type PreToolUseHandler = (event: HookEvent) => Promise<HookDispatchResult>;
@@ -58,6 +82,53 @@ export function createPreToolUseHandler(deps: CreatePreToolUseHandlerDeps): PreT
     }
 
     const { slug, projectId } = await deps.projectSlugResolver.resolve(event.cwd, deps.db);
+
+    // Module 08b S2 (2026-05-03): kill-switch short-circuit. Consults
+    // `kill_switches` BEFORE the policy chain. On match, the handler
+    // records the audit row (per the existing recorder contract — same
+    // shape as a policy match, with `matchedRuleId: null` and
+    // `reason: 'kill_switch_paused:<id>'`) and returns the
+    // hard-vs-soft-mode decision. The policy chain is skipped on a
+    // match — the operator's pause intent supersedes per-rule policy
+    // for the duration of the switch.
+    if (deps.killSwitchEvaluator !== undefined) {
+      const switchResult = await deps.killSwitchEvaluator.check({
+        projectId: projectId ?? null,
+        toolName: event.toolName,
+        agentType: event.agentType,
+      });
+      if (switchResult !== null) {
+        if (deps.runRecorder !== undefined) {
+          deps.runRecorder.recordPolicyDecision({
+            event,
+            projectId,
+            decision: switchResult.decision,
+            reason: switchResult.reason,
+            matchedRuleId: null,
+          });
+        }
+        preToolLogger.info(
+          {
+            event: 'pre_tool_use_kill_switch_decision',
+            sessionId: event.sessionId,
+            toolName: event.toolName,
+            agentType: event.agentType,
+            killSwitchId: switchResult.matched.id,
+            killSwitchScope: switchResult.matched.scope,
+            killSwitchTarget: switchResult.matched.target,
+            killSwitchMode: switchResult.matched.mode,
+            permissionDecision: switchResult.decision,
+            ...(slug !== undefined ? { projectSlug: slug } : {}),
+            ...(projectId !== undefined ? { projectId } : {}),
+          },
+          `pre-tool-use kill-switch decision (${switchResult.matched.mode}-mode → ${switchResult.decision})`,
+        );
+        return {
+          permissionDecision: switchResult.decision,
+          permissionDecisionReason: switchResult.reason,
+        };
+      }
+    }
 
     const idempotencyKey = {
       kind: 'mutating' as const,
