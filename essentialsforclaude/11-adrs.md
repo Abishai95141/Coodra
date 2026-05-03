@@ -42,6 +42,12 @@ Cursor hooks are command-based (stdin/stdout JSON) while Claude Code supports HT
 
 Graphify (`safishamsi/graphify`, MIT license) produces a `graph.json` with tree-sitter AST nodes clustered by Leiden community detection. ContextOS imports this output to seed initial Feature Pack content — each community becomes a Feature Pack section. Solves the cold-start problem (first session runs without context) without requiring manual Feature Pack authoring.
 
+**Status (2026-05-03 audit §13 — Slice 11 option b):**
+- **Reader: implemented in M02.** `apps/mcp-server/src/lib/graphify.ts` reads `~/.contextos/graphify/<projectSlug>/graph.json` and the MCP tool `query_codebase_graph` exposes the result with a fail-open soft-failure shape (`codebase_graph_not_indexed` when the file is absent).
+- **Producer: deferred — depends on external `graphify` CLI** (https://github.com/safishamsi/graphify) until an in-repo producer ships. No current owning module.
+- **Seeding flow (the original ADR-010 promise — "import to seed initial Feature Pack content"): not yet implemented.** `createFeaturePackStore.upsert()` accepts pre-authored markdown; it does not generate structure from a `graph.json`. A future module will own the import-to-Feature-Pack pipeline.
+- **What this means in practice:** users who want `query_codebase_graph` to return real data must `npm i -g graphify` (or equivalent) and run `graphify scan` at the repo root before opening a ContextOS session. The audit observed that the demo had no graphify index and the tool was permanently in soft-failure; that's by design until the producer story is resolved. Slice 10 (manifest description polish) adds an inline recovery hint so agents surface the install step to users.
+
 ## ADR-011 — Policy Engine as Non-Human Identity (NHI) infrastructure
 
 The policy engine treats AI coding agents as distinct non-human identities. Policy rules include an `agent_type` field (`claude_code`, `cursor`, `copilot`, `*`) enabling per-agent permission scoping. Combined with the `policy_decisions` audit table, this positions ContextOS as enterprise access governance for AI agents — not just a context injection tool.
