@@ -44,12 +44,12 @@ export function createCheckPolicyToolRegistration(
     name: 'check_policy',
     title: 'ContextOS: check_policy',
     description:
-      'Call this BEFORE every file write, shell command, or destructive operation. Returns "allow", "ask", or "deny". ' +
-      'Consults policy rules scoped to the project; future slices consult CODEOWNERS and branch protection. ' +
-      'If the response is "deny", DO NOT proceed — report the reason to the user and stop. Fail-open on evaluator faults ' +
-      '(breaker / timeout / throw) — the tool returns { permissionDecision: "allow", reason: "policy_engine_unavailable", failOpen: true }. ' +
-      'Audit row is written asynchronously; the handler returns before the row is visible. ' +
-      'Returns { ok: true, permissionDecision, reason, ruleReason, matchedRuleId, failOpen } on success, or { ok: false, error: "project_not_found", howToFix } if the projectSlug is not registered.',
+      'Call this BEFORE every file write, shell command, or destructive operation. Returns "allow", "ask", or "deny" — ' +
+      'project-scoped policy rules decide. If the response is "deny", DO NOT proceed — report the reason to the user and stop. ' +
+      'Fail-open on evaluator faults (breaker / timeout / throw) — the tool returns { permissionDecision: "allow", ' +
+      'reason: "policy_engine_unavailable", failOpen: true }. ' +
+      'Returns { ok: true, permissionDecision, reason, ruleReason, matchedRuleId, failOpen } on success, or ' +
+      '{ ok: false, error: "project_not_found", howToFix } if the projectSlug is not registered.',
     inputSchema: checkPolicyInputSchema,
     outputSchema: checkPolicyOutputSchema,
     idempotencyKey: checkPolicyIdempotencyKey,

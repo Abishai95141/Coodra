@@ -48,7 +48,8 @@ export function createQueryCodebaseGraphToolRegistration(
       'Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer ' +
       '"where is X defined?" without reading every file. Returns { ok: true, nodes, edges, indexed: true, notice } ' +
       'on success (query filtering is deferred to Module 05). Soft-failures: project_not_found (unknown slug), ' +
-      'codebase_graph_not_indexed (project exists but `graphify scan` has not been run).',
+      'codebase_graph_not_indexed (project exists but `graphify scan` has not been run). When `codebase_graph_not_indexed`, ' +
+      'surface `howToFix` to the user — they need to run `graphify scan` at the repo root before retry.',
     inputSchema: queryCodebaseGraphInputSchema,
     outputSchema: queryCodebaseGraphOutputSchema,
     idempotencyKey: queryCodebaseGraphIdempotencyKey,
