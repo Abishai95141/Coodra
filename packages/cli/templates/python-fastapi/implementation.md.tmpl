@@ -1,0 +1,51 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Scaffold
+
+- `uv init` + add `fastapi`, `uvicorn[standard]`, `pydantic`, `pytest`, `ruff`
+- Create `main.py` with `app = FastAPI()` + `/healthz` returning `{"ok": True}`
+- Verify uvicorn boots and `/healthz` responds 200
+
+### S2 — First route + Pydantic model
+
+- Pick the first user-facing endpoint; define request/response models
+- Add unit tests with `httpx.AsyncClient` against the test app
+- Wire dependency injection for any shared resources
+
+### S3 — External integration
+
+- (e.g. Postgres via asyncpg, Redis, an external API)
+- Add a circuit breaker or timeout pattern
+- Document the gotchas inline in code
+
+(Continue with one slice per feature.)
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+app/
+  main.py
+  routes/
+  models/
+  deps/
+tests/
+  conftest.py
+pyproject.toml
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+(`init --mode auto` populates this from `pyproject.toml [project.scripts]` /
+`Makefile` if present.)
+
+<!-- /@auto -->

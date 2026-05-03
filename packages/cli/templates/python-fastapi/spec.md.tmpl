@@ -1,0 +1,34 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A Python FastAPI service. Replace this section with the API surface
+the project owns — which routes, which Pydantic schemas, which
+external dependencies it integrates with.
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+- [ ] `uv run uvicorn main:app --reload` boots cleanly; `/healthz` returns 200
+- [ ] Every route has a Pydantic request + response model (no `dict[str, Any]`)
+- [ ] `uv run pytest` is green
+- [ ] `uv run ruff check` and `uv run pyright` (or `mypy --strict`) are green
+- [ ] OpenAPI spec at `/docs` lists every public route
+
+## 3. Non-goals
+
+- No synchronous endpoints — embrace `async def`
+- No raw SQL or pickled state — use a typed driver (asyncpg, redis-py)
+- No global state — per-request dependency injection via `Depends`
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. authentication strategy — JWT vs Clerk-via-asgi?) | open |
+| 2 | (e.g. database driver — asyncpg vs SQLAlchemy 2.0 async?) | open |

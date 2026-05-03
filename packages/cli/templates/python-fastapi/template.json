@@ -1,0 +1,12 @@
+{
+  "name": "python-fastapi",
+  "description": "Python FastAPI service — async HTTP API with Pydantic models and uvicorn.",
+  "version": "1.0.0",
+  "languages": ["python"],
+  "detect": {
+    "files": ["main.py", "app/main.py", "src/main.py"],
+    "packageJsonDeps": [],
+    "pyprojectTomlPresent": true
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points", "dependencies"]
+}

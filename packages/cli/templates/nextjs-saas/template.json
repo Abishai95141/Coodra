@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-saas",
+  "description": "Next.js 15 + React 19 SaaS app — App Router, Server Components, Tailwind, Clerk auth, Drizzle + Postgres.",
+  "version": "1.0.0",
+  "languages": ["typescript"],
+  "detect": {
+    "files": ["next.config.ts", "next.config.js", "next.config.mjs"],
+    "packageJsonDeps": ["next"]
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points", "dependencies"]
+}

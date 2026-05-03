@@ -15,6 +15,9 @@ import { buildContextosMcpEntry, mergeMcpJson } from '../lib/init/mcp-merge.js';
 import type { WriteOutcome } from '../lib/init/types.js';
 import { openLocalDb } from '../lib/open-local-db.js';
 import { bundledMigrationsDir, resolveRuntimeBinary } from '../lib/runtime-paths.js';
+import { listAvailableTemplates, resolveTemplatePath } from '../lib/template-paths.js';
+import { detectTemplate } from '../lib/templates/detect.js';
+import { loadTemplate, type TemplateDefinition, TemplateLoadError } from '../lib/templates/load-template.js';
 
 export interface InitOptions {
   readonly projectSlug?: string;
@@ -33,6 +36,20 @@ export interface InitOptions {
    */
   readonly userHome?: string;
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * Module 08b S13: feature-pack template selector. Bare name resolves
+   * via `resolveTemplatePath` (user-installed → bundled). A path
+   * (absolute, relative, or with `/`) loads from disk directly.
+   * `--template auto` triggers project detection.
+   */
+  readonly template?: string;
+  /**
+   * Module 08b S13: `minimal` (default; legacy skeleton output),
+   * `default` (template-driven output), `auto` (detect + render).
+   * `--mode auto` implies `--template auto` if --template is omitted.
+   * The auto-section population pass lands in M08b S15.
+   */
+  readonly mode?: string;
 }
 
 export interface InitIO {
@@ -219,8 +236,73 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
     );
   }
 
+  // Module 08b S13: resolve --template (and --mode auto) to a
+  // TemplateDefinition before seeding. Three paths:
+  //   - --template <path>  → load directly from disk
+  //   - --template <name>  → resolve via user-installed → bundled
+  //   - --mode auto + no --template → detect from project root
+  // Failures are surfaced as warnings + we fall through to the legacy
+  // skeleton path. The S15 follow-up adds auto-section population on
+  // top of the rendered template.
+  let template: TemplateDefinition | undefined;
+  const templateSelector =
+    options.template !== undefined && options.template.length > 0
+      ? options.template
+      : options.mode === 'auto'
+        ? 'auto'
+        : undefined;
+  if (templateSelector !== undefined && templateSelector !== 'auto') {
+    const resolved = resolveTemplatePath(templateSelector, { cwd: root });
+    if (resolved === null) {
+      io.writeStderr(
+        `${pc.yellow('⚠')} --template "${templateSelector}" not found (user templates: ~/.contextos/templates/, bundled: cli-dist/templates/). Falling back to skeleton.\n`,
+      );
+    } else {
+      try {
+        template = await loadTemplate(resolved.dir);
+        io.writeStdout(`${pc.green('✓')} Using template "${template.meta.name}" (source: ${resolved.source}).\n`);
+      } catch (err) {
+        const message = err instanceof TemplateLoadError ? err.message : (err as Error).message;
+        io.writeStderr(
+          `${pc.yellow('⚠')} Could not load template "${templateSelector}": ${message}. Falling back to skeleton.\n`,
+        );
+      }
+    }
+  } else if (templateSelector === 'auto') {
+    // Detect from project root.
+    const all = listAvailableTemplates();
+    const definitions: TemplateDefinition[] = [];
+    for (const t of all) {
+      try {
+        definitions.push(await loadTemplate(t.dir));
+      } catch {
+        // skip unloadable templates
+      }
+    }
+    // Sort: more-specific first; generic last.
+    const sorted = [...definitions].sort((a, b) => {
+      if (a.meta.name === 'generic') return 1;
+      if (b.meta.name === 'generic') return -1;
+      return a.meta.name.localeCompare(b.meta.name);
+    });
+    const detected = detectTemplate(root, sorted);
+    if (detected.chosen !== null) {
+      template = detected.chosen;
+      io.writeStdout(`${pc.green('✓')} --mode auto detected template "${template.meta.name}".\n`);
+    } else {
+      io.writeStderr(`${pc.yellow('⚠')} --mode auto could not detect a template; falling back to skeleton.\n`);
+    }
+  }
+
   // Seed the feature pack folder
-  const seedOutcomes = await seedFeaturePack({ cwd: root, slug: projectSlug, languages, force, dryRun });
+  const seedOutcomes = await seedFeaturePack({
+    cwd: root,
+    slug: projectSlug,
+    languages,
+    force,
+    dryRun,
+    ...(template !== undefined ? { template } : {}),
+  });
   outcomes.push(...seedOutcomes);
 
   // Graphify is optional and out of 08a's required scope.

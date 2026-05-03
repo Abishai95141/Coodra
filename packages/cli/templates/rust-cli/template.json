@@ -1,0 +1,12 @@
+{
+  "name": "rust-cli",
+  "description": "Rust CLI — clap-based argument parsing, anyhow error handling, single-binary output.",
+  "version": "1.0.0",
+  "languages": ["rust"],
+  "detect": {
+    "files": [],
+    "packageJsonDeps": [],
+    "cargoTomlPresent": true
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points", "dependencies"]
+}

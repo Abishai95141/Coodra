@@ -1,0 +1,33 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A Python ML / data-science project. Replace this section with the
+research question, dataset, and target model architecture.
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+- [ ] Training script runs end-to-end with `uv run python src/train.py`
+- [ ] Evaluation metrics reported in a structured way (no print-debugging only)
+- [ ] Notebooks under `notebooks/` are reproducible (kernel + dataset version pinned)
+- [ ] Model artifacts (weights, configs) saved to `models/` with timestamps
+- [ ] `uv run pytest tests/` covers data-pipeline transforms
+
+## 3. Non-goals
+
+- No production serving — that's a separate project (likely python-fastapi)
+- No cloud orchestration — local + single-GPU training is the scope
+- No proprietary datasets in the repo — store under git-LFS or external bucket
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. base model — HF transformers vs. PyTorch from-scratch?) | open |
+| 2 | (e.g. eval split — held-out set vs. cross-validation?) | open |

@@ -148,6 +148,14 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     .option('--no-graphify', 'Skip the Graphify scan during Feature Pack seeding.')
     .option('--dry-run', 'Print what init would write without touching disk.')
     .option('--force', 'Overwrite existing files with the baseline (destructive — see spec §11 Decision 3).')
+    .option(
+      '--template <name|path>',
+      'Module 08b S13: feature-pack template selector. Bundled options: generic, nextjs-saas, python-fastapi, python-ml, node-monorepo, rust-cli, go-service. Pass a path (./local-dir or absolute) to load from disk.',
+    )
+    .option(
+      '--mode <mode>',
+      'minimal (default; legacy skeleton) | default (template-driven) | auto (detect a template from project shape).',
+    )
     .action(async (opts: InitOptions) => {
       await initRunner(opts, options.initIO);
     });

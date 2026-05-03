@@ -1,0 +1,11 @@
+{
+  "name": "node-monorepo",
+  "description": "TypeScript monorepo with workspaces (pnpm/yarn/npm), turbo or nx orchestration, multiple packages under packages/ or apps/.",
+  "version": "1.0.0",
+  "languages": ["typescript", "javascript"],
+  "detect": {
+    "files": ["pnpm-workspace.yaml", "turbo.json", "nx.json", "rush.json"],
+    "packageJsonDeps": ["turbo", "nx"]
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points", "dependencies"]
+}

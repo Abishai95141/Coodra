@@ -107,6 +107,17 @@ async function main() {
   cpSync(drizzleSrc, drizzleDst, { recursive: true });
   console.log(`bundle: copied drizzle/ → ${drizzleDst}`);
 
+  // 5) Bundled feature-pack templates (Module 08b S13). Resolved at
+  // runtime by `lib/template-paths.ts::resolveBundledTemplatesDir`.
+  // Shipping every directory under `packages/cli/templates/` lets
+  // `init --template <name>` work on a fresh `npm i -g`.
+  const templatesSrc = resolve(cliRoot, 'templates');
+  const templatesDst = resolve(cliDist, 'templates');
+  rmSync(templatesDst, { recursive: true, force: true });
+  mkdirSync(templatesDst, { recursive: true });
+  cpSync(templatesSrc, templatesDst, { recursive: true });
+  console.log(`bundle: copied templates/ → ${templatesDst}`);
+
   console.log('bundle: done');
 }
 

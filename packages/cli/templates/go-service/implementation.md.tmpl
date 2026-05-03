@@ -1,0 +1,49 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Scaffold
+
+- `go mod init <module-path>` + minimal `cmd/server/main.go`
+- `/healthz` + `/readyz` endpoints
+- `slog`-based JSON logging
+
+### S2 — First domain endpoint
+
+- Pick the simplest route; wire request → handler → backing store
+- Add a unit test for the handler + an integration test for the route
+
+### S3 — Graceful shutdown + observability
+
+- `http.Server` with `Shutdown(ctx)` on SIGTERM
+- Pprof endpoint behind a debug flag
+- Optional: `/metrics` exposing Prometheus counters
+
+(Continue with one slice per route.)
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+cmd/
+  server/
+    main.go
+internal/
+  routes/
+  store/
+  config/
+go.mod
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+(Use a `Makefile` or a `taskfile.yaml` for `build / test / lint`.)
+
+<!-- /@auto -->

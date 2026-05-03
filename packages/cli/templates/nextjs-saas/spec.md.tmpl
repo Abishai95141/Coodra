@@ -1,0 +1,45 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+>
+> Detected stack: Next.js + React. Tailor the sections below to the
+> specific routes / Server Components / API surfaces the project
+> actually owns.
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A Next.js application using the App Router. Replace this section with
+the product surface — what end-users do with it, what the routing
+shape is, which Clerk org or auth model the app expects.
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+The Next.js app ships when:
+
+- [ ] `pnpm dev` boots without warnings; the app loads at `/`
+- [ ] `pnpm build` produces a clean production bundle
+- [ ] Every route has at least a smoke-test (HTTP 200 for happy path)
+- [ ] All Server Components that read user data go through the auth
+      middleware (no orphaned `db.query` in unauthed routes)
+- [ ] Tailwind classes follow the design-system tokens (no inline `style=`)
+- [ ] Drizzle migrations run cleanly against the cloud Postgres
+- [ ] `pnpm typecheck` and `pnpm lint` are both green
+
+## 3. Non-goals
+
+- No SSR-only rendering — embrace App Router + Server Components
+- No client-side data fetching for content the server can render
+- No custom auth — Clerk owns authentication
+- No raw SQL — use Drizzle for every query (pgvector ops can use
+  `sql\`...\`` template tags but stay schema-validated)
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. Will we use Clerk Organizations for multi-tenancy?) | open |
+| 2 | (e.g. Do we need ISR/PPR for marketing pages?) | open |

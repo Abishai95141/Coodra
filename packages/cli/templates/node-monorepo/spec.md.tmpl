@@ -1,0 +1,33 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A TypeScript monorepo. Replace this section with the package
+inventory — which apps under `apps/` ship as binaries, which packages
+under `packages/` are shared libs, which are private vs. publishable.
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+- [ ] `pnpm install` clean, no peer-dependency warnings escalated
+- [ ] `pnpm turbo run build lint typecheck test` green across all packages
+- [ ] Cross-package imports go through workspace deps (no relative `../../packages/...`)
+- [ ] Each publishable package has its own `README.md` + `LICENSE`
+- [ ] Pinned tool versions match across the workspace (TypeScript, Node, etc.)
+
+## 3. Non-goals
+
+- No mixing of bundle formats — all packages emit ESM (`"type": "module"`)
+- No transitive workspace deps in `dependencies` of published packages
+  (use `peerDependencies` for shared workspace libs that consumers should bring)
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. Turbo vs. Nx — pick one and stick with it) | open |

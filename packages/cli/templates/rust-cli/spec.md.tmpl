@@ -1,0 +1,34 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A Rust command-line tool. Replace this section with the operator
+surface — which subcommands, which flags, what the binary's
+exit-code contract is.
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+- [ ] `cargo build --release` produces a single binary
+- [ ] `cargo test` is green
+- [ ] `cargo clippy --all-targets -- -D warnings` is clean
+- [ ] `cargo fmt --check` is clean
+- [ ] `--help` prints the documented command surface
+- [ ] Exit codes are stable + documented (POSIX convention: 0 ok, non-zero error)
+
+## 3. Non-goals
+
+- No GUI — terminal output only
+- No background services — exec-and-exit
+- No async runtime unless I/O fan-out demands it (single-threaded by default)
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. error reporting — anyhow vs miette for user-facing errors?) | open |

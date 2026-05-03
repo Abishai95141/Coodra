@@ -1,0 +1,51 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Scaffold + auth
+
+- Set up Next.js app with App Router
+- Install and configure Clerk middleware
+- Add a protected `/dashboard` route + a public `/` landing page
+- Verify the auth redirect works end-to-end
+
+### S2 — Database schema
+
+- Add Drizzle config + schema for the core domain tables
+- Generate first migration; apply against local Postgres + cloud
+- Add typed query helpers in `lib/db/`
+
+### S3 — First feature
+
+- Pick one user-facing flow; ship it end-to-end (Server Component +
+  Server Action + Drizzle query + UI state)
+
+(Continue with one slice per feature.)
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+app/
+  layout.tsx
+  page.tsx
+  dashboard/
+components/
+lib/
+  db/
+  auth/
+public/
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+(`init --mode auto` populates this from `package.json#scripts`.)
+
+<!-- /@auto -->

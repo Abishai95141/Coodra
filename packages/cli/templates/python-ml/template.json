@@ -1,0 +1,12 @@
+{
+  "name": "python-ml",
+  "description": "Python ML/data project — Jupyter notebooks, NumPy/Pandas, training scripts under src/.",
+  "version": "1.0.0",
+  "languages": ["python"],
+  "detect": {
+    "files": ["notebooks/", "models/", "data/"],
+    "packageJsonDeps": [],
+    "pyprojectTomlPresent": true
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points", "dependencies"]
+}

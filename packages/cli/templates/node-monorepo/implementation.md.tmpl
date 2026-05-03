@@ -1,0 +1,45 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Workspace bootstrap
+
+- Set up `pnpm-workspace.yaml` + root `package.json` with workspaces
+- Add `turbo.json` (or `nx.json`) with at minimum `build / lint / test` tasks
+- Pin shared TypeScript / Biome / Vitest at the root
+
+### S2 — First package + first app
+
+- Add `packages/shared/` with a typed util
+- Add `apps/web/` consuming the shared package via workspace dep
+
+### S3 — CI
+
+- GitHub Actions workflow that runs `pnpm turbo run build lint test`
+  on every push
+
+(Continue with one slice per app/package.)
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+packages/
+  shared/
+apps/
+  web/
+turbo.json
+pnpm-workspace.yaml
+package.json
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+<!-- /@auto -->

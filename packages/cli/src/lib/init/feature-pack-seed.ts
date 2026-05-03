@@ -1,6 +1,9 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
 import type { Language } from '../detect.js';
+import type { TemplateDefinition } from '../templates/load-template.js';
+import { renderTemplate } from '../templates/render.js';
 import type { WriteOutcome } from './types.js';
 
 export interface SeedFeaturePackOptions {
@@ -9,6 +12,14 @@ export interface SeedFeaturePackOptions {
   readonly languages: readonly Language[];
   readonly force: boolean;
   readonly dryRun: boolean;
+  /**
+   * Module 08b S13 — when provided, the template is rendered + its
+   * output replaces the built-in buildXSkeleton helpers. Detection is
+   * the responsibility of the caller (init resolves --template <name>
+   * → TemplateDefinition before passing in here). Auto-section
+   * population (M08b S15 --mode auto) layers on top of this output.
+   */
+  readonly template?: TemplateDefinition;
 }
 
 const LANGUAGE_GLOB: Record<Language, string[]> = {
@@ -31,13 +42,36 @@ export async function seedFeaturePack(options: SeedFeaturePackOptions): Promise<
 
   if (!options.dryRun) await mkdir(dir, { recursive: true });
 
-  const sourceFiles = options.languages.flatMap((lang) => LANGUAGE_GLOB[lang]);
-  const meta = {
-    slug: options.slug,
-    parentSlug: null,
-    sourceFiles: sourceFiles.length > 0 ? sourceFiles : ['**/*'],
-    isActive: true,
-  };
+  // Module 08b S13: when --template is supplied, render the template's
+  // four .tmpl files instead of the built-in skeletons. The legacy
+  // skeleton path is preserved for `init` invocations without --template.
+  let metaBody: string;
+  let specBody: string;
+  let implementationBody: string;
+  let techstackBody: string;
+  if (options.template !== undefined) {
+    const rendered = renderTemplate(options.template, {
+      slug: options.slug,
+      languages: options.languages,
+    });
+    metaBody = rendered['meta.json'];
+    specBody = rendered['spec.md'];
+    implementationBody = rendered['implementation.md'];
+    techstackBody = rendered['techstack.md'];
+  } else {
+    const sourceFiles = options.languages.flatMap((lang) => LANGUAGE_GLOB[lang]);
+    const meta = {
+      slug: options.slug,
+      parentSlug: null,
+      sourceFiles: sourceFiles.length > 0 ? sourceFiles : ['**/*'],
+      isActive: true,
+    };
+    metaBody = `${JSON.stringify(meta, null, 2)}\n`;
+    specBody = buildSpecSkeleton(options.slug);
+    implementationBody = buildImplementationSkeleton(options.slug);
+    techstackBody = buildTechstackSkeleton(options.slug, options.languages);
+  }
+
   // Phase 3 Fix C (2026-05-02): seed implementation.md + techstack.md
   // alongside spec.md + meta.json. Pre-Phase-3 only meta.json + spec.md
   // were written, but apps/mcp-server/src/lib/feature-pack.ts:139-144
@@ -45,10 +79,10 @@ export async function seedFeaturePack(options: SeedFeaturePackOptions): Promise<
   // every fresh `contextos init` shipped with `get_feature_pack` broken
   // out of the gate. Hooks-bridge tolerates missing optional files via
   // its own readMaybe loader, but the MCP-side roundtrip did not.
-  outcomes.push(await writeIfAbsent(metaPath, `${JSON.stringify(meta, null, 2)}\n`, options));
-  outcomes.push(await writeIfAbsent(specPath, buildSpecSkeleton(options.slug), options));
-  outcomes.push(await writeIfAbsent(implementationPath, buildImplementationSkeleton(options.slug), options));
-  outcomes.push(await writeIfAbsent(techstackPath, buildTechstackSkeleton(options.slug, options.languages), options));
+  outcomes.push(await writeIfAbsent(metaPath, metaBody, options));
+  outcomes.push(await writeIfAbsent(specPath, specBody, options));
+  outcomes.push(await writeIfAbsent(implementationPath, implementationBody, options));
+  outcomes.push(await writeIfAbsent(techstackPath, techstackBody, options));
   return outcomes;
 }
 

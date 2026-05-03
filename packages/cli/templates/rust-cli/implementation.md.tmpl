@@ -1,0 +1,44 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Scaffold
+
+- `cargo init --bin` + add `clap`, `anyhow`, optionally `tracing`
+- First subcommand stub that prints `Hello, world!`
+
+### S2 — Real first subcommand
+
+- Pick the smallest user-facing command
+- Define args via clap derive macros
+- Handle errors via anyhow with structured context
+
+### S3 — Tests + docs
+
+- `tests/integration.rs` with `assert_cmd` for end-to-end CLI tests
+- Document every subcommand in `README.md`
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+src/
+  main.rs
+  commands/
+tests/
+Cargo.toml
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+(Cargo handles build / test / fmt / clippy; no separate Makefile
+required.)
+
+<!-- /@auto -->

@@ -1,0 +1,28 @@
+# Tech stack: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Languages
+
+{{detectedLanguages}}
+
+## Pinned dependencies
+
+<!-- @auto:dependencies -->
+
+| Module | Version | Purpose |
+|---|---|---|
+| `net/http` | stdlib | HTTP server |
+| `log/slog` | stdlib | Structured logging |
+| `github.com/go-chi/chi/v5` (optional) | `^5.x` | HTTP routing if stdlib mux is too thin |
+| `github.com/jackc/pgx/v5` (when DB needed) | `^5.x` | Postgres driver |
+
+<!-- /@auto -->
+
+## Entry points
+
+<!-- @auto:entry-points -->
+
+- `cmd/server/main.go` — main entry; binds to env-driven port
+
+<!-- /@auto -->

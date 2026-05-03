@@ -1,0 +1,30 @@
+# Tech stack: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Languages
+
+{{detectedLanguages}}
+
+## Pinned dependencies
+
+<!-- @auto:dependencies -->
+
+| Library | Version | Purpose |
+|---|---|---|
+| `fastapi` | `^0.115` | Async HTTP framework |
+| `uvicorn[standard]` | `^0.30` | ASGI server |
+| `pydantic` | `^2.0` | Request/response models |
+| `pytest` | `^8.0` | Test runner |
+| `ruff` | `^0.5` | Linter + formatter |
+
+<!-- /@auto -->
+
+## Entry points
+
+<!-- @auto:entry-points -->
+
+- `main.py` — FastAPI app factory + uvicorn bootstrap
+- `app/main.py` (alternate layout) — same role with a package wrapper
+
+<!-- /@auto -->

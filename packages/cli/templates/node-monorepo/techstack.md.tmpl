@@ -1,0 +1,29 @@
+# Tech stack: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Languages
+
+{{detectedLanguages}}
+
+## Pinned dependencies
+
+<!-- @auto:dependencies -->
+
+| Library | Version | Purpose |
+|---|---|---|
+| `typescript` | `^5.x` | Type system |
+| `turbo` (or `nx`) | `^2.x` | Task orchestration |
+| `vitest` | `^2.x` | Test runner |
+| `biome` | `^1.x` | Linter + formatter |
+
+<!-- /@auto -->
+
+## Entry points
+
+<!-- @auto:entry-points -->
+
+- Each package has its own `src/index.ts` exported via `package.json#exports`
+- Apps run via their own `bin` entry (see `apps/<name>/package.json`)
+
+<!-- /@auto -->

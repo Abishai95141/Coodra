@@ -1,0 +1,49 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+### S1 — Scaffold + data loading
+
+- `uv init` + add `numpy`, `pandas`, `pytest`, plus the modeling stack
+  (e.g. `torch`, `transformers`, `scikit-learn`)
+- Wire a data-loader module under `src/data/`
+- Add a smoke test that loads a single batch
+
+### S2 — Baseline model + training loop
+
+- Implement the simplest baseline (linear / MLP / fine-tuned HF model)
+- Training loop with structured logging (W&B / MLflow / plain JSON)
+
+### S3 — Evaluation + iteration
+
+- Held-out evaluation script under `src/eval.py`
+- Notebook under `notebooks/exploration.ipynb` for ad-hoc analysis
+
+(Continue with one slice per experiment / feature.)
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+```
+src/
+  data/
+  models/
+  train.py
+  eval.py
+notebooks/
+data/
+models/
+tests/
+pyproject.toml
+```
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+<!-- /@auto -->

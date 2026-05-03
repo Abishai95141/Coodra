@@ -1,0 +1,35 @@
+# Tech stack: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Languages
+
+{{detectedLanguages}}
+
+## Pinned dependencies
+
+<!-- @auto:dependencies -->
+
+| Library | Version | Purpose |
+|---|---|---|
+| `next` | `^15.0.0` | Framework — App Router, Server Components |
+| `react` | `^19.0.0` | UI runtime |
+| `@clerk/nextjs` | `^5.0.0` | Auth |
+| `drizzle-orm` | `^0.45.x` | Postgres ORM |
+| `tailwindcss` | `^4.0.0` | Styling |
+
+<!-- /@auto -->
+
+The dependency choices above are committed; replacing them is an
+architecture decision, not a config tweak. Document the rationale in
+`context_memory/decisions-log.md` first.
+
+## Entry points
+
+<!-- @auto:entry-points -->
+
+- `app/layout.tsx` — root layout
+- `app/page.tsx` — `/` route
+- `middleware.ts` — Clerk auth middleware
+
+<!-- /@auto -->

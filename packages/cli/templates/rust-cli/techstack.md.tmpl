@@ -1,0 +1,29 @@
+# Tech stack: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Languages
+
+{{detectedLanguages}}
+
+## Pinned dependencies
+
+<!-- @auto:dependencies -->
+
+| Crate | Version | Purpose |
+|---|---|---|
+| `clap` | `^4.5` | Argument parsing (with `derive` feature) |
+| `anyhow` | `^1.0` | Application-level error handling |
+| `tracing` | `^0.1` | Structured logging (optional) |
+| `assert_cmd` | `^2.0` (dev) | Integration tests for CLI binaries |
+
+<!-- /@auto -->
+
+## Entry points
+
+<!-- @auto:entry-points -->
+
+- `src/main.rs` — `fn main() -> anyhow::Result<()>`
+- `src/commands/<name>.rs` — one module per subcommand
+
+<!-- /@auto -->

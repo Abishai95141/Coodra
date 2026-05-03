@@ -1,0 +1,11 @@
+{
+  "name": "generic",
+  "description": "Always-applicable fallback. Use when no language-specific template matches.",
+  "version": "1.0.0",
+  "languages": [],
+  "detect": {
+    "files": [],
+    "packageJsonDeps": []
+  },
+  "autoSections": ["overview", "directory-structure", "scripts", "entry-points"]
+}

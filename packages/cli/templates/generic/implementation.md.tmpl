@@ -1,0 +1,47 @@
+# Implementation plan: {{slug}}
+
+> Generated {{date}} from the `{{templateName}}` template.
+
+## Slice sequence
+
+Follow top-to-bottom. Each slice is one commit. Decompose the work
+into the smallest set of slices that each ship something independently
+useful.
+
+### S1 — (first slice)
+
+**Scope:** describe the surface this slice introduces.
+
+**Files:**
+- (file paths to be created or modified)
+
+**Acceptance:**
+- (testable assertion)
+
+**Commit:** `feat({{slug}}): (slice 1 short title)`
+
+---
+
+### S2 — (second slice)
+
+…
+
+---
+
+## Directory layout
+
+<!-- @auto:directory-structure -->
+
+(`init --mode auto` populates this from a `find` of project files,
+limited to depth 3.)
+
+<!-- /@auto -->
+
+## Scripts
+
+<!-- @auto:scripts -->
+
+(`init --mode auto` populates this from `package.json` scripts /
+`Makefile` targets / `pyproject.toml` script entries.)
+
+<!-- /@auto -->

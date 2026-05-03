@@ -1,0 +1,35 @@
+# Feature Pack: {{slug}}
+
+> Created {{date}} from the `{{templateName}}` template (v{{templateVersion}}).
+
+## 1. What this project is
+
+<!-- @auto:overview -->
+
+A Go HTTP service. Replace this section with the API surface — what
+routes the service exposes, what backing stores it talks to, what its
+deployment shape looks like (single binary, container, cloud-native).
+
+<!-- /@auto -->
+
+## 2. Acceptance criteria
+
+- [ ] `go build ./...` produces a single binary
+- [ ] `go test ./...` is green
+- [ ] `go vet ./...` is clean
+- [ ] `golangci-lint run` is clean (with the agreed config)
+- [ ] `/healthz` returns 200; `/readyz` returns 200 only when dependencies are reachable
+- [ ] Structured logging via `slog` — no fmt.Println in production code paths
+
+## 3. Non-goals
+
+- No web frameworks unless a hard reason — `net/http` + `chi` (or stdlib `http.ServeMux` post-1.22) is the default
+- No `go generate` magic — explicit code over codegen
+- No global state — pass dependencies via constructors
+
+## 4. Open questions
+
+| # | Question | Status |
+|---|---|---|
+| 1 | (e.g. routing — chi vs stdlib mux?) | open |
+| 2 | (e.g. database driver — pgx vs database/sql wrapper?) | open |
