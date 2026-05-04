@@ -22,6 +22,8 @@ const TERMINAL_STATUSES = new Set(['completed', 'cancelled', 'failed']);
 
 export interface RunLiveClientProps {
   readonly runId: string;
+  /** URL-decoded project slug — used to build static-detail href + API URL. */
+  readonly projectSlug: string;
   readonly initialSnapshot: SerializedRunState;
   readonly initialLastModified: string;
 }
@@ -30,9 +32,9 @@ function deserializeDate(iso: string): Date {
   return new Date(iso);
 }
 
-export function RunLiveClient({ runId, initialSnapshot, initialLastModified }: RunLiveClientProps) {
+export function RunLiveClient({ runId, projectSlug, initialSnapshot, initialLastModified }: RunLiveClientProps) {
   const router = useRouter();
-  const url = `/api/runs/${encodeURIComponent(runId)}/state`;
+  const url = `/api/projects/${encodeURIComponent(projectSlug)}/runs/${encodeURIComponent(runId)}/state`;
   const { data, error, isPaused, nextAttemptInMs, lastModified } = usePoll<SerializedRunState>({
     url,
     intervalMs: 1500,
@@ -49,8 +51,8 @@ export function RunLiveClient({ runId, initialSnapshot, initialLastModified }: R
     if (!isTerminal) return;
     // Preserve the active hash if any (e.g. #audit) so deep-link state survives.
     const hash = typeof window !== 'undefined' ? window.location.hash : '';
-    router.replace(`/runs/${encodeURIComponent(runId)}${hash}` as never);
-  }, [isTerminal, router, runId]);
+    router.replace(`/projects/${encodeURIComponent(projectSlug)}/runs/${encodeURIComponent(runId)}${hash}` as never);
+  }, [isTerminal, router, runId, projectSlug]);
 
   const startedAt = deserializeDate(snapshot.run.startedAt);
   const endedAt = snapshot.run.endedAt === null ? null : deserializeDate(snapshot.run.endedAt);

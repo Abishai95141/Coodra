@@ -1,28 +1,28 @@
 import { StatusChip } from '@/components/StatusChip';
+import { resolveProjectFromParams } from '@/lib/project-context';
 import { listTemplates } from '@/lib/queries/templates';
 
 /**
- * `/templates` — bundled + user-installed feature-pack templates per
- * `docs/feature-packs/04-web-app/wireframes/02-screens/templates.md`.
- * Read-only in S7. Install-from-path form is reserved for an S7
- * follow-up (server action requires `installTemplate` extraction
- * from packages/cli — that's M08b S17 internal logic).
+ * `/projects/[slug]/templates` — bundled + user-installed feature-pack
+ * templates available for installation into this project (M04 Phase 2
+ * S2a IA migration).
  *
- * M04 Phase 2 S1 (F1, OQ-9 lock): force-dynamic so newly installed
- * templates (`contextos template install <path>`) appear without a
- * rebuild.
+ * Templates are workspace-level (bundled with the CLI + ~/.contextos/
+ * templates/) — the listing is the same for every project, but the
+ * "Install" action (S13) targets THIS project specifically.
  */
 export const dynamic = 'force-dynamic';
 
-export default async function TemplatesPage() {
+export default async function TemplatesPage({ params }: { params: Promise<{ slug: string }> }) {
+  const project = await resolveProjectFromParams(params);
   const templates = listTemplates();
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-display text-4xl font-black uppercase tracking-wide">Templates</h1>
         <p className="text-sm text-(--color-text-secondary)">
-          Bundled and user-installed feature-pack templates. Install with{' '}
-          <span className="font-mono">contextos template install &lt;path&gt;</span>.
+          Bundled + user templates available to <span className="font-mono">{project.slug}</span>. Install via S13 (web)
+          or <span className="font-mono">contextos template install &lt;path&gt;</span> (CLI).
         </p>
       </header>
 

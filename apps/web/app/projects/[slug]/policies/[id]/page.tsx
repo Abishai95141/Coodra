@@ -4,17 +4,21 @@ import { notFound } from 'next/navigation';
 import { StatusChip } from '@/components/StatusChip';
 import { ToolBadge } from '@/components/ToolBadge';
 import { addRuleAction, setActiveAction } from '@/lib/actions/policies';
+import { resolveProjectFromParams } from '@/lib/project-context';
 import { getPolicy } from '@/lib/queries/policies';
 
 /**
- * `/policies/[id]` — server-rendered policy detail per
- * `docs/feature-packs/04-web-app/wireframes/02-screens/policies.md`.
+ * `/projects/[slug]/policies/[id]` — server-rendered policy detail
+ * (M04 Phase 2 S2a IA migration). 404s if the policy doesn't belong
+ * to the URL-bound project.
  *
- * Three sections (anchored, not tabbed in S5):
+ * Three sections (anchored, not tabbed):
  *   - Rules table (existing rules sorted by priority asc)
  *   - Add Rule form (server action)
  *   - Disable / Enable form (server action; idempotent)
  */
+
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   readonly added?: string;
@@ -32,14 +36,16 @@ export default async function PolicyDetailPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string; id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
+  const project = await resolveProjectFromParams(params);
   const { id: rawId } = await params;
   const id = decodeURIComponent(rawId);
   const sp = await searchParams;
   const policy = await getPolicy(id);
   if (policy === null) notFound();
+  if (policy.projectId !== project.id) notFound();
 
   return (
     <div className="flex flex-col gap-8">
@@ -179,7 +185,7 @@ export default async function PolicyDetailPage({
 
       <div>
         <Link
-          href="/policies"
+          href={`/projects/${encodeURIComponent(project.slug)}/policies` as never}
           className="font-display text-xs font-bold uppercase tracking-wider text-(--color-brand) hover:text-(--color-brand-hover)"
         >
           ◂ Back to policy list

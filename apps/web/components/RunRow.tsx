@@ -5,9 +5,10 @@ import { RunStatusChip } from './RunStatusChip';
 import { ToolBadge } from './ToolBadge';
 
 /**
- * Single row in `/runs` table per
+ * Single row in `/projects/[slug]/runs` table per
  * `docs/feature-packs/04-web-app/wireframes/02-screens/runs-list.md`.
- * Server-rendered. Click navigates to `/runs/[id]`.
+ * Server-rendered. Click navigates to
+ * `/projects/[slug]/runs/[id]` (M04 Phase 2 S2a IA migration).
  */
 
 export interface RunRowProps {
@@ -17,14 +18,16 @@ export interface RunRowProps {
   readonly sessionId: string;
   readonly startedAt: Date;
   readonly endedAt: Date | null;
+  /** URL-decoded project slug — used to build the run-detail link. */
+  readonly projectSlug: string;
 }
 
-export function RunRow({ id, status, agentType, sessionId, startedAt }: RunRowProps) {
+export function RunRow({ id, status, agentType, sessionId, startedAt, projectSlug }: RunRowProps) {
   return (
     <tr className="border-b border-(--color-border-subtle) hover:bg-(--color-bg-surface)">
       <td className="px-3 py-3">
         <Link
-          href={`/runs/${id}` as never}
+          href={`/projects/${encodeURIComponent(projectSlug)}/runs/${encodeURIComponent(id)}` as never}
           className="font-mono text-sm font-medium text-(--color-text-code) hover:text-(--color-brand-hover)"
         >
           {id}

@@ -52,7 +52,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <body>
           <HeaderNav actor={actor} />
           <Breadcrumb />
-          <main className="mx-auto max-w-[1200px] px-6 py-8">{children}</main>
+          {/* M04 Phase 2 S2c: padding moves into per-section layouts.
+              The /projects/[slug] nested layout adds its own container
+              (project bar + sub-nav + content). Top-level pages (`/`,
+              /init, /sync, /settings/*) wrap themselves in their own
+              max-w container as needed. This keeps the project layout
+              from being padded twice. */}
+          <main>{children}</main>
         </body>
       </html>
     </ClerkProvider>

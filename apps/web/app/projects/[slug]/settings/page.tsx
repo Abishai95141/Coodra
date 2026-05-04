@@ -1,43 +1,43 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 
 import { RunStatusChip } from '@/components/RunStatusChip';
 import { resetProjectAction } from '@/lib/actions/projects';
-import { getProject } from '@/lib/queries/projects';
+import { resolveProjectFromParams } from '@/lib/project-context';
 
 /**
- * `/projects/[id]` — server-rendered project detail per
- * `docs/feature-packs/04-web-app/wireframes/02-screens/projects.md`.
+ * `/projects/[slug]/settings` — project settings + admin actions
+ * (M04 Phase 2 S2a IA migration). Was `/projects/[id]/page.tsx`
+ * in Phase 1.
  *
- * Three anchored sections:
+ * Three anchored sections (Phase 2 will add rename / archive /
+ * delete / export per spec §10 S14):
  *   - Overview — counts (runs total + status histogram)
- *   - Recent runs — last N runs as table rows linking to /runs/[id]
+ *   - Recent runs — last N runs linking to /projects/[slug]/runs/[id]
  *   - Reset — destructive form (type-to-confirm, --keep-policies default)
  *
  * The __global__ sentinel project shows the Reset section as a banner
  * explaining why it cannot be reset from the UI.
  */
 
+export const dynamic = 'force-dynamic';
+
 interface SearchParams {
   readonly error?: string;
 }
 
-const GLOBAL_PROJECT_ID = '__global__';
+const GLOBAL_PROJECT_SLUG = '__global__';
 
-export default async function ProjectDetailPage({
+export default async function ProjectSettingsPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
   searchParams: Promise<SearchParams>;
 }) {
-  const { id: rawId } = await params;
-  const id = decodeURIComponent(rawId);
+  const project = await resolveProjectFromParams(params);
   const sp = await searchParams;
-  const project = await getProject(id);
-  if (project === null) notFound();
 
-  const isSentinel = project.slug === GLOBAL_PROJECT_ID;
+  const isSentinel = project.slug === GLOBAL_PROJECT_SLUG;
   const statusEntries = Object.entries(project.statusCounts).sort(([a], [b]) => a.localeCompare(b));
   const totalRuns = project.runCount;
 
@@ -97,7 +97,7 @@ export default async function ProjectDetailPage({
                 <tr key={run.id} className="border-b border-(--color-border-subtle) hover:bg-(--color-bg-surface)">
                   <td className="px-3 py-2">
                     <Link
-                      href={`/runs/${encodeURIComponent(run.id)}` as never}
+                      href={`/projects/${encodeURIComponent(project.slug)}/runs/${encodeURIComponent(run.id)}` as never}
                       className="font-mono text-xs font-medium text-(--color-text-code) hover:text-(--color-brand-hover)"
                     >
                       {run.id}
@@ -171,10 +171,10 @@ export default async function ProjectDetailPage({
 
       <div>
         <Link
-          href="/projects"
+          href="/"
           className="font-display text-xs font-bold uppercase tracking-wider text-(--color-brand) hover:text-(--color-brand-hover)"
         >
-          ◂ Back to projects
+          ◂ Back to all projects
         </Link>
       </div>
     </div>

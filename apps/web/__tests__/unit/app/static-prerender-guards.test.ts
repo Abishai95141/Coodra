@@ -14,24 +14,24 @@ import { describe, expect, it } from 'vitest';
  * fails fast if a future commit drops the directive.
  */
 
-describe('M04 Phase 2 S1 — F1 force-dynamic guards on data-reading routes', () => {
-  it('/ (dashboard) declares dynamic = "force-dynamic"', async () => {
+describe('M04 Phase 2 S1 — F1 force-dynamic guards on data-reading routes (post-S2a IA migration)', () => {
+  it('/ (project picker / will be picker after S2b — placeholder home now) declares dynamic = "force-dynamic"', async () => {
     const mod = await import('@/app/page');
     expect(mod.dynamic).toBe('force-dynamic');
   });
 
-  it('/packs declares dynamic = "force-dynamic"', async () => {
-    const mod = await import('@/app/packs/page');
+  it('/projects/[slug]/packs declares dynamic = "force-dynamic"', async () => {
+    const mod = await import('@/app/projects/[slug]/packs/page');
     expect(mod.dynamic).toBe('force-dynamic');
   });
 
-  it('/packs/[slug] declares dynamic = "force-dynamic"', async () => {
-    const mod = await import('@/app/packs/[slug]/page');
+  it('/projects/[slug]/packs/[packSlug] declares dynamic = "force-dynamic"', async () => {
+    const mod = await import('@/app/projects/[slug]/packs/[packSlug]/page');
     expect(mod.dynamic).toBe('force-dynamic');
   });
 
-  it('/templates declares dynamic = "force-dynamic"', async () => {
-    const mod = await import('@/app/templates/page');
+  it('/projects/[slug]/templates declares dynamic = "force-dynamic"', async () => {
+    const mod = await import('@/app/projects/[slug]/templates/page');
     expect(mod.dynamic).toBe('force-dynamic');
   });
 });

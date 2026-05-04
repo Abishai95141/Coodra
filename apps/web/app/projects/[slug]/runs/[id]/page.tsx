@@ -6,22 +6,27 @@ import { RelativeTime } from '@/components/RelativeTime';
 import { RunEventRow } from '@/components/RunEventRow';
 import { RunStatusChip } from '@/components/RunStatusChip';
 import { compactDuration } from '@/lib/format';
+import { resolveProjectFromParams } from '@/lib/project-context';
 import { getRun } from '@/lib/queries/runs';
 
 /**
- * `/runs/[id]` — server-rendered run detail per
+ * `/projects/[slug]/runs/[id]` — server-rendered run detail per
  * `docs/feature-packs/04-web-app/wireframes/02-screens/run-detail.md`.
  *
+ * M04 Phase 2 S2a IA migration: params now carry both `slug` (project)
+ * and `id` (run). Run is 404'd if it doesn't belong to the URL-bound
+ * project — prevents foreign-project run snooping via deep link.
+ *
  * Tabs render via URL hash (`#events`, `#decisions`, `#audit`,
- * `#context-pack`). S3 uses anchor sections — every section renders
+ * `#context-pack`). M04 uses anchor sections — every section renders
  * server-side; the hash is just deep-link state. A future client-only
  * tab strip can be added without changing this page.
- *
- * Audit always visible (web is human-reading; nothing dropped to fit
- * a Slack post — per OQ-7 web vs CLI export).
  */
 
-export default async function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export const dynamic = 'force-dynamic';
+
+export default async function RunDetailPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
+  const project = await resolveProjectFromParams(params);
   const { id: rawId } = await params;
   // Next.js's dynamic-route layer URL-encodes path segments before
   // exposing them via params (so `run:abc` arrives as `run%3Aabc`).
@@ -31,6 +36,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
   const id = decodeURIComponent(rawId);
   const result = await getRun(id);
   if (result === null) notFound();
+  if (result.run.projectId !== project.id) notFound();
   const { run, events, decisions, policyDecisions, contextPack } = result;
   const startedMs = run.startedAt.getTime();
   const endedMs = run.endedAt?.getTime() ?? Date.now();

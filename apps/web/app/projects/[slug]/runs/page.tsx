@@ -1,45 +1,57 @@
 import Link from 'next/link';
 
 import { RunRow } from '@/components/RunRow';
-import { listProjectsForFilter, listRuns } from '@/lib/queries/runs';
+import { resolveProjectFromParams } from '@/lib/project-context';
+import { listRuns } from '@/lib/queries/runs';
 
 /**
- * `/runs` — server-rendered run list per
- * `docs/feature-packs/04-web-app/wireframes/02-screens/runs-list.md`.
+ * `/projects/[slug]/runs` — server-rendered run list, scoped to the
+ * URL-bound project (M04 Phase 2 S2a IA migration).
  *
- * URL state holds the filter:
+ * URL state holds the secondary filter:
  *   ?status=in_progress|completed|cancelled|failed
- *   ?project=<projectId>
  *   ?limit=<N>  (default 50; "Show more" link doubles)
  *
- * Live URL state means the filter is shareable — paste a `/runs?status=failed`
- * link into Slack and the recipient sees the same view.
+ * The previous cross-project `?project=` filter is gone — the URL
+ * itself carries the project. To compare across projects, switch
+ * via the project switcher in HeaderNav (S2c).
  */
+
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   readonly status?: string;
-  readonly project?: string;
   readonly limit?: string;
 }
 
 const STATUS_OPTIONS = ['', 'in_progress', 'completed', 'cancelled', 'failed'] as const;
 
-export default async function RunsListPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const params = await searchParams;
-  const limit = clampLimit(params.limit);
+export default async function RunsListPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
+  const project = await resolveProjectFromParams(params);
+  const sp = await searchParams;
+  const limit = clampLimit(sp.limit);
   const filter = {
-    ...(params.status !== undefined && params.status !== '' ? { status: params.status } : {}),
-    ...(params.project !== undefined && params.project !== '' ? { projectId: params.project } : {}),
+    projectId: project.id,
+    ...(sp.status !== undefined && sp.status !== '' ? { status: sp.status } : {}),
     limit,
   };
-  const [{ runs, hasMore }, projects] = await Promise.all([listRuns(filter), listProjectsForFilter()]);
+  const { runs, hasMore } = await listRuns(filter);
+
+  const baseHref = `/projects/${encodeURIComponent(project.slug)}/runs`;
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="font-display text-4xl font-black uppercase tracking-wide">Runs</h1>
         <p className="text-sm text-(--color-text-secondary)">
-          {runs.length} run{runs.length === 1 ? '' : 's'} shown, sorted by started_at descending.
+          {runs.length} run{runs.length === 1 ? '' : 's'} for <span className="font-mono">{project.slug}</span>, sorted
+          by started_at descending.
         </p>
       </header>
 
@@ -47,14 +59,8 @@ export default async function RunsListPage({ searchParams }: { searchParams: Pro
         <Filter
           label="Status"
           name="status"
-          value={params.status ?? ''}
+          value={sp.status ?? ''}
           options={STATUS_OPTIONS.map((s) => ({ value: s, label: s === '' ? 'All' : s }))}
-        />
-        <Filter
-          label="Project"
-          name="project"
-          value={params.project ?? ''}
-          options={[{ value: '', label: 'All' }, ...projects.map((p) => ({ value: p.id, label: p.slug }))]}
         />
         <input type="hidden" name="limit" value={String(limit)} />
         <button
@@ -63,10 +69,9 @@ export default async function RunsListPage({ searchParams }: { searchParams: Pro
         >
           Apply
         </button>
-        {(params.status !== undefined && params.status !== '') ||
-        (params.project !== undefined && params.project !== '') ? (
+        {sp.status !== undefined && sp.status !== '' ? (
           <Link
-            href="/runs"
+            href={baseHref as never}
             className="self-end border border-(--color-border-default) px-4 py-2 font-display text-xs font-bold uppercase tracking-wider text-(--color-text-primary) hover:border-(--color-brand) hover:text-(--color-brand)"
           >
             Reset
@@ -75,7 +80,7 @@ export default async function RunsListPage({ searchParams }: { searchParams: Pro
       </form>
 
       {runs.length === 0 ? (
-        <EmptyState />
+        <EmptyState slug={project.slug} />
       ) : (
         <table className="w-full border border-(--color-border-subtle)">
           <thead className="bg-(--color-bg-elevated)">
@@ -97,6 +102,7 @@ export default async function RunsListPage({ searchParams }: { searchParams: Pro
                 sessionId={run.sessionId}
                 startedAt={run.startedAt}
                 endedAt={run.endedAt}
+                projectSlug={project.slug}
               />
             ))}
           </tbody>
@@ -106,14 +112,15 @@ export default async function RunsListPage({ searchParams }: { searchParams: Pro
       {hasMore ? (
         <div className="self-center">
           <Link
-            href={{
-              pathname: '/runs',
-              query: {
-                ...(params.status !== undefined ? { status: params.status } : {}),
-                ...(params.project !== undefined ? { project: params.project } : {}),
-                limit: String(limit * 2),
-              },
-            }}
+            href={
+              {
+                pathname: baseHref,
+                query: {
+                  ...(sp.status !== undefined ? { status: sp.status } : {}),
+                  limit: String(limit * 2),
+                },
+              } as never
+            }
             className="font-display text-xs font-bold uppercase tracking-wider text-(--color-brand) hover:text-(--color-brand-hover)"
           >
             Show more ▸
@@ -168,13 +175,15 @@ function Filter({
   );
 }
 
-function EmptyState() {
+function EmptyState({ slug }: { readonly slug: string }) {
   return (
     <div className="border border-(--color-border-subtle) bg-(--color-bg-surface) p-12 text-center">
       <p className="font-display text-lg font-light uppercase tracking-wider text-(--color-text-secondary)">
-        No runs match the current filter.
+        No runs in this project yet.
       </p>
-      <p className="mt-2 text-sm text-(--color-text-tertiary)">Reset filters or open Claude Code to generate one.</p>
+      <p className="mt-2 text-sm text-(--color-text-tertiary)">
+        Open Claude Code in <span className="font-mono">{slug}</span> to generate one.
+      </p>
     </div>
   );
 }

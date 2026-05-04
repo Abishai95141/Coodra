@@ -6,20 +6,24 @@ import { clerkAppearance } from '@/lib/clerk-appearance';
 import { SoloModeBadge } from './SoloModeBadge';
 
 /**
- * Top header chrome per `docs/feature-packs/04-web-app/wireframes/01-nav-map.md`.
- * S1 ships the static layout with no active-route indicator; the active
- * highlight wires up in S3 (when there's more than one real route to
- * highlight).
+ * `apps/web/components/HeaderNav.tsx` — workspace-level header
+ * (M04 Phase 2 S2c — pivoted from per-route nav to minimal chrome).
+ *
+ * Pre-pivot Phase 1: the header carried links to every operational
+ * route (Runs · Policies · Projects · Packs · Templates · Kill
+ * switches). Hub-and-spoke IA flips this — operational routes live
+ * under `/projects/[slug]/...`, surfaced via the project-scoped
+ * layout's `<ProjectSubNav>`. The workspace header here is
+ * intentionally narrow:
+ *
+ *   - Brand logo (always links to `/`, the project picker).
+ *   - "Projects" link (also goes to `/`; redundant with brand but
+ *     visible affordance).
+ *   - User menu (workspace settings, account, sign out).
+ *
+ * Project-scoped pages get an additional sub-header from
+ * `apps/web/app/projects/[slug]/layout.tsx`.
  */
-
-const NAV_ITEMS = [
-  { href: '/runs', label: 'Runs' },
-  { href: '/policies', label: 'Policies' },
-  { href: '/projects', label: 'Projects' },
-  { href: '/packs', label: 'Packs' },
-  { href: '/templates', label: 'Templates' },
-  { href: '/kill-switches', label: 'Kill switches' },
-] as const;
 
 export interface HeaderNavProps {
   readonly actor: Actor;
@@ -27,30 +31,27 @@ export interface HeaderNavProps {
 
 export function HeaderNav({ actor }: HeaderNavProps) {
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-(--color-border-subtle) bg-(--color-bg-surface) px-6">
-      <div className="flex items-center gap-6">
+    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-(--color-border-subtle) bg-(--color-bg-surface) px-8">
+      <div className="flex items-center gap-8">
         <Link
           href="/"
           className="font-display text-base font-black uppercase tracking-wider text-(--color-text-primary)"
         >
           [CTX]<span className="text-(--color-brand)">OS</span>
         </Link>
-        <span className="font-display text-xs font-light uppercase tracking-widest text-(--color-text-secondary)">
-          {actor.orgId === '__solo__' ? 'verify-m08b' : actor.orgId}
-        </span>
+        <Link
+          href="/"
+          className="font-display text-xs font-bold uppercase tracking-widest text-(--color-text-primary) hover:text-(--color-brand)"
+        >
+          Projects
+        </Link>
+        <Link
+          href="/init"
+          className="font-display text-xs font-bold uppercase tracking-widest text-(--color-text-secondary) hover:text-(--color-brand)"
+        >
+          + New project
+        </Link>
       </div>
-
-      <nav className="hidden items-center gap-6 md:flex">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="font-display text-xs font-bold uppercase tracking-widest text-(--color-text-primary) hover:text-(--color-brand)"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
 
       <div className="flex items-center gap-4">
         {actor.mode === 'solo' ? (

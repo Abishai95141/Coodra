@@ -1,22 +1,28 @@
 import { StatusChip } from '@/components/StatusChip';
 import { pauseAction, resumeAction } from '@/lib/actions/kill-switches';
 import { getActor } from '@/lib/auth';
+import { resolveProjectFromParams } from '@/lib/project-context';
 import { listActive, MODES, SCOPES } from '@/lib/queries/kill-switches';
 
 /**
- * `/kill-switches` — server-rendered admin per
- * `docs/feature-packs/04-web-app/wireframes/02-screens/kill-switches.md`.
+ * `/projects/[slug]/kill-switches` — server-rendered admin per
+ * `docs/feature-packs/04-web-app/wireframes/02-screens/kill-switches.md`,
+ * project-scoped UI per the M04 Phase 2 S2a IA migration.
+ *
+ * Kill switches themselves are workspace-scoped data (no projectId
+ * column on `kill_switches`); they're matched at bridge eval time by
+ * `scope` + `target` tuple. The page shows ALL active switches in
+ * `Active`, but pre-fills the "Pause new" form with `scope=project,
+ * target=<this project's slug>` to make project-targeted pauses the
+ * default action when the user is viewing a specific project.
  *
  * Three anchored sections:
  *   - Active — list of unresumed switches with Resume buttons
- *   - Pause new — server-action form
+ *   - Pause new — server-action form, pre-filled for the current project
  *   - Propagation note — explains the team-mode sync semantics
- *     (S8a: ~10s p95 to all developers via sync-daemon puller)
- *
- * The puller lives in sync-daemon, not in the web app — the web's
- * job is to write to the local SQLite (solo) or cloud Postgres
- * (team) and let the daemon fan out.
  */
+
+export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   readonly paused?: string;
@@ -27,7 +33,14 @@ interface SearchParams {
   readonly error?: string;
 }
 
-export default async function KillSwitchesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function KillSwitchesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
+  const project = await resolveProjectFromParams(params);
   const sp = await searchParams;
   const actor = await getActor();
   const active = await listActive();
@@ -102,10 +115,14 @@ export default async function KillSwitchesPage({ searchParams }: { searchParams:
       </Section>
 
       <Section title="Pause new">
+        <p className="-mt-1 mb-3 text-xs text-(--color-text-tertiary)">
+          Pre-filled for project <span className="font-mono">{project.slug}</span>. Change scope/target to widen (global
+          / tool / agent_type).
+        </p>
         <PauseForm
           {...(sp.duplicate !== undefined ? { dupId: sp.duplicate } : {})}
-          {...(sp.scope !== undefined ? { dupScope: sp.scope } : {})}
-          {...(sp.target !== undefined ? { dupTarget: sp.target } : {})}
+          dupScope={sp.scope ?? 'project'}
+          dupTarget={sp.target ?? project.slug}
         />
       </Section>
     </div>

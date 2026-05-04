@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { StatusChip } from '@/components/StatusChip';
+import { resolveProjectFromParams } from '@/lib/project-context';
 import { getPack } from '@/lib/queries/packs';
 
 /**
@@ -19,11 +20,14 @@ import { getPack } from '@/lib/queries/packs';
  */
 export const dynamic = 'force-dynamic';
 
-export default async function PackDetailPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug: rawSlug } = await params;
-  const slug = decodeURIComponent(rawSlug);
-  const pack = getPack(slug);
+export default async function PackDetailPage({ params }: { params: Promise<{ slug: string; packSlug: string }> }) {
+  const project = await resolveProjectFromParams(params);
+  const { packSlug: rawPackSlug } = await params;
+  const packSlug = decodeURIComponent(rawPackSlug);
+  const pack = getPack(packSlug);
   if (pack === null) notFound();
+  // Project ownership check: pack must be slug-owned or parent-owned by this project.
+  if (pack.slug !== project.slug && pack.parentSlug !== project.slug) notFound();
 
   return (
     <div className="flex flex-col gap-8">
@@ -67,7 +71,7 @@ export default async function PackDetailPage({ params }: { params: Promise<{ slu
 
       <div>
         <Link
-          href="/packs"
+          href={`/projects/${encodeURIComponent(project.slug)}/packs` as never}
           className="font-display text-xs font-bold uppercase tracking-wider text-(--color-brand) hover:text-(--color-brand-hover)"
         >
           ◂ Back to packs
