@@ -87,6 +87,9 @@ $RECYCLE.BIN/
 # --- Logs ---
 logs/
 *.log
+# Don't ignore intentional source `logs/` directories under apps/.
+!apps/**/app/**/logs/
+!apps/**/app/**/logs/**
 
 # --- Drizzle local artefacts kept out of git (generated files live in packages/db/drizzle/ and ARE committed) ---
 drizzle/.journal/tmp/
