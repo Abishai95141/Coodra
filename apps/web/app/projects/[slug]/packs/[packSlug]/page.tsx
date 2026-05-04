@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { StatusChip } from '@/components/StatusChip';
 import { resolveProjectFromParams } from '@/lib/project-context';
 import { getPack } from '@/lib/queries/packs';
@@ -54,18 +55,19 @@ export default async function PackDetailPage({ params }: { params: Promise<{ slu
       </header>
 
       <Section title="spec.md">
-        <FileBody body={pack.spec} />
+        <MarkdownBody body={pack.spec} />
       </Section>
 
       <Section title="implementation.md">
-        <FileBody body={pack.implementation} />
+        <MarkdownBody body={pack.implementation} />
       </Section>
 
       <Section title="techstack.md">
-        <FileBody body={pack.techstack} />
+        <MarkdownBody body={pack.techstack} />
       </Section>
 
       <Section title="meta.json">
+        {/* meta.json stays as-is — it's structured JSON, not markdown. */}
         <FileBody body={pack.metaRaw} mono />
       </Section>
 
@@ -108,6 +110,26 @@ function FileBody({ body, mono }: { readonly body: string | null; readonly mono?
     >
       {body}
     </pre>
+  );
+}
+
+/**
+ * Markdown wrapper used for spec.md / implementation.md / techstack.md.
+ * Renders the body via the brand-styled MarkdownRenderer. Empty/missing
+ * files fall through to the plain "File not present." card.
+ */
+function MarkdownBody({ body }: { readonly body: string | null }) {
+  if (body === null) {
+    return (
+      <div className="border border-(--color-border-subtle) bg-(--color-bg-surface) p-6 text-center text-sm text-(--color-text-tertiary)">
+        File not present.
+      </div>
+    );
+  }
+  return (
+    <article className="border border-(--color-border-subtle) bg-(--color-bg-surface) p-6">
+      <MarkdownRenderer body={body} />
+    </article>
   );
 }
 
