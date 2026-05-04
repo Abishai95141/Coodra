@@ -18,6 +18,10 @@
     "./lib/init": {
       "types": "./dist/lib/init/index.d.ts",
       "import": "./dist/lib/init/index.js"
+    },
+    "./lib/pack": {
+      "types": "./dist/lib/pack/index.d.ts",
+      "import": "./dist/lib/pack/index.js"
     }
   },
   "bin": {

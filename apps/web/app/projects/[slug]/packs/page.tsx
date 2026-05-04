@@ -18,8 +18,19 @@ import { listPacks } from '@/lib/queries/packs';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PacksListPage({ params }: { params: Promise<{ slug: string }> }) {
+interface SearchParams {
+  readonly deleted?: string;
+}
+
+export default async function PacksListPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
   const project = await resolveProjectFromParams(params);
+  const sp = await searchParams;
   const allPacks = listPacks();
   const packs = allPacks.filter((p) => p.slug === project.slug || p.parentSlug === project.slug);
   return (
@@ -30,6 +41,12 @@ export default async function PacksListPage({ params }: { params: Promise<{ slug
           Packs owned by <span className="font-mono">{project.slug}</span> (slug or parent matches).
         </p>
       </header>
+
+      {sp.deleted !== undefined ? (
+        <div className="border-l-4 border-(--color-status-success) bg-(--color-status-success)/10 px-4 py-2 text-sm">
+          ✓ Pack <span className="font-mono">{sp.deleted}</span> deleted (dir removed + is_active=false).
+        </div>
+      ) : null}
 
       {packs.length === 0 ? (
         <EmptyState slug={project.slug} />
