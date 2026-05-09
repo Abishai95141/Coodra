@@ -166,7 +166,7 @@ describe('query_codebase_graph — success path', () => {
     expect(out.nodes).toHaveLength(2);
     expect(out.edges).toHaveLength(1);
     expect(out.indexed).toBe(true);
-    expect(out.notice).toBe('query_filtering_deferred_to_m05');
+    // M05 reshape (2026-05-08): the deferral notice was removed.
   });
 
   it('empty graph.json (index present, zero nodes) is success-with-empty, NOT codebase_graph_not_indexed', async () => {
@@ -180,7 +180,7 @@ describe('query_codebase_graph — success path', () => {
     expect(out.nodes).toEqual([]);
     expect(out.edges).toEqual([]);
     expect(out.indexed).toBe(true);
-    expect(out.notice).toBe('query_filtering_deferred_to_m05');
+    // M05 reshape (2026-05-08): the deferral notice was removed.
   });
 
   it('malformed graph.json (index present, parse fails) returns success with empty nodes/edges + indexed:true — lib fail-open does NOT collapse with codebase_graph_not_indexed', async () => {
@@ -370,11 +370,9 @@ describe('query_codebase_graph — query is accepted but NOT applied at M02', ()
     expect(matchQuery.ok).toBe(true);
     expect(unmatchQuery.ok).toBe(true);
     if (!matchQuery.ok || !unmatchQuery.ok) return;
-    // M02 returns the full subgraph regardless of query — documented
-    // via the `query_filtering_deferred_to_m05` notice.
+    // M05 reshape (2026-05-08): the deferral notice was removed.
+    // The full subgraph is still returned regardless of query.
     expect(matchQuery.nodes).toHaveLength(3);
     expect(unmatchQuery.nodes).toHaveLength(3);
-    expect(matchQuery.notice).toBe('query_filtering_deferred_to_m05');
-    expect(unmatchQuery.notice).toBe('query_filtering_deferred_to_m05');
   });
 });

@@ -183,6 +183,7 @@ interface SerializedListRow {
   readonly slug: string;
   readonly orgId: string;
   readonly name: string;
+  readonly cwd: string | null;
   readonly createdAt: string;
   readonly runCount: number;
   readonly lastRunAt: string | null;
@@ -207,6 +208,7 @@ function serializeListRow(p: ProjectListRow): SerializedListRow {
     slug: p.slug,
     orgId: p.orgId,
     name: p.name,
+    cwd: p.cwd,
     createdAt: p.createdAt.toISOString(),
     runCount: p.runCount,
     lastRunAt: p.lastRunAt?.toISOString() ?? null,
@@ -235,6 +237,7 @@ function printListRowHuman(io: ProjectIO, p: ProjectListRow): void {
   io.writeStdout(`${pc.bold(p.slug)}${tag} — id: ${p.id}\n`);
   io.writeStdout(`  name: ${p.name}\n`);
   io.writeStdout(`  org: ${p.orgId}\n`);
+  io.writeStdout(`  cwd: ${p.cwd ?? pc.dim('(unset)')}\n`);
   io.writeStdout(`  runs: ${p.runCount} (last: ${last})\n`);
   io.writeStdout(`  created: ${p.createdAt.toISOString()}\n\n`);
 }

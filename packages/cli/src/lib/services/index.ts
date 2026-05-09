@@ -14,21 +14,9 @@
  * `CONTEXTOS_MODE === 'solo'` and refuses to render otherwise.
  */
 
-import {
-  type StartIO,
-  type StartOptions,
-  runStartCommand,
-} from '../../commands/start.js';
-import {
-  type StatusIO,
-  type StatusOptions,
-  runStatusCommand,
-} from '../../commands/status.js';
-import {
-  type StopIO,
-  type StopOptions,
-  runStopCommand,
-} from '../../commands/stop.js';
+import { runStartCommand, type StartIO, type StartOptions } from '../../commands/start.js';
+import { runStatusCommand, type StatusIO, type StatusOptions } from '../../commands/status.js';
+import { runStopCommand, type StopIO, type StopOptions } from '../../commands/stop.js';
 
 class ExitSentinel extends Error {
   constructor(public readonly code: number) {
@@ -131,7 +119,8 @@ export async function runStart(input: RunStartInput = {}): Promise<RunStartResul
   return {
     ok: false,
     error: exitCode === 70 ? 'startup_failed' : 'unknown_failure',
-    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service start failed; check ~/.contextos/logs/.',
+    howToFix:
+      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service start failed; check ~/.contextos/logs/.',
     exitCode,
     stdout,
     stderr,
@@ -175,7 +164,8 @@ export async function runStop(input: RunStopInput = {}): Promise<RunStopResult |
   return {
     ok: false,
     error: 'unknown_failure',
-    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service stop failed; check ~/.contextos/logs/.',
+    howToFix:
+      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service stop failed; check ~/.contextos/logs/.',
     exitCode,
     stdout,
     stderr,
@@ -249,7 +239,8 @@ export async function runStatus(): Promise<RunStatusResult> {
   return {
     ok: false,
     error: 'status_failed',
-    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Status check failed; check ~/.contextos/logs/.',
+    howToFix:
+      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Status check failed; check ~/.contextos/logs/.',
     stdout,
     stderr,
     exitCode,

@@ -8,6 +8,28 @@ import { renderTemplate } from '../templates/render.js';
 import { populateAutoSections } from './auto-populate.js';
 import type { WriteOutcome } from './types.js';
 
+/**
+ * 2026-05-08 — `mode` knob to control how `init` seeds the project's
+ * feature-pack folder. The default is unchanged (`template`) for
+ * back-compat; the new options exist because users running the bridge's
+ * autonomous Feature-Pack injection (Pattern 20) often don't want a
+ * pre-populated 4-file template stub on disk — the stub blocks clean
+ * `web-v2` uploads (the upload action errors with `pack_exists` until
+ * the user ticks "force overwrite"), and template content the user
+ * never asked for is noise.
+ *
+ *   - `template` (default) → render the four canonical files
+ *     (spec.md, implementation.md, techstack.md, meta.json) using
+ *     either the resolved `--template` or the legacy skeletons.
+ *   - `empty`              → create only `<dir>/.gitkeep` so the folder
+ *     exists, but no .md / meta.json yet. The user populates via the
+ *     web upload form or by dropping their own `.md` files.
+ *   - `skip`               → don't create the folder at all. Use when
+ *     the user wants `init` to handle MCP / hooks / DB only and will
+ *     manage the feature pack entirely outside `init`.
+ */
+export type FeaturePackSeedMode = 'template' | 'empty' | 'skip';
+
 export interface SeedFeaturePackOptions {
   readonly cwd: string;
   readonly slug: string;
@@ -31,6 +53,12 @@ export interface SeedFeaturePackOptions {
    * legacy skeletons don't carry auto-section markers.
    */
   readonly autoPopulate?: boolean;
+  /**
+   * 2026-05-08 — see `FeaturePackSeedMode`. Defaults to `template` to
+   * preserve historical behaviour. `empty` and `skip` are opt-in via
+   * `init --feature-pack <mode>` (or `--no-feature-pack` for `skip`).
+   */
+  readonly featurePack?: FeaturePackSeedMode;
 }
 
 const LANGUAGE_GLOB: Record<Language, string[]> = {
@@ -44,14 +72,38 @@ const LANGUAGE_GLOB: Record<Language, string[]> = {
 };
 
 export async function seedFeaturePack(options: SeedFeaturePackOptions): Promise<WriteOutcome[]> {
+  const mode: FeaturePackSeedMode = options.featurePack ?? 'template';
   const dir = join(options.cwd, 'docs', 'feature-packs', options.slug);
+  const outcomes: WriteOutcome[] = [];
+
+  // `skip` — leave the disk untouched. The user opted out of any seed.
+  if (mode === 'skip') {
+    outcomes.push({
+      path: dir,
+      action: 'unchanged',
+      notes: 'feature pack folder skipped (--feature-pack=skip)',
+    });
+    return outcomes;
+  }
+
+  if (!options.dryRun) await mkdir(dir, { recursive: true });
+
+  // `empty` — create the folder + a `.gitkeep` so it commits, but no
+  // .md / meta.json. The user populates via the web upload form or by
+  // dropping their own files. The bridge's loader + the MCP-side reader
+  // both tolerate a missing spec.md (loader uses `readMaybe`); on the
+  // first SessionStart the bridge simply omits `additionalContext`
+  // until a real spec.md lands.
+  if (mode === 'empty') {
+    const gitkeep = join(dir, '.gitkeep');
+    outcomes.push(await writeIfAbsent(gitkeep, '', options));
+    return outcomes;
+  }
+
   const metaPath = join(dir, 'meta.json');
   const specPath = join(dir, 'spec.md');
   const implementationPath = join(dir, 'implementation.md');
   const techstackPath = join(dir, 'techstack.md');
-  const outcomes: WriteOutcome[] = [];
-
-  if (!options.dryRun) await mkdir(dir, { recursive: true });
 
   // Module 08b S13: when --template is supplied, render the template's
   // four .tmpl files instead of the built-in skeletons. The legacy

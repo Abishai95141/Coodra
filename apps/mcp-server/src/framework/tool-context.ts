@@ -82,16 +82,23 @@ export interface FeaturePackStore {
 }
 
 /**
- * Context-Pack store. Implemented (stub) in `lib/context-pack.ts`.
+ * Context-Pack store. Implemented in `lib/context-pack.ts`.
  *
- * Design note (user S7a directive Q3): `write` accepts the embedding
- * as a `Float32Array` or `null` — never computes one. Embedding
- * generation is Module 04's responsibility. A `null` embedding is a
- * first-class value (the pack is still stored for text-search
- * fallback); the store never calls an embedding model.
+ * Module 05 reshape (2026-05-08): the embedding parameter is gone.
+ * `write` now takes an options object with `source` (provenance flag —
+ * 'agent' | 'bridge_auto') and optional `meta` (agent-curated JSON
+ * metadata). See `docs/feature-packs/05-agent-driven-nl-assembly/spec.md`
+ * §5.4 for the source semantics — including the narrow ADR-007
+ * relaxation that lets an agent-explicit save overwrite a bridge_auto
+ * row.
  */
+export interface ContextPackStoreWriteOptions {
+  readonly source: 'agent' | 'bridge_auto';
+  readonly meta?: Record<string, unknown>;
+}
+
 export interface ContextPackStore {
-  write(pack: unknown, embedding: Float32Array | null): Promise<unknown>;
+  write(pack: unknown, options?: ContextPackStoreWriteOptions): Promise<unknown>;
   read(runId: string): Promise<unknown>;
   list(filter: { projectSlug?: string; runId?: string; limit?: number }): Promise<ReadonlyArray<unknown>>;
 }
@@ -124,7 +131,13 @@ export interface RunRecorder {
   record(args: {
     runId: string | null;
     toolName: string;
-    phase: 'pre' | 'post';
+    /**
+     * 'pre'/'post' — Claude Code-style hook events (bridge-driven).
+     * 'mcp_call' — agent invoked a contextos__* MCP tool. Added 2026-05-08
+     * to close the visibility gap where MCP tool calls were invisible in
+     * the run timeline (only Bash/Edit/Write showed up via PostToolUse).
+     */
+    phase: 'pre' | 'post' | 'mcp_call';
     sessionId: string;
     idempotencyKey: IdempotencyKey;
     input: unknown;
@@ -135,25 +148,15 @@ export interface RunRecorder {
 }
 
 /**
- * sqlite-vec client. Implemented (stub) in `lib/sqlite-vec.ts`.
+ * SqliteVecClient was the embedding-search interface for the abandoned
+ * Module 05 NL Assembly Python service. Removed in the M05 reshape
+ * (2026-05-08) — search is now keyword-only LIKE, agent does relevance
+ * ranking. See `docs/feature-packs/05-agent-driven-nl-assembly/spec.md`.
  *
- * User constraint: this is a DOMAIN-shaped API, not a pass-through
- * query executor. `searchSimilarPacks(query)` is the right shape;
- * `run(sql, params)` is not. Future domain methods slot in here,
- * keeping SQL out of the handlers.
+ * Kept here as a documentation-only marker so future grep for the
+ * symbol returns a deliberate "this was removed by design" hit rather
+ * than a missing-import puzzle.
  */
-export interface SqliteVecClient {
-  searchSimilarPacks(query: {
-    readonly embedding: Float32Array;
-    readonly k: number;
-    readonly filter?: { readonly projectSlug?: string };
-  }): Promise<
-    ReadonlyArray<{
-      readonly packId: string;
-      readonly distance: number;
-    }>
-  >;
-}
 
 /**
  * graphify client. Implemented in `lib/graphify.ts` (S7c).
@@ -231,7 +234,6 @@ export interface ContextDeps {
   readonly featurePack: FeaturePackStore;
   readonly contextPack: ContextPackStore;
   readonly runRecorder: RunRecorder;
-  readonly sqliteVec: SqliteVecClient;
   readonly graphify: GraphifyClient;
 }
 

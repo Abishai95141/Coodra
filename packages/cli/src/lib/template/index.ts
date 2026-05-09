@@ -12,11 +12,7 @@
  * absolute path today.
  */
 
-import {
-  type TemplateIO,
-  type TemplateInstallOptions,
-  runTemplateInstallCommand,
-} from '../../commands/template.js';
+import { runTemplateInstallCommand, type TemplateInstallOptions, type TemplateIO } from '../../commands/template.js';
 
 class ExitSentinel extends Error {
   constructor(public readonly code: number) {

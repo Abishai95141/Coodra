@@ -50,6 +50,20 @@ export interface InitOptions {
    * The auto-section population pass lands in M08b S15.
    */
   readonly mode?: string;
+  /**
+   * 2026-05-08 — controls whether `init` writes the four-file template
+   * stub into `<root>/docs/feature-packs/<slug>/`. See
+   * `FeaturePackSeedMode` in `lib/init/feature-pack-seed.ts` for the
+   * semantics.
+   *
+   *   `template` (default) — render the 4 canonical files (today's behaviour)
+   *   `empty`              — create the folder + .gitkeep only
+   *   `skip`               — don't create the folder
+   *
+   * Commander accepts `--feature-pack <mode>` AND the boolean negation
+   * `--no-feature-pack` (which maps to `skip` in the runner).
+   */
+  readonly featurePack?: string;
 }
 
 export interface InitIO {
@@ -138,7 +152,11 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
     try {
       migrateSqlite(handle.db);
       await ensureGlobalProject(handle);
-      const projectResult = await ensureProject(handle, { slug: projectSlug });
+      // Pass `cwd: root` so the projects row records the absolute filesystem
+      // path of the project (where .contextos.json lives). The web app reads
+      // this back to write per-project pack uploads into the correct folder
+      // — see `apps/web-v2/lib/queries/packs.ts:packsRoot()`.
+      const projectResult = await ensureProject(handle, { slug: projectSlug, cwd: root });
       const policyResult = await ensureDefaultPolicy(handle, projectResult.id);
       io.writeStdout(
         `${pc.green('✓')} Applied migrations + seeded __global__ + registered project '${projectSlug}' ` +
@@ -299,6 +317,22 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
   // <!-- @auto:* --> sections from project shape (deps, directory tree,
   // scripts, entry points).
   const autoPopulate = options.mode === 'auto' && template !== undefined;
+
+  // 2026-05-08 — Resolve `--feature-pack <mode>` (and the Commander
+  // boolean negation `--no-feature-pack` which arrives as `false`)
+  // into the canonical FeaturePackSeedMode. Anything unrecognised
+  // falls back to 'template' (today's behaviour) with a warning so
+  // typos are surfaced rather than silently downgrading the user's
+  // intent.
+  const featurePackMode = resolveFeaturePackMode(options.featurePack, io);
+  if (featurePackMode === 'empty') {
+    io.writeStdout(
+      `${pc.green('✓')} --feature-pack=empty: creating an empty feature-pack folder; populate via web upload or your own .md files.\n`,
+    );
+  } else if (featurePackMode === 'skip') {
+    io.writeStdout(`${pc.green('✓')} --feature-pack=skip: not seeding any feature-pack folder.\n`);
+  }
+
   const seedOutcomes = await seedFeaturePack({
     cwd: root,
     slug: projectSlug,
@@ -307,9 +341,10 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
     dryRun,
     ...(template !== undefined ? { template } : {}),
     autoPopulate,
+    featurePack: featurePackMode,
   });
   outcomes.push(...seedOutcomes);
-  if (autoPopulate && template !== undefined) {
+  if (autoPopulate && template !== undefined && featurePackMode === 'template') {
     io.writeStdout(
       `${pc.green('✓')} Auto-populated ${template.meta.autoSections.length} <!-- @auto:* --> section(s) from project shape.\n`,
     );
@@ -370,4 +405,34 @@ function actionGlyph(action: string): string {
     default:
       return pc.gray('?');
   }
+}
+
+/**
+ * Map the raw `--feature-pack` value (or the boolean `--no-feature-pack`
+ * negation, which arrives from Commander as `false`) into the canonical
+ * `FeaturePackSeedMode`.
+ *
+ * Accepts:
+ *   - `undefined`           → `'template'` (default; matches pre-2026-05-08 behaviour)
+ *   - `'template'`          → `'template'`
+ *   - `'empty'`             → `'empty'`
+ *   - `'skip'` / `false`    → `'skip'` (Commander emits `false` for `--no-feature-pack`)
+ *
+ * Anything else is a typo — warn and fall back to `'template'` so a
+ * stale shell completion or fat-finger doesn't silently change behaviour.
+ */
+function resolveFeaturePackMode(
+  raw: string | undefined,
+  io: InitIO,
+): 'template' | 'empty' | 'skip' {
+  // Commander turns `--no-feature-pack` into a `false` boolean on the
+  // options bag. The TypeScript type widens to string for callers that
+  // pass a value, but at runtime we accept either.
+  if ((raw as unknown) === false) return 'skip';
+  if (raw === undefined) return 'template';
+  if (raw === 'template' || raw === 'empty' || raw === 'skip') return raw;
+  io.writeStderr(
+    `${pc.yellow('⚠')} Unknown --feature-pack mode "${raw}" (expected: template, empty, skip). Falling back to "template".\n`,
+  );
+  return 'template';
 }

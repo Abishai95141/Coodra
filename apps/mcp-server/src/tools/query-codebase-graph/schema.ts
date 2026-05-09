@@ -1,40 +1,44 @@
 import { z } from 'zod';
 
 /**
- * Input + output schemas for `contextos__query_codebase_graph` (§24.4, S15).
+ * Input + output schemas for `contextos__query_codebase_graph`.
  *
- * §24.4's input is `{ projectSlug: string, query: string }`. S15 ships
- * the M02-accurate output shape: `{ ok: true, nodes, edges, indexed,
- * notice? }` rather than §24.4's richer `{ symbols: [...] }` — the
- * rich `symbols` projection lands with Module 05 when graphify node
- * shape becomes typed (today `unknown`). §24.4 is amended same-commit.
+ * Module 05 reshape (2026-05-08): the "deferred to Module 05" notice
+ * was removed. The agent does its own filtering by reasoning over
+ * `nodes` + `edges`. `maxNodes` (default 1000) caps the returned
+ * subgraph so agents don't OOM on huge graphs; exceeding it returns
+ * a `graph_too_large` soft-failure with a remediation hint.
  *
- * Query filtering is deferred to Module 05 per user Q4 sign-off 2026-
- * 04-24: the M02 handler accepts `query` but does NOT filter (nodes
- * are `unknown`; a stringify-substring match would be imprecise and
- * costly). Success responses that hit an indexed project carry
- * `notice: 'query_filtering_deferred_to_m05'` so agents can detect the
- * M02 shim. Same pattern as `search_packs_nl`'s `no_embeddings_yet`.
+ * Soft-failure shapes:
+ *   - `project_not_found`           — projectSlug not registered
+ *   - `codebase_graph_not_indexed`  — project exists but no graph.json
+ *   - `graph_too_large`             — index has > maxNodes; narrow scope
  *
- * Two soft-failure shapes (user carryover — the "two distinct
- * soft-failures" split):
- *   - `project_not_found`         — projectSlug not registered.
- *   - `codebase_graph_not_indexed` — project exists but no
- *                                    graph.json on disk.
- * Distinct remediation paths:
- *   project_not_found  →  run `contextos init` for this project
- *   codebase_graph_not_indexed → run `graphify scan` at repo root
- *
- * Empty results (index present, zero matching nodes at M02's
- * full-return path) are `{ ok: true, nodes: [], edges: [],
- * indexed: true, notice: 'query_filtering_deferred_to_m05' }` — NOT
- * a soft-failure.
+ * Empty results (index present, zero nodes — valid empty subgraph,
+ * unreadable file, malformed JSON) → `{ ok: true, nodes: [], edges: [],
+ * indexed: true }`. Not a soft-failure.
  */
+
+const DEFAULT_MAX_NODES = 1000 as const;
+const HARD_MAX_NODES = 10_000 as const;
 
 export const queryCodebaseGraphInputSchema = z
   .object({
     projectSlug: z.string().min(1, 'projectSlug is required').max(256),
     query: z.string().min(1, 'query is required').max(2048),
+    /**
+     * Cap on the size of the returned subgraph. The handler returns
+     * `graph_too_large` rather than truncating silently when the
+     * underlying graph exceeds this — agents need the explicit
+     * remediation prompt to narrow scope.
+     */
+    maxNodes: z
+      .number()
+      .int()
+      .positive()
+      .max(HARD_MAX_NODES)
+      .optional()
+      .describe(`Max nodes to return (default ${DEFAULT_MAX_NODES}, hard cap ${HARD_MAX_NODES}).`),
   })
   .strict()
   .describe('Input for contextos__query_codebase_graph.');
@@ -44,23 +48,7 @@ const successBranch = z
     ok: z.literal(true),
     nodes: z.array(z.unknown()),
     edges: z.array(z.unknown()),
-    /**
-     * `true` when `getIndexStatus(slug)` returned `{ present: true }`.
-     * `nodes`/`edges` may still be empty (valid empty subgraph,
-     * unreadable file mid-read, malformed JSON — all of which the
-     * lib layer handles by returning empty arrays while keeping
-     * `indexed: true`). Distinct from the soft-failure
-     * `codebase_graph_not_indexed` which fires when the file is
-     * missing entirely.
-     */
     indexed: z.literal(true),
-    /**
-     * Advisory marker — present whenever the handler returns a full
-     * subgraph without applying `query` filtering. Full filtering is
-     * deferred to Module 05 (typed node schema). Agents read this to
-     * distinguish M02 full-return from Module-05 query-filtered return.
-     */
-    notice: z.literal('query_filtering_deferred_to_m05').optional(),
   })
   .strict();
 
@@ -80,11 +68,24 @@ const codebaseGraphNotIndexedBranch = z
   })
   .strict();
 
+const graphTooLargeBranch = z
+  .object({
+    ok: z.literal(false),
+    error: z.literal('graph_too_large'),
+    nodeCount: z.number().int().nonnegative(),
+    maxNodes: z.number().int().nonnegative(),
+    howToFix: z.string().min(1),
+  })
+  .strict();
+
 export const queryCodebaseGraphOutputSchema = z.union([
   successBranch,
   projectNotFoundBranch,
   codebaseGraphNotIndexedBranch,
+  graphTooLargeBranch,
 ]);
 
 export type QueryCodebaseGraphInput = z.infer<typeof queryCodebaseGraphInputSchema>;
 export type QueryCodebaseGraphOutput = z.infer<typeof queryCodebaseGraphOutputSchema>;
+export const QUERY_CODEBASE_GRAPH_DEFAULT_MAX_NODES = DEFAULT_MAX_NODES;
+export const QUERY_CODEBASE_GRAPH_HARD_MAX_NODES = HARD_MAX_NODES;

@@ -44,12 +44,11 @@ export function createQueryCodebaseGraphToolRegistration(
     title: 'ContextOS: query_codebase_graph',
     description:
       "Call this BEFORE making significant structural changes to understand the code's dependency graph. " +
-      'Returns symbol-level relationships (who calls what, who depends on what) from the Graphify-indexed codebase. ' +
-      'Use to find blast radius before refactoring, to locate the correct module for a new feature, or to answer ' +
-      '"where is X defined?" without reading every file. Returns { ok: true, nodes, edges, indexed: true, notice } ' +
-      'on success (query filtering is deferred to Module 05). Soft-failures: project_not_found (unknown slug), ' +
-      'codebase_graph_not_indexed (project exists but `graphify scan` has not been run). When `codebase_graph_not_indexed`, ' +
-      'surface `howToFix` to the user — they need to run `graphify scan` at the repo root before retry.',
+      'Returns the project subgraph (nodes + edges) from the Graphify-indexed codebase. Apply your own filtering by reasoning over the result — ' +
+      'find blast radius before refactoring, locate the correct module for a new feature, or answer "where is X defined?" without reading every file. ' +
+      'Returns { ok: true, nodes, edges, indexed: true } on success. Pass `maxNodes` (default 1000, hard cap 10000) to bound result size. ' +
+      'Soft-failures: project_not_found (unknown slug), codebase_graph_not_indexed (run `graphify scan` at repo root), ' +
+      'graph_too_large (narrow query or raise maxNodes).',
     inputSchema: queryCodebaseGraphInputSchema,
     outputSchema: queryCodebaseGraphOutputSchema,
     idempotencyKey: queryCodebaseGraphIdempotencyKey,

@@ -12,7 +12,17 @@ import { openLocalDb } from '../../../src/lib/open-local-db.js';
  * Drives the full 20-check registry against a controlled tmp `~/.contextos/`
  * fixture. This is the slice's "real test" — every check executes against
  * real fs + real SQLite (with migrations applied + F7 sentinel seeded).
+ *
+ * **Why we exclude check 29.** Check 29 (synthetic PreToolUse → bridge →
+ * policy enforcement loop) fires a real HTTP POST at `127.0.0.1:<bridgePort>`.
+ * If the developer happens to have a production hooks-bridge running while
+ * tests execute, that bridge writes to the real `~/.contextos/data.db` —
+ * one synthetic projects row + one in_progress run + one policy_decision
+ * per fixture iteration. The fixture has no use for the result (no `it()`
+ * asserts on check 29). Filtering it out keeps the test hermetic without
+ * losing coverage; check 29 has its own dedicated mock-bridge unit test.
  */
+const FIXTURE_CHECKS = ALL_CHECKS.filter((c) => c.id !== 29);
 describe('doctor — full registry against a controlled fixture', () => {
   let home: string;
   let cwd: string;
@@ -36,7 +46,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    const report = await runChecks(ALL_CHECKS, ctx);
+    const report = await runChecks(FIXTURE_CHECKS, ctx);
     const get = (id: number) => report.checks.find((c) => c.id === id);
 
     // Node ≥22 (running tests on 22+ — green). data.db missing → red on 3, skipped on 4 + 5 + 12.
@@ -69,7 +79,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    const report = await runChecks(ALL_CHECKS, ctx);
+    const report = await runChecks(FIXTURE_CHECKS, ctx);
     const get = (id: number) => report.checks.find((c) => c.id === id);
 
     expect(get(3)?.status).toBe('green');
@@ -112,7 +122,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    const report = await runChecks(ALL_CHECKS, ctx);
+    const report = await runChecks(FIXTURE_CHECKS, ctx);
     const get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(12)?.status).toBe('green');
   });
@@ -144,7 +154,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    const report = await runChecks(ALL_CHECKS, ctx);
+    const report = await runChecks(FIXTURE_CHECKS, ctx);
     const get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(7)?.status).toBe('red');
     expect(get(7)?.detail).toMatch(/NULL run_id/);
@@ -174,7 +184,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    const report = await runChecks(ALL_CHECKS, ctx);
+    const report = await runChecks(FIXTURE_CHECKS, ctx);
     const get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(6)?.status).toBe('yellow');
     expect(get(6)?.detail).toMatch(/pre-F14/);
@@ -201,7 +211,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    let report = await runChecks(ALL_CHECKS, ctx);
+    let report = await runChecks(FIXTURE_CHECKS, ctx);
     let get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(21)?.status).toBe('yellow');
 
@@ -220,7 +230,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    report = await runChecks(ALL_CHECKS, ctx);
+    report = await runChecks(FIXTURE_CHECKS, ctx);
     get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(21)?.status).toBe('red');
   });
@@ -247,7 +257,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    let report = await runChecks(ALL_CHECKS, ctx);
+    let report = await runChecks(FIXTURE_CHECKS, ctx);
     let get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(22)?.status).toBe('yellow');
 
@@ -268,7 +278,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    report = await runChecks(ALL_CHECKS, ctx);
+    report = await runChecks(FIXTURE_CHECKS, ctx);
     get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(22)?.status).toBe('red');
   });
@@ -295,7 +305,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    let report = await runChecks(ALL_CHECKS, ctx);
+    let report = await runChecks(FIXTURE_CHECKS, ctx);
     let get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(23)?.status).toBe('yellow');
 
@@ -314,7 +324,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    report = await runChecks(ALL_CHECKS, ctx);
+    report = await runChecks(FIXTURE_CHECKS, ctx);
     get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(23)?.status).toBe('red');
 
@@ -336,7 +346,7 @@ describe('doctor — full registry against a controlled fixture', () => {
       env: { LOCAL_HOOK_SECRET: 'a'.repeat(64) },
       timeoutMs: 800,
     });
-    report = await runChecks(ALL_CHECKS, ctx);
+    report = await runChecks(FIXTURE_CHECKS, ctx);
     get = (id: number) => report.checks.find((c) => c.id === id);
     expect(get(23)?.status).toBe('red');
     expect(get(23)?.detail).toMatch(/older than 1h/);

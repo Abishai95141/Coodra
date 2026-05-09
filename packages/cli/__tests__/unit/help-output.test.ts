@@ -51,6 +51,8 @@ describe('contextos --help (snapshot-locked surface)', () => {
         template                  Manage feature-pack templates (bundled +
                                   user-installed).
         pack                      Manage docs/feature-packs/<slug>/ directories.
+        feature                   Manage docs/features/<slug>/ — skill-style knowledge
+                                  units the agent loads on demand.
         run                       Inspect + cancel rows in the \`runs\` table.
         uninstall [options]       Reverse \`contextos init\`: remove \`__contextos__\`
                                   matchers from ~/.claude/settings.json + \`contextos\`

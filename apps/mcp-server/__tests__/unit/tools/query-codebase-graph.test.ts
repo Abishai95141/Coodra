@@ -92,7 +92,13 @@ describe('query_codebase_graph — input schema boundaries', () => {
 });
 
 describe('query_codebase_graph — output schema branches', () => {
-  it('accepts the success branch with notice', () => {
+  it('rejects the success branch with the legacy `notice` field (M05 reshape removed it)', () => {
+    // Pre-M05 the success branch carried a `notice: 'query_filtering_deferred_to_m05'`
+    // string. The 2026-05-08 reshape (see schema.ts docblock) removed it
+    // — agents now do their own filtering against `nodes` + `edges`. The
+    // schema is `.strict()`, so a stale caller passing `notice` should
+    // be rejected so the agent surfaces the breaking change explicitly
+    // rather than silently dropping the field.
     const parsed = queryCodebaseGraphOutputSchema.safeParse({
       ok: true,
       nodes: [],
@@ -100,7 +106,7 @@ describe('query_codebase_graph — output schema branches', () => {
       indexed: true,
       notice: 'query_filtering_deferred_to_m05',
     });
-    expect(parsed.success).toBe(true);
+    expect(parsed.success).toBe(false);
   });
 
   it('accepts the success branch without notice (forward-compat for M05 typed filtering)', () => {

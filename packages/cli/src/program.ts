@@ -8,6 +8,18 @@ import { type ExportIO, type ExportOptions, runExportCommand } from './commands/
 import { type InitIO, type InitOptions, runInitCommand } from './commands/init.js';
 import { type LogsIO, type LogsOptions, runLogsCommand } from './commands/logs.js';
 import {
+  type FeatureAddOptions,
+  type FeatureBaseOptions,
+  type FeatureIO,
+  type FeatureRemoveOptions,
+  runFeatureAddCommand,
+  runFeatureEditCommand,
+  runFeatureIndexCommand,
+  runFeatureListCommand,
+  runFeatureRemoveCommand,
+  runFeatureShowCommand,
+} from './commands/feature.js';
+import {
   type PackDeleteOptions,
   type PackIO,
   type PackListOptions,
@@ -143,6 +155,13 @@ interface BuildProgramOptions {
   readonly templateIO?: TemplateIO;
   readonly runTemplateList?: (options: TemplateListOptions, io?: TemplateIO) => Promise<unknown>;
   readonly runTemplateInstall?: (source: string, options: TemplateInstallOptions, io?: TemplateIO) => Promise<unknown>;
+  readonly featureIO?: FeatureIO;
+  readonly runFeatureAdd?: (slug: string, options: FeatureAddOptions, io?: FeatureIO) => Promise<unknown>;
+  readonly runFeatureList?: (options: FeatureBaseOptions, io?: FeatureIO) => Promise<unknown>;
+  readonly runFeatureShow?: (slug: string, options: FeatureBaseOptions, io?: FeatureIO) => Promise<unknown>;
+  readonly runFeatureEdit?: (slug: string, options: FeatureBaseOptions, io?: FeatureIO) => Promise<unknown>;
+  readonly runFeatureIndex?: (options: FeatureBaseOptions, io?: FeatureIO) => Promise<unknown>;
+  readonly runFeatureRemove?: (slug: string, options: FeatureRemoveOptions, io?: FeatureIO) => Promise<unknown>;
 }
 
 /**
@@ -184,6 +203,17 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     .option(
       '--mode <mode>',
       'minimal (default; legacy skeleton) | default (template-driven) | auto (detect a template from project shape).',
+    )
+    .option(
+      '--feature-pack <mode>',
+      'How to seed docs/feature-packs/<slug>/. "template" (default) renders the 4-file template; ' +
+        '"empty" creates the folder + .gitkeep only (populate via web upload or your own .md files); ' +
+        '"skip" leaves the disk untouched. Use "empty" when you plan to upload via the web app to avoid ' +
+        'having to tick "force overwrite" on every upload.',
+    )
+    .option(
+      '--no-feature-pack',
+      'Shorthand for --feature-pack=skip. Don\'t create docs/feature-packs/<slug>/ at all.',
     )
     .action(async (opts: InitOptions) => {
       await initRunner(opts, options.initIO);
@@ -484,6 +514,81 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     .option('--json', 'Emit a structured JSON report.')
     .action(async (slug: string, opts: PackDeleteOptions) => {
       await packDeleteRunner(slug, opts, options.packIO);
+    });
+
+  // 2026-05-08 — features admin (skill-style knowledge units under
+  // docs/features/<slug>/). The mutating subcommands always re-index
+  // on success; consumers (bridge, MCP, web) read INDEX.json so users
+  // never have to remember to run `feature index` after a normal
+  // add/remove/edit.
+  const feature = program
+    .command('feature')
+    .description('Manage docs/features/<slug>/ — skill-style knowledge units the agent loads on demand.');
+
+  const featureAddRunner = options.runFeatureAdd ?? runFeatureAddCommand;
+  feature
+    .command('add <slug>')
+    .description(
+      'Scaffold a new feature at docs/features/<slug>/feature.md with frontmatter + body template. Auto-runs `feature index` on success.',
+    )
+    .option('--description <text>', 'Trigger description for the new feature (the "Use this when..." sentence the agent reads).')
+    .option('--maturity <level>', 'Initial maturity tag: draft (default) | beta | stable | deprecated.')
+    .option('--force', 'Overwrite an existing feature.md.')
+    .option('--cwd <dir>', 'Override the project root (defaults to process.cwd()).')
+    .option('--json', 'Emit a structured JSON report.')
+    .action(async (slug: string, opts: FeatureAddOptions) => {
+      await featureAddRunner(slug, opts, options.featureIO);
+    });
+
+  const featureListRunner = options.runFeatureList ?? runFeatureListCommand;
+  feature
+    .command('list')
+    .description('List every feature under docs/features/, with description + file count + warnings.')
+    .option('--cwd <dir>', 'Override the project root.')
+    .option('--json', 'Emit a structured JSON report.')
+    .action(async (opts: FeatureBaseOptions) => {
+      await featureListRunner(opts, options.featureIO);
+    });
+
+  const featureShowRunner = options.runFeatureShow ?? runFeatureShowCommand;
+  feature
+    .command('show <slug>')
+    .description('Print one feature — frontmatter, body, supporting file tree, validation warnings.')
+    .option('--cwd <dir>', 'Override the project root.')
+    .option('--json', 'Emit a structured JSON report.')
+    .action(async (slug: string, opts: FeatureBaseOptions) => {
+      await featureShowRunner(slug, opts, options.featureIO);
+    });
+
+  const featureEditRunner = options.runFeatureEdit ?? runFeatureEditCommand;
+  feature
+    .command('edit <slug>')
+    .description('Open feature.md in $VISUAL / $EDITOR. Re-validates + regenerates the index after the editor exits.')
+    .option('--cwd <dir>', 'Override the project root.')
+    .action(async (slug: string, opts: FeatureBaseOptions) => {
+      await featureEditRunner(slug, opts, options.featureIO);
+    });
+
+  const featureIndexRunner = options.runFeatureIndex ?? runFeatureIndexCommand;
+  feature
+    .command('index')
+    .description(
+      'Regenerate INDEX.md + INDEX.json from disk. Idempotent; safe to run repeatedly. Use after editing files outside the CLI / web (git pull, sibling tools, hand edits).',
+    )
+    .option('--cwd <dir>', 'Override the project root.')
+    .option('--json', 'Emit a structured JSON report.')
+    .action(async (opts: FeatureBaseOptions) => {
+      await featureIndexRunner(opts, options.featureIO);
+    });
+
+  const featureRemoveRunner = options.runFeatureRemove ?? runFeatureRemoveCommand;
+  feature
+    .command('remove <slug>')
+    .description('Delete docs/features/<slug>/ from disk. Auto-regenerates the index. Refuses without --force.')
+    .option('--force', 'Confirm the destructive delete (required).')
+    .option('--cwd <dir>', 'Override the project root.')
+    .action(async (slug: string, opts: FeatureRemoveOptions) => {
+      await featureRemoveRunner(slug, opts, options.featureIO);
     });
 
   // Module 08b S11 — run admin (list, show, cancel).

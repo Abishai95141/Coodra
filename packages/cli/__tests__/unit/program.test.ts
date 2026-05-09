@@ -14,7 +14,7 @@ describe('buildProgram — full surface (post-S8)', () => {
     exitSpy.mockRestore();
   });
 
-  it('registers all 20 top-level subcommands (M08a 8 + M08b S3-S17: pause/resume/logs/db/upgrade/uninstall/policy/project/run/export/pack/template)', () => {
+  it('registers all 21 top-level subcommands (M08a 8 + M08b S3-S17 + features 2026-05-08: pause/resume/logs/db/upgrade/uninstall/policy/project/run/export/pack/template/feature)', () => {
     const program = buildProgram();
     const top = program.commands.map((c) => c.name()).sort();
     expect(top).toEqual([
@@ -22,6 +22,7 @@ describe('buildProgram — full surface (post-S8)', () => {
       'db',
       'doctor',
       'export',
+      'feature',
       'init',
       'logs',
       'pack',
@@ -73,6 +74,12 @@ describe('buildProgram — full surface (post-S8)', () => {
     expect(templateCmd).toBeDefined();
     const templateSub = templateCmd?.commands.map((c) => c.name()).sort() ?? [];
     expect(templateSub).toEqual(['install', 'list']);
+
+    // 2026-05-08 — features admin under `contextos feature`.
+    const featureCmd = program.commands.find((c) => c.name() === 'feature');
+    expect(featureCmd).toBeDefined();
+    const featureSub = featureCmd?.commands.map((c) => c.name()).sort() ?? [];
+    expect(featureSub).toEqual(['add', 'edit', 'index', 'list', 'remove', 'show']);
   });
 
   it('wires `cloud-migrate` to the real runCloudMigrate handler (M04a S1) — passes flags through', async () => {

@@ -2,7 +2,11 @@ import { type DbHandle, postgresSchema, sqliteSchema } from '@coodra/contextos-d
 import { createLogger } from '@coodra/contextos-shared';
 import { eq } from 'drizzle-orm';
 import type { ToolContext } from '../../framework/tool-context.js';
-import type { QueryCodebaseGraphInput, QueryCodebaseGraphOutput } from './schema.js';
+import {
+  QUERY_CODEBASE_GRAPH_DEFAULT_MAX_NODES,
+  type QueryCodebaseGraphInput,
+  type QueryCodebaseGraphOutput,
+} from './schema.js';
 
 /**
  * Handler factory for `contextos__query_codebase_graph` (§24.4, S15).
@@ -139,12 +143,37 @@ export function createQueryCodebaseGraphHandler(deps: QueryCodebaseGraphHandlerD
 
     const { nodes, edges } = await ctx.graphify.expandContextBySlug(input.projectSlug);
 
+    // M05 — guard against giant graphs. The agent reasons over the
+    // full subgraph; without a cap a 5000-node graph saturates the
+    // agent's context budget. Surface graph_too_large with a
+    // remediation hint instead of truncating silently.
+    const maxNodes = input.maxNodes ?? QUERY_CODEBASE_GRAPH_DEFAULT_MAX_NODES;
+    if (nodes.length > maxNodes) {
+      handlerLogger.info(
+        {
+          event: 'query_codebase_graph_too_large',
+          projectSlug: input.projectSlug,
+          nodeCount: nodes.length,
+          maxNodes,
+          sessionId: ctx.sessionId,
+        },
+        'query_codebase_graph: subgraph exceeds maxNodes — returning graph_too_large soft-failure',
+      );
+      return {
+        ok: false,
+        error: 'graph_too_large',
+        nodeCount: nodes.length,
+        maxNodes,
+        howToFix:
+          'Narrow the query to a subdirectory or symbol prefix, or pass a higher `maxNodes` (max 10000). For exploration of large graphs, run `graphify scan --scope <subdir>` to produce a tighter index.',
+      };
+    }
+
     return {
       ok: true,
       nodes: [...nodes],
       edges: [...edges],
       indexed: true,
-      notice: 'query_filtering_deferred_to_m05',
     };
   };
 }

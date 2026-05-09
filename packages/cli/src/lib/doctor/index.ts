@@ -19,7 +19,7 @@
  *     surface exposes both via a query-string toggle.
  */
 
-import { buildCheckContext, type BuildCheckContextOptions } from '../../doctor/context.js';
+import { type BuildCheckContextOptions, buildCheckContext } from '../../doctor/context.js';
 import { ALL_CHECKS, ESSENTIAL_CHECKS } from '../../doctor/registry.js';
 import { runChecks } from '../../doctor/run.js';
 import type { DoctorReport } from '../../doctor/types.js';

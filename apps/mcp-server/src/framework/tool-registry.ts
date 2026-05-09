@@ -451,6 +451,52 @@ export class ToolRegistry {
       );
     });
 
+    // 2026-05-08: write a `run_events` row for every successful MCP tool
+    // call. Closes the visibility gap where the agent's
+    // `contextos__record_decision` / `save_context_pack` / etc. were
+    // invisible in the run timeline (only Bash/Edit/Write showed up via
+    // the bridge's PostToolUse hook).
+    //
+    // Strategy:
+    //   - If the tool's input has a non-empty `runId` field, record with
+    //     that runId and `phase: 'mcp_call'`. This catches the high-value
+    //     cases (record_decision, save_context_pack, etc.).
+    //   - If no runId is available (ping, get_run_id itself, get_feature_pack
+    //     called pre-runId), skip — the row would have null run_id and
+    //     end up in the orphan-events bucket.
+    //   - Fire-and-forget; failure is logged but never blocks the
+    //     response.
+    const inputRunId =
+      typeof input === 'object' && input !== null && 'runId' in input
+        ? (input as { runId?: unknown }).runId
+        : undefined;
+    if (typeof inputRunId === 'string' && inputRunId.length > 0) {
+      void this.deps.runRecorder
+        .record({
+          runId: inputRunId,
+          toolName: `contextos__${name}`,
+          phase: 'mcp_call',
+          sessionId,
+          idempotencyKey,
+          input,
+          output: outValidated.data,
+          decision: 'allow',
+          reason: null,
+        })
+        .catch((err: unknown) => {
+          registryLogger.warn(
+            {
+              event: 'mcp_call_event_record_failed',
+              tool: name,
+              sessionId,
+              runId: inputRunId,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'mcp_call run_event record threw; swallowing (audit-only path)',
+          );
+        });
+    }
+
     return {
       content: [
         {
