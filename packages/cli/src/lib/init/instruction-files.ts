@@ -3,19 +3,25 @@ import { join } from 'node:path';
 import type { WriteOutcome } from './types.js';
 
 /**
- * `packages/cli/src/lib/init/instruction-files.ts` — beta.95 (Scope A).
+ * `packages/cli/src/lib/init/instruction-files.ts`.
  *
  * Generates the Coodra **agent operating contract** into the per-agent
  * project instruction file:
+ *   - Claude  → `<repo>/CLAUDE.md`        (Claude Code auto-reads at session start)
+ *   - Cursor  → `<repo>/.cursorrules`     (Cursor applies it to every chat)
  *   - Codex   → `<repo>/AGENTS.md`        (Codex reads it on the first turn)
  *   - Windsurf→ `<repo>/.windsurfrules`   (Cascade applies it to everything)
  *
- * Why this matters for Codex + Windsurf specifically: Coodra's hooks-
- * bridge auto-injects the Feature Pack and auto-saves the Context Pack
- * for Claude Code. Codex + Windsurf get no hooks in Scope A — so the
- * instruction file IS the trigger contract. It tells the agent WHEN to
- * call which `coodra__*` MCP tool. Without it the 26 tools are
- * present but the agent never knows to call them.
+ * Why this matters: the agent has the 26 `coodra__*` MCP tools wired
+ * via `.mcp.json` / `.codex/config.toml` / `.cursor/mcp.json` /
+ * `~/.codeium/windsurf/mcp_config.json`, but without an instruction
+ * file it doesn't know WHEN to call them. The instruction file IS the
+ * trigger contract.
+ *
+ * For Claude Code specifically, the hooks-bridge ALSO injects a
+ * runtime `additionalContext` payload at SessionStart — so CLAUDE.md
+ * is defense-in-depth: it works even when the bridge isn't running,
+ * and gives the user something visible/editable on disk.
  *
  * **Marker-block discipline.** The generated content lives between
  * `<!-- coodra:start -->` / `<!-- coodra:end -->`. `init` only ever
@@ -28,7 +34,7 @@ import type { WriteOutcome } from './types.js';
 export const INSTRUCTION_BLOCK_START = '<!-- coodra:start -->';
 export const INSTRUCTION_BLOCK_END = '<!-- coodra:end -->';
 
-export type InstructionFileName = 'AGENTS.md' | '.windsurfrules';
+export type InstructionFileName = 'AGENTS.md' | '.windsurfrules' | '.cursorrules' | 'CLAUDE.md';
 
 /**
  * Build the marker-wrapped agent operating contract for `projectSlug`.

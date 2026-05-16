@@ -14,10 +14,11 @@ import { readVerifiedToken } from '@coodra/shared/auth';
 import { eq } from 'drizzle-orm';
 import { EXIT_ENVIRONMENT_PROBLEM, EXIT_OK, EXIT_USER_ACTION_REQUIRED, EXIT_USER_RECOVERABLE } from '../exit-codes.js';
 import { resolveCoodraHome, resolveCoodraLogsDir, resolveCoodraPidsDir } from '../lib/coodra-home.js';
-import { detectIDE, detectLanguages, detectProjectRoot } from '../lib/detect.js';
+import { detectIDE, detectLanguages, detectProjectRoot, resolveIdeSelection } from '../lib/detect.js';
 import { defaultClaudeSettingsPath, mergeClaudeSettings } from '../lib/init/claude-settings-merge.js';
 import { mergeCodexConfig } from '../lib/init/codex-merge.js';
 import { writeCoodraJson } from '../lib/init/coodra-json.js';
+import { mergeCursorMcpConfig } from '../lib/init/cursor-merge.js';
 import { type BaselineEnv, mergeEnvFile } from '../lib/init/env-merge.js';
 import { seedFeaturePack } from '../lib/init/feature-pack-seed.js';
 import { mergeInstructionFile } from '../lib/init/instruction-files.js';
@@ -157,28 +158,51 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
   }
 
   const cwd = resolve(options.cwd ?? process.cwd());
-  const detection = await detectProjectRoot(cwd);
-  if (detection.markers.length === 0) {
+  const userHomeForDetection = options.userHome ?? homedir();
+  const detection = await detectProjectRoot(cwd, { homeDir: userHomeForDetection });
+  if (detection.markers.length === 0 && detection.skippedHomeMatch === undefined) {
     io.writeStderr(
       `${pc.red('coodra init')}: no project root marker found near ${cwd}. ` +
         'Run init from a directory that contains package.json, pyproject.toml, Cargo.toml, or .git.\n',
     );
     return io.exit(EXIT_USER_RECOVERABLE);
   }
+  // When the only walk-up match was $HOME (e.g. ~/.git from a dotfiles
+  // repo), we don't want to splat the project files into the user's
+  // home. detectProjectRoot rejected the home match and returned cwd
+  // as the fallback root. Surface that clearly — the user typed
+  // `coodra init` from `~/myproject` and expects it to work there,
+  // not silently treat `~` as the project.
   const root = detection.root;
+  if (detection.skippedHomeMatch !== undefined) {
+    const m = detection.skippedHomeMatch;
+    io.writeStdout(
+      `${pc.yellow('⚠')} Found ${m.markers.join(', ')} in ${m.homeDir} — that's your home directory, not a project. ` +
+        `Using ${pc.cyan(root)} as the project root instead.\n`,
+    );
+    if (detection.markers.length === 0) {
+      io.writeStdout(
+        `  ${pc.gray('→')} ${pc.gray(`Tip: add a marker to ${root} (e.g. \`git init\` or a package.json) so future runs detect it automatically.`)}\n`,
+      );
+    }
+  }
   const projectSlug = sanitizeSlug(options.projectSlug ?? basename(root));
   if (projectSlug.length === 0) {
     io.writeStderr(`${pc.red('coodra init')}: could not derive a usable project slug from ${root}.\n`);
     return io.exit(EXIT_USER_RECOVERABLE);
   }
 
-  io.writeStdout(
-    `${commandTitle('Initialise', `Coodra · ${projectSlug}`, { width: terminalWidth(), indent: 0 })}\n`,
-  );
+  io.writeStdout(`${commandTitle('Initialise', `Coodra · ${projectSlug}`, { width: terminalWidth(), indent: 0 })}\n`);
 
   const userHome = options.userHome ?? homedir();
   const languages = await detectLanguages(root);
-  const ides = await detectIDE({ homeDir: userHome });
+  const detectedIdes = await detectIDE({ homeDir: userHome });
+  const ideSelection = resolveIdeSelection({ flag: options.ide, detected: detectedIdes });
+  if (!ideSelection.ok) {
+    io.writeStderr(`${pc.red('coodra init')}: ${ideSelection.error}\n`);
+    return io.exit(EXIT_USER_RECOVERABLE);
+  }
+  const ides = ideSelection.ides;
 
   // Phase D (clarity-pass-plan, 2026-05-11) — surface the machine's
   // mode in the first lines of `coodra init` output. Projects
@@ -257,10 +281,21 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
   if (languages.length > 0) {
     io.writeStdout(`${pc.green('✓')} Detected languages: ${languages.join(', ')}\n`);
   }
-  if (ides.length > 0) {
-    io.writeStdout(`${pc.green('✓')} Detected IDEs: ${ides.join(', ')}\n`);
+  if (detectedIdes.length > 0) {
+    io.writeStdout(`${pc.green('✓')} Detected IDEs: ${detectedIdes.join(', ')}\n`);
   } else {
     io.writeStdout(`${pc.yellow('⚠')} No IDE config dir (~/.claude, ~/.cursor, ~/.windsurf, ~/.codex) detected.\n`);
+  }
+  if (options.ide !== undefined) {
+    if (ides.length === 0) {
+      io.writeStdout(`${pc.yellow('⚠')} --ide ${options.ide}: empty selection — no IDE will be wired.\n`);
+    } else {
+      io.writeStdout(`${pc.green('✓')} --ide ${options.ide}: wiring ${ides.join(', ')} (overrides detection).\n`);
+    }
+  } else if (ides.length === 0) {
+    io.writeStdout(
+      `  ${pc.gray('→')} ${pc.gray('No IDEs to wire. Install Claude Code, Cursor, Windsurf, or Codex CLI, then re-run `coodra init`.')}\n`,
+    );
   }
 
   // Resolve and create ~/.coodra/{logs,pids} (data.db is created by openLocalDb).
@@ -512,57 +547,51 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
   // Write/merge .env with solo-mode sentinels
   outcomes.push(await mergeEnvFile({ cwd: root, baseline: baselineEnv, force, dryRun }));
 
-  // Write/merge ~/.claude/settings.json hook entries for SessionStart /
-  // SessionEnd / PreToolUse / PostToolUse / Stop. This is the
-  // load-bearing piece for the autonomy promise (decision
-  // dec_83ba10c1, 2026-05-02): without it, Claude Code never POSTs to
-  // the bridge and the bridge-coordination defaults (Pattern 20)
-  // never fire.
+  // Per-agent wiring — gated on the resolved `ides` list (detection or
+  // explicit `--ide`). Each agent gets two pieces:
+  //   1. MCP config — tells the agent how to spawn the bundled coodra
+  //      MCP server (the 26 `coodra__*` tools).
+  //   2. Instruction file — the trigger contract telling the agent
+  //      WHEN to call which tool. Same marker-wrapped block per agent.
   //
-  // Phase 3 Fix B (2026-05-02): always run the merger, regardless of
-  // whether `~/.claude/` exists at init time. v1 targets Claude Code
-  // exclusively — installing Coodra *is* the user's intent to wire
-  // Claude Code, even before Claude Code itself has been launched. The
-  // merger creates `~/.claude/` with mode 0700 if it's absent (see
-  // `claude-settings-merge.ts`). Pre-Phase-3 the gate above silently
-  // skipped the merge on machines without an existing `~/.claude/`,
-  // shipping every fresh install of Coodra without hooks wired.
-  try {
-    const claudeMerge = await mergeClaudeSettings({
-      settingsPath: defaultClaudeSettingsPath(userHome),
-      bridgePort: Number(baselineEnv.HOOKS_BRIDGE_PORT),
-      // Phase F.6+ — inline the literal secret so Claude Code's hook
-      // sends the correct X-Local-Hook-Secret header regardless of
-      // shell env state. See ClaudeSettingsMergeOptions docblock.
-      localHookSecret: localHookSecret,
-      force,
-      dryRun,
-    });
-    outcomes.push(claudeMerge.outcome);
-  } catch (err) {
-    io.writeStderr(
-      `${pc.yellow('⚠')} Could not merge ~/.claude/settings.json hook entries: ${(err as Error).message}\n`,
-    );
-  }
+  // Claude Code additionally gets hook entries in `~/.claude/settings.json`
+  // so the bridge can inject runtime `additionalContext` at SessionStart
+  // and auto-save Context Packs at SessionEnd (decision dec_83ba10c1).
+  // CLAUDE.md is defense-in-depth: works even if the bridge isn't running.
+  //
+  // Every writer is idempotent + reversed by `coodra uninstall`. The
+  // `--ide` flag overrides detection — see resolveIdeSelection.
 
-  // beta.95 (Scope A) — Codex + Windsurf integration. Both are MCP
-  // clients: wire the same `mcpEntry` (built above for `.mcp.json`)
-  // into each agent's MCP config, and generate the per-agent
-  // instruction file (AGENTS.md / .windsurfrules) carrying the
-  // Coodra trigger contract. Unlike Claude Code, Codex + Windsurf
-  // get no hooks in Scope A — the instruction file IS how the agent
-  // learns to call the `coodra__*` tools.
-  //
-  // Detection-gated: a `~/.codex` / `~/.windsurf` config dir must
-  // exist (detectIDE). A Claude-only machine's `init` output is
-  // byte-identical to pre-beta.95. Every writer is idempotent
-  // merge-don't-clobber and reversed by `coodra uninstall`.
+  if (ides.includes('claude')) {
+    try {
+      const claudeMerge = await mergeClaudeSettings({
+        settingsPath: defaultClaudeSettingsPath(userHome),
+        bridgePort: Number(baselineEnv.HOOKS_BRIDGE_PORT),
+        // Phase F.6+ — inline the literal secret so Claude Code's hook
+        // sends the correct X-Local-Hook-Secret header regardless of
+        // shell env state. See ClaudeSettingsMergeOptions docblock.
+        localHookSecret: localHookSecret,
+        force,
+        dryRun,
+      });
+      outcomes.push(claudeMerge.outcome);
+      outcomes.push(await mergeInstructionFile({ cwd: root, filename: 'CLAUDE.md', projectSlug, dryRun }));
+    } catch (err) {
+      io.writeStderr(`${pc.yellow('⚠')} Could not wire Claude integration: ${(err as Error).message}\n`);
+    }
+  }
+  if (ides.includes('cursor')) {
+    try {
+      outcomes.push(await mergeCursorMcpConfig({ cwd: root, entry: mcpEntry, force, dryRun }));
+      outcomes.push(await mergeInstructionFile({ cwd: root, filename: '.cursorrules', projectSlug, dryRun }));
+    } catch (err) {
+      io.writeStderr(`${pc.yellow('⚠')} Could not wire Cursor integration: ${(err as Error).message}\n`);
+    }
+  }
   if (ides.includes('codex')) {
     try {
       outcomes.push(await mergeCodexConfig({ cwd: root, entry: mcpEntry, force, dryRun }));
-      outcomes.push(
-        await mergeInstructionFile({ cwd: root, filename: 'AGENTS.md', projectSlug, dryRun }),
-      );
+      outcomes.push(await mergeInstructionFile({ cwd: root, filename: 'AGENTS.md', projectSlug, dryRun }));
     } catch (err) {
       io.writeStderr(`${pc.yellow('⚠')} Could not wire Codex integration: ${(err as Error).message}\n`);
     }
@@ -570,9 +599,7 @@ export async function runInitCommand(options: InitOptions = {}, io: InitIO = DEF
   if (ides.includes('windsurf')) {
     try {
       outcomes.push(await mergeWindsurfMcpConfig({ entry: mcpEntry, force, dryRun, userHome }));
-      outcomes.push(
-        await mergeInstructionFile({ cwd: root, filename: '.windsurfrules', projectSlug, dryRun }),
-      );
+      outcomes.push(await mergeInstructionFile({ cwd: root, filename: '.windsurfrules', projectSlug, dryRun }));
     } catch (err) {
       io.writeStderr(`${pc.yellow('⚠')} Could not wire Windsurf integration: ${(err as Error).message}\n`);
     }

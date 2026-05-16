@@ -18,6 +18,8 @@ describe('buildProgram — full surface (post-S8)', () => {
     const program = buildProgram();
     const top = program.commands.map((c) => c.name()).sort();
     expect(top).toEqual([
+      // 0.2.0-beta.1 — read-only multi-agent wiring status.
+      'agents',
       'cloud-migrate',
       'db',
       'doctor',
@@ -130,9 +132,9 @@ describe('buildProgram — full surface (post-S8)', () => {
       throw new Error('__exit__:0');
     };
     const program = buildProgram({ runInit: fakeRunInit });
-    await expect(
-      program.parseAsync(['node', 'coodra', 'init', '--project-slug', 'demo', '--dry-run']),
-    ).rejects.toThrow('__exit__:0');
+    await expect(program.parseAsync(['node', 'coodra', 'init', '--project-slug', 'demo', '--dry-run'])).rejects.toThrow(
+      '__exit__:0',
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ projectSlug: 'demo', dryRun: true });
   });

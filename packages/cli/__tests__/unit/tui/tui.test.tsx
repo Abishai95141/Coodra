@@ -6,6 +6,7 @@ import {
   ALL_CATALOG_COMMANDS,
   CATALOG_COMMAND_COUNT,
   COMMAND_CATALOG,
+  findPlaceholderToken,
   isInteractiveCommand,
   isKnownCommand,
   parseCommandInput,
@@ -146,5 +147,33 @@ describe('<App>', () => {
     expect(frame).toContain('/01  LIFECYCLE');
     expect(frame).toContain('coodra init');
     expect(frame).toContain('insert in terminal');
+  });
+});
+
+describe('placeholder guard', () => {
+  // The bug we fixed in 0.2.0-beta.1: selecting `coodra export <runId>`
+  // from the catalog used to inject the literal `<runId>` into the
+  // prompt, and pressing ⏎ ran the command with `<runId>` as the actual
+  // value. The fix has two parts: (1) the catalog inserts the
+  // placeholder-free `coodra export ` prefix, and (2) the terminal
+  // refuses to run any argv whose tokens still match `<…>` / `[…]`.
+  it('catalog entries with placeholders are still correctly listed', () => {
+    // The /02 view shows `coodra export <runId>` so the user knows what
+    // to type — but `argv` does NOT contain the placeholder.
+    const exportCmd = ALL_CATALOG_COMMANDS.find((c) => c.id === 'export');
+    expect(exportCmd).toBeDefined();
+    expect(exportCmd?.display).toContain('<runId>');
+    expect(exportCmd?.argv).toEqual(['export']);
+  });
+
+  it('findPlaceholderToken detects required + optional positionals; returns null for real values', () => {
+    expect(findPlaceholderToken(['export', '<runId>'])).toBe('<runId>');
+    expect(findPlaceholderToken(['pack', 'new', '<slug>'])).toBe('<slug>');
+    expect(findPlaceholderToken(['logs', '[service]'])).toBe('[service]');
+    expect(findPlaceholderToken(['export', 'run_abc123'])).toBeNull();
+    expect(findPlaceholderToken(['status'])).toBeNull();
+    expect(findPlaceholderToken([])).toBeNull();
+    // Arrows on flags don't trip it — `<>` must wrap the entire token.
+    expect(findPlaceholderToken(['policy', 'add', '--scope=path<>here'])).toBeNull();
   });
 });

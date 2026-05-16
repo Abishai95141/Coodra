@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  buildInstructionBlock,
   INSTRUCTION_BLOCK_END,
   INSTRUCTION_BLOCK_START,
-  buildInstructionBlock,
   mergeInstructionFile,
   removeInstructionBlock,
 } from '../../../src/lib/init/instruction-files.js';
@@ -56,7 +56,12 @@ describe('mergeInstructionFile — AGENTS.md / .windsurfrules generator', () => 
     const stale = `${INSTRUCTION_BLOCK_START}\nold coodra content\n${INSTRUCTION_BLOCK_END}`;
     await writeFile(join(cwd, '.windsurfrules'), `${userAbove}${stale}${userBelow}`, 'utf8');
 
-    const result = await mergeInstructionFile({ cwd, filename: '.windsurfrules', projectSlug: 'refreshed', dryRun: false });
+    const result = await mergeInstructionFile({
+      cwd,
+      filename: '.windsurfrules',
+      projectSlug: 'refreshed',
+      dryRun: false,
+    });
     expect(result.action).toBe('merged');
     const body = await readFile(join(cwd, '.windsurfrules'), 'utf8');
     expect(body).toContain('Always use tabs.');
@@ -118,5 +123,42 @@ describe('mergeInstructionFile — AGENTS.md / .windsurfrules generator', () => 
     ]) {
       expect(block).toContain(tool);
     }
+  });
+
+  // 0.2.0-beta.1: CLAUDE.md + .cursorrules added to InstructionFileName.
+  // The block is agent-neutral, so the same content lands in each
+  // filename. These tests lock that the new filenames are accepted by
+  // the merger AND the remover.
+  it.each([
+    'CLAUDE.md' as const,
+    '.cursorrules' as const,
+  ])('greenfield: creates %s with the same marker-wrapped block', async (filename) => {
+    const result = await mergeInstructionFile({ cwd, filename, projectSlug: 'four-agents', dryRun: false });
+    expect(result.action).toBe('wrote');
+    const body = await readFile(join(cwd, filename), 'utf8');
+    expect(body).toContain(INSTRUCTION_BLOCK_START);
+    expect(body).toContain('four-agents');
+    expect(body).toContain('coodra__get_run_id');
+  });
+
+  it('preserves user content above an existing CLAUDE.md when appending the block', async () => {
+    // Common case: the user already has a CLAUDE.md (Anthropic's
+    // documented per-project memory file). Appending the Coodra block
+    // must NOT touch anything above the marker.
+    const userContent = '# Project context\n\n@docs/architecture.md\n@docs/conventions.md\n';
+    await writeFile(join(cwd, 'CLAUDE.md'), userContent, 'utf8');
+    const result = await mergeInstructionFile({ cwd, filename: 'CLAUDE.md', projectSlug: 'p', dryRun: false });
+    expect(result.action).toBe('merged');
+    const body = await readFile(join(cwd, 'CLAUDE.md'), 'utf8');
+    expect(body).toContain('@docs/architecture.md');
+    expect(body).toContain('@docs/conventions.md');
+    expect(body.indexOf('@docs/architecture.md')).toBeLessThan(body.indexOf(INSTRUCTION_BLOCK_START));
+  });
+
+  it('removeInstructionBlock strips the block from .cursorrules', async () => {
+    await mergeInstructionFile({ cwd, filename: '.cursorrules', projectSlug: 'p', dryRun: false });
+    const result = await removeInstructionBlock({ cwd, filename: '.cursorrules', dryRun: false });
+    expect(result.action).toBe('merged');
+    await expect(readFile(join(cwd, '.cursorrules'), 'utf8')).rejects.toThrow();
   });
 });

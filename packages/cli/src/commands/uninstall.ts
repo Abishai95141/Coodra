@@ -3,6 +3,7 @@ import { EXIT_OK } from '../exit-codes.js';
 import { resolveCoodraHome } from '../lib/coodra-home.js';
 import { removeClaudeSettings } from '../lib/init/claude-settings-merge.js';
 import { removeCodexConfig } from '../lib/init/codex-merge.js';
+import { removeCursorMcpConfig } from '../lib/init/cursor-merge.js';
 import { removeInstructionBlock } from '../lib/init/instruction-files.js';
 import { removeMcpJson } from '../lib/init/mcp-merge.js';
 import { removeWindsurfMcpConfig } from '../lib/init/windsurf-merge.js';
@@ -128,12 +129,16 @@ export async function runUninstallCommand(options: UninstallOptions, ioOverride?
     });
   }
 
-  // Step 2b: beta.95 (Scope A) — reverse the Codex + Windsurf writes.
-  // Each is idempotent: a no-op when the entry/block isn't present, so
-  // running uninstall on a Claude-only install is harmless. Best-effort
-  // per step — one failure doesn't block the rest (same as every other
-  // uninstall step).
+  // Step 2b: reverse the per-agent writes for Codex, Windsurf, Cursor,
+  // and Claude's CLAUDE.md (the `~/.claude/settings.json` reverse runs
+  // in Step 2 above). Each is idempotent: a no-op when the entry/block
+  // isn't present, so running uninstall on a partial install is
+  // harmless. Best-effort per step — one failure doesn't block the
+  // rest (same as every other uninstall step).
   for (const [step, fn] of [
+    ['claude-md', () => removeInstructionBlock({ cwd, filename: 'CLAUDE.md', dryRun })],
+    ['cursor-mcp', () => removeCursorMcpConfig({ cwd, dryRun })],
+    ['cursor-rules', () => removeInstructionBlock({ cwd, filename: '.cursorrules', dryRun })],
     ['codex-config', () => removeCodexConfig({ cwd, dryRun })],
     ['codex-agents-md', () => removeInstructionBlock({ cwd, filename: 'AGENTS.md', dryRun })],
     ['windsurf-mcp', () => removeWindsurfMcpConfig({ dryRun })],

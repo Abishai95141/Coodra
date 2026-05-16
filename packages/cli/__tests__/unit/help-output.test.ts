@@ -28,6 +28,9 @@ describe('coodra --help (snapshot-locked surface)', () => {
         stop [options]            Stop Coodra daemons. Idempotent.
         status [options]          Print unified project + service state for the
                                   current cwd.
+        agents [options]          Show per-agent wiring status (Claude Code, Cursor,
+                                  Windsurf, Codex). Read-only — use \`coodra init\` to
+                                  wire and \`coodra uninstall\` to strip.
         login [options]           Browser-handoff Clerk login. Writes
                                   ~/.coodra/clerk-token.json and switches mode to
                                   team.

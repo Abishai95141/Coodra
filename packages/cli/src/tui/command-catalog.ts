@@ -58,6 +58,7 @@ const CATEGORY_OF: Readonly<Record<string, string>> = {
   status: 'diagnose',
   doctor: 'diagnose',
   logs: 'diagnose',
+  agents: 'diagnose',
   run: 'runs',
   export: 'runs',
   policy: 'policy',
@@ -230,4 +231,18 @@ export function isInteractiveCommand(argv: readonly string[]): boolean {
 export function isKnownCommand(argv: readonly string[]): boolean {
   const first = argv[0];
   return first !== undefined && Object.hasOwn(CATEGORY_OF, first);
+}
+
+/**
+ * Returns the first argv token that's still a literal placeholder
+ * (`<name>` for required or `[name]` for optional positionals), or
+ * `null` if every token is a real value. Used by the Terminal view to
+ * refuse-to-run when the user pastes or hand-types a `--help`-style
+ * example without filling in the placeholder.
+ */
+export function findPlaceholderToken(argv: readonly string[]): string | null {
+  for (const token of argv) {
+    if (/^<.+>$/.test(token) || /^\[.+\]$/.test(token)) return token;
+  }
+  return null;
 }

@@ -15,7 +15,7 @@ import TextInput from 'ink-text-input';
 import { useEffect, useState } from 'react';
 import { AxisNode, Banner, KeyValueRow, Prompt, SectionHead, Spinner, useTerminalSize } from '../../ui/ink/index.js';
 import { palette } from '../../ui/theme.js';
-import { isInteractiveCommand, isKnownCommand, parseCommandInput } from '../command-catalog.js';
+import { findPlaceholderToken, isInteractiveCommand, isKnownCommand, parseCommandInput } from '../command-catalog.js';
 import type { TuiContext } from '../context.js';
 import { type CommandResult, runCommandInProcess } from '../run-command.js';
 
@@ -105,6 +105,17 @@ export function TerminalView({ ctx, active, pendingCommand, onPendingConsumed }:
     if (isInteractiveCommand(argv)) {
       note(
         `\`coodra ${argv.join(' ')}\` needs its own terminal — it opens an interactive prompt or a browser sign-in. Run it in your shell.`,
+      );
+      return;
+    }
+    // Refuse to run when any argv token is still a literal placeholder
+    // (e.g. `<runId>`, `<slug>`, `[optional]`). The /02 catalog inserts
+    // the placeholder-free prefix so this normally only triggers on
+    // paste-ins or hand-typed examples from `--help` output.
+    const placeholder = findPlaceholderToken(argv);
+    if (placeholder !== null) {
+      note(
+        `replace the placeholder ${placeholder} with a real value before pressing ⏎ — e.g. \`coodra ${argv[0]} my-slug\``,
       );
       return;
     }

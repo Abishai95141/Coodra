@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { glob } from 'glob';
@@ -20,39 +20,83 @@ export interface DetectionDeps {
 
 const PROJECT_ROOT_MARKERS = ['package.json', 'pyproject.toml', 'Cargo.toml', '.git'];
 
+export interface DetectProjectRootResult {
+  readonly root: string;
+  readonly markers: string[];
+  /**
+   * Set when the walk-up hit a marker at `$HOME` (e.g. `~/.git` from
+   * dotfiles), the home match was rejected, and `cwd` was used as the
+   * project root instead. Callers (init) surface this to the user so the
+   * "why isn't my project the project?" surprise has a clear explanation.
+   */
+  readonly skippedHomeMatch?: { homeDir: string; markers: readonly string[] };
+}
+
 /**
  * Walk up from `cwd` looking for a project root marker (`package.json`,
  * `pyproject.toml`, `Cargo.toml`, `.git`). Returns the deepest match —
  * useful when a tool is run from a subdirectory of the repo.
  *
+ * **`$HOME` is never a valid project root.** Many users have `.git` in
+ * their home directory (dotfiles repos) or `package.json` (npm globals);
+ * treating home as a project root makes `coodra init` write
+ * `CLAUDE.md`, `.mcp.json`, `docs/feature-packs/` etc. into the user's
+ * home, with the project slug taken from the home dir's basename. We
+ * skip any walk-up match that lands at exactly `$HOME`.
+ *
  * Returns the original cwd as a fallback if no marker is found anywhere
- * up the tree, so callers always get a usable path.
+ * up the tree (or only at `$HOME`), so callers always get a usable
+ * path.
  */
-export async function detectProjectRoot(cwd: string): Promise<{ root: string; markers: string[] }> {
-  let current = resolve(cwd);
-  const matches: { root: string; markers: string[] }[] = [];
+export async function detectProjectRoot(
+  cwd: string,
+  options: { readonly homeDir?: string } = {},
+): Promise<DetectProjectRootResult> {
+  // Two views per path: `lexical` (what callers receive — preserves
+  // pre-fix semantics) and `canonical` (realpath-normalized, used ONLY
+  // for the $HOME equality check). This matters on macOS where /tmp
+  // and /var lexically differ from /private/tmp and /private/var, and
+  // anywhere else home is reached via a symlink or bind mount.
+  const homeCanonical = await canonicalize(options.homeDir ?? homedir());
+  let currentLex = resolve(cwd);
+  const allMatches: { rootLex: string; rootCanonical: string; markers: string[] }[] = [];
   for (let depth = 0; depth < 12; depth++) {
     const found: string[] = [];
     for (const marker of PROJECT_ROOT_MARKERS) {
       try {
-        await access(join(current, marker));
+        await access(join(currentLex, marker));
         found.push(marker);
       } catch {
         // not present
       }
     }
     if (found.length > 0) {
-      matches.push({ root: current, markers: found });
+      const rootCanonical = await canonicalize(currentLex);
+      allMatches.push({ rootLex: currentLex, rootCanonical, markers: found });
     }
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
+    const parent = dirname(currentLex);
+    if (parent === currentLex) break;
+    currentLex = parent;
   }
-  if (matches.length === 0) {
-    return { root: resolve(cwd), markers: [] };
+  // Drop any match whose CANONICAL path is $HOME — home is not a project.
+  const filtered = allMatches.filter((m) => m.rootCanonical !== homeCanonical);
+  const droppedHomeMatch = allMatches.find((m) => m.rootCanonical === homeCanonical);
+
+  if (filtered.length === 0) {
+    const fallback: DetectProjectRootResult = { root: resolve(cwd), markers: [] };
+    if (droppedHomeMatch !== undefined) {
+      return {
+        ...fallback,
+        skippedHomeMatch: { homeDir: droppedHomeMatch.rootLex, markers: droppedHomeMatch.markers },
+      };
+    }
+    return fallback;
   }
   // The deepest match wins — that's the closest enclosing project root.
-  return matches[0] as { root: string; markers: string[] };
+  // `allMatches` was appended in walk order (cwd first, ancestors next),
+  // and `filtered` preserves that order — so `filtered[0]` is the closest.
+  const winner = filtered[0] as (typeof filtered)[number];
+  return { root: winner.rootLex, markers: winner.markers };
 }
 
 const LANGUAGE_PATTERNS: Array<{ language: Language; patterns: string[] }> = [
@@ -93,6 +137,72 @@ export async function detectLanguages(root: string): Promise<Language[]> {
     if (count > 0) counts.set(language, count);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([lang]) => lang);
+}
+
+/**
+ * Canonical IDE order. Used by `detectIDE` to keep the detected list
+ * stable and by `resolveIdeSelection` to return its result in the same
+ * order regardless of how the user typed the flag.
+ */
+export const IDE_ORDER: readonly IDE[] = ['claude', 'cursor', 'windsurf', 'codex'] as const;
+
+/**
+ * Resolve the final list of IDEs to wire from the `--ide` flag and the
+ * `detectIDE` result.
+ *
+ * Semantics:
+ *   - flag undefined         → autodetect (use `detected` as-is)
+ *   - `--ide all`            → wire every known IDE regardless of detection
+ *   - `--ide <name>`         → wire just that IDE, regardless of detection
+ *   - `--ide <a>,<b>,<c>`    → wire that exact list, regardless of detection
+ *   - unknown name in list   → return `{ ok: false, error }` — the caller
+ *                              prints the message and exits non-zero
+ *
+ * "Regardless of detection" is the explicit-override semantics. The user
+ * is telling Coodra to wire that IDE — perhaps they're setting up
+ * before installing the IDE. The flag should not silently no-op.
+ */
+export interface ResolveIdeSelectionInput {
+  readonly flag: string | undefined;
+  readonly detected: readonly IDE[];
+}
+
+export type ResolveIdeSelectionResult =
+  | { readonly ok: true; readonly ides: readonly IDE[] }
+  | { readonly ok: false; readonly error: string };
+
+export function resolveIdeSelection(input: ResolveIdeSelectionInput): ResolveIdeSelectionResult {
+  if (input.flag === undefined) {
+    return { ok: true, ides: [...input.detected] };
+  }
+  const tokens = input.flag
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 0);
+  if (tokens.length === 0) {
+    return {
+      ok: false,
+      error: '--ide value is empty. Pass one of: claude, cursor, windsurf, codex, all (comma-separated for multiple).',
+    };
+  }
+  if (tokens.includes('all')) {
+    if (tokens.length > 1) {
+      return { ok: false, error: '--ide all is exclusive — drop the other names or pick a specific list.' };
+    }
+    return { ok: true, ides: [...IDE_ORDER] };
+  }
+  const allowed = new Set<string>(IDE_ORDER);
+  const seen = new Set<IDE>();
+  for (const token of tokens) {
+    if (!allowed.has(token)) {
+      return {
+        ok: false,
+        error: `--ide: unknown agent '${token}'. Valid: claude, cursor, windsurf, codex, all.`,
+      };
+    }
+    seen.add(token as IDE);
+  }
+  return { ok: true, ides: IDE_ORDER.filter((ide) => seen.has(ide)) };
 }
 
 /**
@@ -158,4 +268,20 @@ export async function detectExistingMCPConfig(root: string): Promise<MCPConfig |
     throw err;
   }
   return mcpConfigSchema.parse(JSON.parse(raw));
+}
+
+/**
+ * Best-effort `realpath` — resolves symlinks so `/tmp/foo` and
+ * `/private/tmp/foo` (macOS) or `/home/x` and a bind-mount alias
+ * compare equal. Falls back to the lexical `resolve` result when the
+ * path doesn't exist on disk (the walk-up climbs through parents that
+ * sometimes don't exist, and `realpath` would otherwise throw).
+ */
+async function canonicalize(path: string): Promise<string> {
+  const lex = resolve(path);
+  try {
+    return await realpath(lex);
+  } catch {
+    return lex;
+  }
 }

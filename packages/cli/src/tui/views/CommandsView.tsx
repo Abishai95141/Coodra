@@ -50,7 +50,19 @@ export function CommandsView({ active, onSelect }: CommandsViewProps) {
         setIndex((i) => (i + 1) % CATALOG_COMMAND_COUNT);
       } else if (key.return) {
         const cmd = ALL_CATALOG_COMMANDS[index];
-        if (cmd !== undefined) onSelect(cmd.display);
+        if (cmd !== undefined) {
+          // When the command has positional-argument placeholders (e.g.
+          // `coodra export <runId>`), insert the placeholder-free
+          // `coodra export ` (trailing space) into the prompt so the
+          // cursor lands where the user needs to type the value —
+          // instead of injecting the literal `<runId>` which trips
+          // `parseCommandInput` into passing the placeholder text as
+          // the real argument. When there are no placeholders the
+          // display and the command are equal — insert the command
+          // alone, no trailing space.
+          const inserted = cmd.display === cmd.command ? cmd.command : `${cmd.command} `;
+          onSelect(inserted);
+        }
       }
     },
     { isActive: active },

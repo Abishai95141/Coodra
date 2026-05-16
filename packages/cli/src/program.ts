@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { type AgentsIO, type AgentsOptions, runAgentsCommand } from './commands/agents.js';
 import { type CloudMigrateIO, type CloudMigrateOptions, runCloudMigrateCommand } from './commands/cloud-migrate.js';
 import { type DbBackupIO, type DbBackupOptions, runDbBackupCommand } from './commands/db-backup.js';
 import { type DbMigrateIO, type DbMigrateOptions, runDbMigrateCommand } from './commands/db-migrate.js';
@@ -81,12 +82,7 @@ import {
 import { runStartCommand, type StartIO, type StartOptions } from './commands/start.js';
 import { runStatusCommand, type StatusIO, type StatusOptions } from './commands/status.js';
 import { runStopCommand, type StopIO, type StopOptions } from './commands/stop.js';
-import {
-  runTeamLoginCommand,
-  runTeamLogoutCommand,
-  type TeamCommandIO,
-  type TeamLoginOptions,
-} from './commands/team.js';
+import type { TeamCommandIO, TeamLoginOptions } from './commands/team.js';
 import { runTeamInitCommand, type TeamInitOptions } from './commands/team-init.js';
 import { runTeamInstallCommand, type TeamInstallOptions } from './commands/team-install.js';
 import { runTeamJoinInviteCommand, type TeamJoinInviteIO, type TeamJoinInviteOptions } from './commands/team-join.js';
@@ -127,6 +123,8 @@ interface BuildProgramOptions {
   readonly runStop?: (options: StopOptions, io?: StopIO) => Promise<unknown>;
   readonly statusIO?: StatusIO;
   readonly runStatus?: (options: StatusOptions, io?: StatusIO) => Promise<unknown>;
+  readonly agentsIO?: AgentsIO;
+  readonly runAgents?: (options: AgentsOptions, io?: AgentsIO) => Promise<unknown>;
   readonly teamIO?: TeamCommandIO;
   readonly runTeamLogin?: (options: TeamLoginOptions, io?: TeamCommandIO) => Promise<unknown>;
   readonly runTeamLogout?: (io?: TeamCommandIO) => Promise<unknown>;
@@ -241,9 +239,7 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
   const initRunner = options.runInit ?? runInitCommand;
   program
     .command('init')
-    .description(
-      'Initialise Coodra in the current project (writes ~/.coodra/, .mcp.json, .coodra.json, .env).',
-    )
+    .description('Initialise Coodra in the current project (writes ~/.coodra/, .mcp.json, .coodra.json, .env).')
     .option('--project-slug <slug>', 'Project slug; derives from path.basename(cwd) when omitted.')
     .option('--ide <ide>', 'IDE to wire ("claude", "cursor", "windsurf", "codex", or "all").')
     .option(
@@ -313,16 +309,24 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       await statusRunner(opts, options.statusIO);
     });
 
+  const agentsRunner = options.runAgents ?? runAgentsCommand;
+  program
+    .command('agents')
+    .description(
+      'Show per-agent wiring status (Claude Code, Cursor, Windsurf, Codex). Read-only — use `coodra init` to wire and `coodra uninstall` to strip.',
+    )
+    .option('--json', 'Emit structured JSON instead of human-readable text.')
+    .action(async (opts: AgentsOptions) => {
+      await agentsRunner(opts, options.agentsIO);
+    });
+
   // Phase G slice G.3 — top-level `coodra login` for browser-handoff auth.
   // The `team login` subcommand is kept as a backward-compat alias.
   const loginRunnerPhaseG = options.runLogin ?? runLoginCommand;
   program
     .command('login')
     .description('Browser-handoff Clerk login. Writes ~/.coodra/clerk-token.json and switches mode to team.')
-    .option(
-      '--web-url <url>',
-      'Override the team-mode web URL (defaults to COODRA_WEB_URL or http://localhost:3001).',
-    )
+    .option('--web-url <url>', 'Override the team-mode web URL (defaults to COODRA_WEB_URL or http://localhost:3001).')
     .option('--no-open', 'Print the sign-in URL instead of opening a browser (useful in headless shells).')
     .option('--timeout-ms <ms>', 'Override the browser-handoff timeout (default 300000 = 5 minutes).', (v) =>
       Number.parseInt(v, 10),
