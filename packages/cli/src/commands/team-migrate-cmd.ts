@@ -413,9 +413,7 @@ export async function runTeamLeaveCommand(
   io.writeStdout(`${pc.bold('coodra team leave')} — leaving team ${pc.cyan(orgLabel)}\n\n`);
   io.writeStdout(`${pc.bold('What gets removed (this machine only):')}\n`);
   io.writeStdout('  • ~/.coodra/config.json team block (mode → solo)\n');
-  io.writeStdout(
-    '  • ~/.coodra/.env entries: COODRA_MODE, DATABASE_URL, LOCAL_HOOK_SECRET, COODRA_TEAM_ORG_ID\n',
-  );
+  io.writeStdout('  • ~/.coodra/.env entries: COODRA_MODE, DATABASE_URL, LOCAL_HOOK_SECRET, COODRA_TEAM_ORG_ID\n');
   io.writeStdout('  • sync-daemon will stop spawning on next `coodra start`\n\n');
   io.writeStdout(`${pc.bold('What stays:')}\n`);
   io.writeStdout('  • all local SQLite rows (runs, decisions, context_packs) — historical state intact\n');

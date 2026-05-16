@@ -116,9 +116,7 @@ let cloud: PostgresHandle;
     // Mirror project on cloud (the bridge would have synced it via a
     // separate path; for this isolated test we seed it directly).
     await cloud.db
-      .insert(
-        cloud.kind === 'postgres' ? (await import('@coodra/db')).postgresSchema.projects : ({} as never),
-      )
+      .insert(cloud.kind === 'postgres' ? (await import('@coodra/db')).postgresSchema.projects : ({} as never))
       .values({ id: projectId, slug: project!.slug, orgId: project!.orgId, name: project!.name })
       .onConflictDoNothing();
 

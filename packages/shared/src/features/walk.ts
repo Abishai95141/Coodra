@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, type Stats } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { join, posix, sep } from 'node:path';
 
 import { parseFeatureMd } from './parse.js';
@@ -128,9 +128,7 @@ export function readFeatureRow(slug: string, dir: string): FeatureRow | null {
   const featureMdMtime = featureMdStat?.mtime?.toISOString() ?? new Date().toISOString();
   const totalBytes = featureMdBytes + files.reduce((s, f) => s + f.bytes, 0);
   // Last-updated is the max mtime across feature.md + every supporting file.
-  const lastUpdatedAt = files
-    .map((f) => f.modifiedAt)
-    .reduce((max, t) => (t > max ? t : max), featureMdMtime);
+  const lastUpdatedAt = files.map((f) => f.modifiedAt).reduce((max, t) => (t > max ? t : max), featureMdMtime);
 
   if (parsed.frontmatter === null) {
     // Frontmatter parsing failed — surface the errors as warnings so

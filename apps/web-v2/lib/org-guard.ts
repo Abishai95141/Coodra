@@ -66,7 +66,9 @@ export async function requireOrgMatch(
   }
   if (actual !== expected) {
     if (options.redirectOnMismatch !== false) {
-      redirect(`/forbidden?reason=org_mismatch&expected=${encodeURIComponent(expected)}&got=${encodeURIComponent(actual)}`);
+      redirect(
+        `/forbidden?reason=org_mismatch&expected=${encodeURIComponent(expected)}&got=${encodeURIComponent(actual)}`,
+      );
     }
     throw new Error(`requireOrgMatch: orgId mismatch (expected ${expected}, got ${actual})`);
   }

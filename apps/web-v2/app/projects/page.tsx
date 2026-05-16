@@ -31,8 +31,8 @@ export default async function ProjectsHubPage() {
               {isTeamHosted ? (
                 <>
                   Each card is a registered project from any teammate's local{' '}
-                  <span style={{ fontFamily: 'var(--mono)', color: 'var(--ink)' }}>coodra init</span> — synced
-                  to your cloud Postgres.
+                  <span style={{ fontFamily: 'var(--mono)', color: 'var(--ink)' }}>coodra init</span> — synced to your
+                  cloud Postgres.
                 </>
               ) : (
                 <>
@@ -70,15 +70,17 @@ export default async function ProjectsHubPage() {
             </strong>
             {isTeamHosted ? (
               <>
-                {' '}Projects are registered by developers running{' '}
-                <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span> on their
-                local laptops. Once a teammate runs it against a repo and that repo's first agent session fires,
-                a project card appears here.
+                {' '}
+                Projects are registered by developers running{' '}
+                <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span> on their local
+                laptops. Once a teammate runs it against a repo and that repo's first agent session fires, a project
+                card appears here.
               </>
             ) : (
               <>
-                {' '}Run <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span>{' '}
-                in any repo — or click{' '}
+                {' '}
+                Run <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span> in any repo —
+                or click{' '}
                 <Link href="/init" style={{ color: 'var(--accent)' }}>
                   New project
                 </Link>{' '}

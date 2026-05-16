@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  isCloudHostedWeb,
-  resolveDeploymentMode,
-  resolveIdentityMode,
-} from '../../../lib/deployment-mode';
+import { isCloudHostedWeb, resolveDeploymentMode, resolveIdentityMode } from '../../../lib/deployment-mode';
 
 /**
  * Phase G slice G.8 — `apps/web-v2/lib/deployment-mode.ts` tests.

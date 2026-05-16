@@ -229,13 +229,15 @@ function Field({
   textarea?: boolean;
   defaultValue?: string;
 }) {
+  const fieldId = `ks-field-${name}`;
   return (
     <div className="field" style={{ marginBottom: 14 }}>
-      <label className="field__label" style={fieldLabelStyle}>
+      <label htmlFor={fieldId} className="field__label" style={fieldLabelStyle}>
         {label}
       </label>
       {textarea ? (
         <textarea
+          id={fieldId}
           name={name}
           {...(placeholder !== undefined ? { placeholder } : {})}
           {...(required === true ? { required: true } : {})}
@@ -245,6 +247,7 @@ function Field({
         />
       ) : (
         <input
+          id={fieldId}
           name={name}
           {...(placeholder !== undefined ? { placeholder } : {})}
           {...(required === true ? { required: true } : {})}
@@ -267,12 +270,18 @@ function SelectField({
   options: ReadonlyArray<string>;
   defaultValue?: string;
 }) {
+  const selectId = `ks-select-${name}`;
   return (
     <div className="field" style={{ marginBottom: 14 }}>
-      <label className="field__label" style={fieldLabelStyle}>
+      <label htmlFor={selectId} className="field__label" style={fieldLabelStyle}>
         {label}
       </label>
-      <select name={name} {...(defaultValue !== undefined ? { defaultValue } : {})} style={fieldInputStyle}>
+      <select
+        id={selectId}
+        name={name}
+        {...(defaultValue !== undefined ? { defaultValue } : {})}
+        style={fieldInputStyle}
+      >
         {options.map((o) => (
           <option key={o} value={o}>
             {o}

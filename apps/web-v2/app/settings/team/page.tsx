@@ -11,8 +11,8 @@ import { resolveDeploymentMode, resolveIdentityMode } from '@/lib/deployment-mod
 import { describeInviteSecretConfig } from '@/lib/invite-token';
 import { isMissingTeamInvitesTableError } from '@/lib/postgres-errors';
 import { isDeploymentBaseUrlUnset, resolveDeploymentBaseUrl } from '@/lib/public-url';
-import { listPendingInvites, type TeamInviteRow } from '@/lib/queries/invites';
 import { resolveClerkDisplayNames } from '@/lib/queries/clerk-users';
+import { listPendingInvites, type TeamInviteRow } from '@/lib/queries/invites';
 import { listTeamMembers } from '@/lib/queries/team-members';
 import { readTeamConfig } from '@/lib/team-config';
 
@@ -46,11 +46,7 @@ interface SearchParams {
   readonly clerkWarning?: string;
 }
 
-export default async function TeamSettingsPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
+export default async function TeamSettingsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const dm = resolveDeploymentMode();
   // Phase G slice G.8 — the invite-minting + pending-invites UI works
   // in any team mode (laptop OR cloud). Pre-Phase-G this was gated on
@@ -136,9 +132,9 @@ export default async function TeamSettingsPage({
   const inviteSecretIssue = isTeamMode ? describeInviteSecretConfig() : null;
   const baseUrl = resolveDeploymentBaseUrl();
   const baseUrlUnset = isDeploymentBaseUrlUnset();
-  const inviteLinkFromMint =
-    sp.token !== undefined && sp.token.length > 0 ? `${baseUrl}/install/${sp.token}` : null;
-  const joinedAtIso = team.joinedAt !== null ? new Date(team.joinedAt).toISOString() : '(team-hosted — managed in Clerk)';
+  const inviteLinkFromMint = sp.token !== undefined && sp.token.length > 0 ? `${baseUrl}/install/${sp.token}` : null;
+  const joinedAtIso =
+    team.joinedAt !== null ? new Date(team.joinedAt).toISOString() : '(team-hosted — managed in Clerk)';
   const secretHint =
     team.localHookSecret !== null
       ? `${team.localHookSecret.slice(0, 6)}…${team.localHookSecret.slice(-4)} · ${team.localHookSecret.length} chars`
@@ -243,8 +239,8 @@ export default async function TeamSettingsPage({
                 No attributed writes yet.
               </strong>
               <br />
-              Once teammates run <code style={inlineMono}>coodra start</code> and use Claude Code, their writes
-              appear here within seconds. The sync daemon pulls cloud rows from teammates every 10s.
+              Once teammates run <code style={inlineMono}>coodra start</code> and use Claude Code, their writes appear
+              here within seconds. The sync daemon pulls cloud rows from teammates every 10s.
             </div>
           ) : (
             <table className="tbl">
@@ -314,10 +310,10 @@ export default async function TeamSettingsPage({
           <div style={{ ...bannerWarn, marginTop: 16 }}>
             <strong>Clerk is running in development mode.</strong>
             <br />
-            Test keys (<code style={inlineMono}>sk_test_…</code>) do not deliver real invitation emails. Each
-            invite you generate below is still valid — just share the link directly via Slack / 1Password
-            instead of relying on Clerk to email it. To send real emails, deploy your Clerk app to production
-            and swap the keys to <code style={inlineMono}>sk_live_…</code> / <code style={inlineMono}>pk_live_…</code>.
+            Test keys (<code style={inlineMono}>sk_test_…</code>) do not deliver real invitation emails. Each invite you
+            generate below is still valid — just share the link directly via Slack / 1Password instead of relying on
+            Clerk to email it. To send real emails, deploy your Clerk app to production and swap the keys to{' '}
+            <code style={inlineMono}>sk_live_…</code> / <code style={inlineMono}>pk_live_…</code>.
           </div>
         ) : null}
 
@@ -328,8 +324,8 @@ export default async function TeamSettingsPage({
             <strong>Migration 0014_team_invites is not applied yet.</strong>
             <br />
             The `team_invites` table is missing on this deployment's Postgres. Run{' '}
-            <code style={inlineMono}>coodra db migrate</code> against your DATABASE_URL, then reload this page.
-            The invite form below is disabled until that completes.
+            <code style={inlineMono}>coodra db migrate</code> against your DATABASE_URL, then reload this page. The
+            invite form below is disabled until that completes.
           </div>
         ) : null}
 
@@ -339,16 +335,15 @@ export default async function TeamSettingsPage({
             Invite sent to <strong style={{ color: 'var(--ink)' }}>{sp.invited}</strong>.
             {inviteLinkFromMint !== null ? (
               <>
-                {' '}This link is single-use and shown ONCE — copy it now if you need to share it directly
-                (e.g. when running against Clerk test keys, or if the email didn't arrive).
+                {' '}
+                This link is single-use and shown ONCE — copy it now if you need to share it directly (e.g. when running
+                against Clerk test keys, or if the email didn't arrive).
                 <CopyLinkBox url={inviteLinkFromMint} />
               </>
             ) : null}
           </div>
         ) : null}
-        {sp.revoked !== undefined ? (
-          <div style={bannerOk}>Revoked invite for {sp.revoked}.</div>
-        ) : null}
+        {sp.revoked !== undefined ? <div style={bannerOk}>Revoked invite for {sp.revoked}.</div> : null}
         {sp.error !== undefined ? <div style={bannerWarn}>{sp.error}</div> : null}
         {sp.clerkWarning !== undefined ? (
           <div style={bannerWarn}>
@@ -372,8 +367,7 @@ export default async function TeamSettingsPage({
                 <div style={{ ...bannerWarn, marginBottom: 0 }}>
                   <strong>Schema not migrated.</strong>
                   <br />
-                  Run <code style={inlineMono}>coodra db migrate</code> first. See the banner at the top of
-                  the page.
+                  Run <code style={inlineMono}>coodra db migrate</code> first. See the banner at the top of the page.
                 </div>
               ) : inviteSecretIssue !== null ? (
                 <div style={{ ...bannerWarn, marginBottom: 0 }}>
@@ -385,8 +379,8 @@ export default async function TeamSettingsPage({
                 <>
                   {baseUrlUnset ? (
                     <div style={{ ...bannerWarn, marginBottom: 12 }}>
-                      <strong>Set COODRA_PUBLIC_URL</strong> in deployment env so generated invite links
-                      point at this deployment's external URL. Without it, links will contain a placeholder.
+                      <strong>Set COODRA_PUBLIC_URL</strong> in deployment env so generated invite links point at this
+                      deployment's external URL. Without it, links will contain a placeholder.
                     </div>
                   ) : null}
                   <form action={mintInviteAction} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -422,19 +416,28 @@ export default async function TeamSettingsPage({
                       Generate invite link
                     </button>
                   </form>
-                  <p style={{ marginTop: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', lineHeight: 1.65 }}>
+                  <p
+                    style={{
+                      marginTop: 12,
+                      fontSize: 11,
+                      fontFamily: 'var(--mono)',
+                      color: 'var(--ink-mute)',
+                      lineHeight: 1.65,
+                    }}
+                  >
                     {isClerkDevelopmentInstance() ? (
                       <>
-                        The link is single-use, 7-day expiry by default, bound to the email above. Redemption
-                        requires the invitee to be a member of the Clerk org. <strong style={{ color: 'var(--warn)' }}>
-                        Clerk test keys do not send emails</strong> — copy the link from the success banner and
-                        share it directly (Slack / 1Password), or add the user to the org from your Clerk dashboard.
+                        The link is single-use, 7-day expiry by default, bound to the email above. Redemption requires
+                        the invitee to be a member of the Clerk org.{' '}
+                        <strong style={{ color: 'var(--warn)' }}>Clerk test keys do not send emails</strong> — copy the
+                        link from the success banner and share it directly (Slack / 1Password), or add the user to the
+                        org from your Clerk dashboard.
                       </>
                     ) : (
                       <>
-                        Clerk emails the invitee; the link is single-use, 7-day expiry by default, bound to the
-                        email above. Redemption requires the invitee to have completed Clerk sign-up + accepted
-                        the org invite (both handled by Clerk's hosted email flow). Revoke any pending invite below.
+                        Clerk emails the invitee; the link is single-use, 7-day expiry by default, bound to the email
+                        above. Redemption requires the invitee to have completed Clerk sign-up + accepted the org invite
+                        (both handled by Clerk's hosted email flow). Revoke any pending invite below.
                       </>
                     )}
                   </p>
@@ -449,29 +452,29 @@ export default async function TeamSettingsPage({
               <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 14 }}>
                 Share the credential block with them via 1Password / Bitwarden / Vault. They run one CLI command:
               </p>
-            <pre
-              style={{
-                background: 'var(--bg)',
-                border: '1px solid var(--rule)',
-                padding: '14px 18px',
-                fontFamily: 'var(--mono)',
-                fontSize: 11,
-                color: 'var(--ink)',
-                letterSpacing: '0.04em',
-                lineHeight: 1.7,
-                overflowX: 'auto',
-              }}
-            >
-{`coodra team join \\
+              <pre
+                style={{
+                  background: 'var(--bg)',
+                  border: '1px solid var(--rule)',
+                  padding: '14px 18px',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 11,
+                  color: 'var(--ink)',
+                  letterSpacing: '0.04em',
+                  lineHeight: 1.7,
+                  overflowX: 'auto',
+                }}
+              >
+                {`coodra team join \\
   --user-id <their-clerk-user-id> \\
   --org-id ${team.clerkOrgId} \\
   --secret <hook-secret-from-onboarding> \\
   --database-url '<your-db-url>'`}
-            </pre>
-            <p style={{ marginTop: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--caution)' }}>
-              The hook secret is shown only at <code style={inlineMono}>coodra team setup</code> time. We don’t store
-              it readable here. If you’ve lost it, re-run setup with the same DB URL — it generates a new secret.
-            </p>
+              </pre>
+              <p style={{ marginTop: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--caution)' }}>
+                The hook secret is shown only at <code style={inlineMono}>coodra team setup</code> time. We don’t store
+                it readable here. If you’ve lost it, re-run setup with the same DB URL — it generates a new secret.
+              </p>
             </div>
           )}
 
@@ -481,8 +484,8 @@ export default async function TeamSettingsPage({
                 Manage in <em>Clerk</em>
               </h3>
               <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 14 }}>
-                Add/remove members, change roles, rotate org settings — all in your Clerk dashboard. Coodra
-                consumes Clerk's org membership read-only; we don't mirror or override it.
+                Add/remove members, change roles, rotate org settings — all in your Clerk dashboard. Coodra consumes
+                Clerk's org membership read-only; we don't mirror or override it.
               </p>
               <a
                 href="https://dashboard.clerk.com"
@@ -494,8 +497,8 @@ export default async function TeamSettingsPage({
                 Open Clerk dashboard
               </a>
               <p style={{ marginTop: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)' }}>
-                Removing someone from the Clerk org makes their next sign-in fail (org-mismatch redirect to
-                /forbidden). Their existing audit rows stay — append-only by design (ADR-007).
+                Removing someone from the Clerk org makes their next sign-in fail (org-mismatch redirect to /forbidden).
+                Their existing audit rows stay — append-only by design (ADR-007).
               </p>
             </div>
           ) : (
@@ -519,7 +522,7 @@ export default async function TeamSettingsPage({
                   letterSpacing: '0.04em',
                 }}
               >
-coodra team leave
+                coodra team leave
               </pre>
               <p style={{ marginTop: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)' }}>
                 Your cloud Postgres is untouched — your teammates keep using it. The Postgres project lives in your
@@ -856,12 +859,11 @@ function LeaveTeamCard({ orgLabel }: { readonly orgLabel: string }) {
       <p style={{ fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1.6, marginTop: 14, marginBottom: 0 }}>
         The CLI will prompt for a typed confirmation (
         <code style={{ fontFamily: 'var(--mono)' }}>leave {orgLabel}</code>) before it changes anything. Add{' '}
-        <code style={{ fontFamily: 'var(--mono)' }}>--yes</code> to skip the prompt (CI / automation only). After
-        leave, run <code style={{ fontFamily: 'var(--mono)' }}>coodra stop &amp;&amp; coodra start</code> so
-        the daemons pick up solo-mode env, then <code style={{ fontFamily: 'var(--mono)' }}>coodra doctor --fix</code>{' '}
-        to clean any stale COODRA_MODE lines in project .env files.
+        <code style={{ fontFamily: 'var(--mono)' }}>--yes</code> to skip the prompt (CI / automation only). After leave,
+        run <code style={{ fontFamily: 'var(--mono)' }}>coodra stop &amp;&amp; coodra start</code> so the daemons pick
+        up solo-mode env, then <code style={{ fontFamily: 'var(--mono)' }}>coodra doctor --fix</code> to clean any stale
+        COODRA_MODE lines in project .env files.
       </p>
     </div>
   );
 }
-

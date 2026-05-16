@@ -163,9 +163,7 @@ export async function runFeatureAddCommand(
   const { cwd, projectSlug } = resolveProject(options.cwd, io);
   const slug = sanitizeFeatureSlug(rawSlug);
   if (!FEATURE_SLUG_RE.test(slug)) {
-    io.writeStderr(
-      `${pc.red('coodra feature add')}: slug "${rawSlug}" couldn't be sanitized into [a-z0-9_-]+ form.\n`,
-    );
+    io.writeStderr(`${pc.red('coodra feature add')}: slug "${rawSlug}" couldn't be sanitized into [a-z0-9_-]+ form.\n`);
     return io.exit(EXIT_USER_RECOVERABLE);
   }
   const root = featuresRoot(cwd);

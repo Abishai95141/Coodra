@@ -48,11 +48,7 @@ interface SearchParams extends ExecResultParams {
   readonly verifyElapsedMs?: string;
 }
 
-export default async function TeamOnboardingWizardPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
+export default async function TeamOnboardingWizardPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // The wizard guides an admin through running `coodra team setup`
   // on their LAPTOP — the resulting writes go to ~/.coodra/ which
   // doesn't exist on a deployed server. Hide on team-hosted so the
@@ -76,8 +72,8 @@ export default async function TeamOnboardingWizardPage({
               Stand up your <em>team</em>.
             </h1>
             <p className="head__lede">
-              Five steps. You bring a Supabase project + a Clerk org. We never see those credentials — they live on
-              your machine and your cloud accounts. The CLI does every persistent write.
+              Five steps. You bring a Supabase project + a Clerk org. We never see those credentials — they live on your
+              machine and your cloud accounts. The CLI does every persistent write.
             </p>
           </div>
           <div>
@@ -196,8 +192,8 @@ function StepOneSupabase() {
         </h2>
         <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.6, marginBottom: 28 }}>
           Coodra team mode needs a Postgres ≥ 16 with the <code style={inlineMono}>pgvector</code> extension. Supabase
-          is the easy default — free tier is fine for a small team. The free tier’s pooler is sufficient for the workload
-          Coodra produces (small append-only inserts).
+          is the easy default — free tier is fine for a small team. The free tier’s pooler is sufficient for the
+          workload Coodra produces (small append-only inserts).
         </p>
 
         <Substep
@@ -223,13 +219,21 @@ function StepOneSupabase() {
             <>
               <span>
                 In the project, open <strong>Project Settings → Database → Connection string</strong>. Pick the{' '}
-                <strong>Session pooler</strong> (port 5432). Replace <code style={inlineMono}>[YOUR-PASSWORD]</code> with
-                the password you set. The string looks like:
+                <strong>Session pooler</strong> (port 5432). Replace <code style={inlineMono}>[YOUR-PASSWORD]</code>{' '}
+                with the password you set. The string looks like:
               </span>
               <pre style={codeBlockStyle}>
                 postgresql://postgres.abc123:YOUR-PASSWORD@aws-0-us-east-1.pooler.supabase.com:5432/postgres
               </pre>
-              <span style={{ display: 'block', marginTop: 10, color: 'var(--caution)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+              <span
+                style={{
+                  display: 'block',
+                  marginTop: 10,
+                  color: 'var(--caution)',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 11,
+                }}
+              >
                 Avoid the “Transaction pooler” (port 6543) — its prepared-statement semantics break Drizzle migrations.
               </span>
             </>
@@ -247,9 +251,16 @@ function StepOneSupabase() {
       </div>
 
       <SidePanel
-        title={<>Why <em>Postgres</em>?</>}
+        title={
+          <>
+            Why <em>Postgres</em>?
+          </>
+        }
         rows={[
-          { k: 'Append-only audit', v: 'Decisions, runs, packs flow into the cloud DB so teammates can read each other’s history.' },
+          {
+            k: 'Append-only audit',
+            v: 'Decisions, runs, packs flow into the cloud DB so teammates can read each other’s history.',
+          },
           { k: 'pgvector', v: 'Used by Module 05’s semantic search over context packs.' },
           { k: 'You own the data', v: 'Coodra never sees these credentials. The DB lives in your Supabase account.' },
           { k: 'Cost', v: 'Free tier handles ~50 active users for an active team. Upgrade only if you scale.' },
@@ -307,12 +318,19 @@ function StepTwoConnect({ sp }: { readonly sp: SearchParams }) {
       </div>
 
       <SidePanel
-        title={<>What we <em>check</em></>}
+        title={
+          <>
+            What we <em>check</em>
+          </>
+        }
         rows={[
           { k: '1 · reachability', v: 'SELECT 1 against the URL. Catches typos, wrong password, blocked egress.' },
           { k: '2 · schema', v: 'List public tables. Expects 12 Coodra tables.' },
           { k: 'first run', v: 'Schema is missing — that’s expected. Step 4 (CLI) applies migrations to the same DB.' },
-          { k: 'we never store', v: 'The URL travels through the page POST → the verify action → trash. The CLI is what writes credentials.' },
+          {
+            k: 'we never store',
+            v: 'The URL travels through the page POST → the verify action → trash. The CLI is what writes credentials.',
+          },
         ]}
       />
     </div>
@@ -361,9 +379,9 @@ function StepThreeClerk({ sp }: { readonly sp: SearchParams }) {
           </div>
         ) : null}
         <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.6, marginBottom: 20 }}>
-          Clerk is your team’s identity provider. Each member signs into the web app via Clerk. Your <strong>org</strong>{' '}
-          inside Clerk is what scopes Coodra data — every decision/pack/run is stamped with the author’s Clerk user
-          id, then filtered through the org id when teammates read.
+          Clerk is your team’s identity provider. Each member signs into the web app via Clerk. Your{' '}
+          <strong>org</strong> inside Clerk is what scopes Coodra data — every decision/pack/run is stamped with the
+          author’s Clerk user id, then filtered through the org id when teammates read.
         </p>
 
         <div
@@ -381,10 +399,10 @@ function StepThreeClerk({ sp }: { readonly sp: SearchParams }) {
             ⚠ ORDER MATTERS
           </strong>
           <br />
-          You can't run <code style={inlineMono}>coodra team setup --user-id ... --org-id ...</code> with values
-          that don't yet exist in Clerk. You'd end up with a working <em>local-team</em> setup that nobody else can
-          ever sign into, because Clerk would never produce sessions matching those fake IDs. Complete substeps 3.1
-          through 3.4 below <em>first</em>, then return to Step 5 with the real ids in hand.
+          You can't run <code style={inlineMono}>coodra team setup --user-id ... --org-id ...</code> with values that
+          don't yet exist in Clerk. You'd end up with a working <em>local-team</em> setup that nobody else can ever sign
+          into, because Clerk would never produce sessions matching those fake IDs. Complete substeps 3.1 through 3.4
+          below <em>first</em>, then return to Step 5 with the real ids in hand.
         </div>
 
         <Substep
@@ -422,23 +440,28 @@ function StepThreeClerk({ sp }: { readonly sp: SearchParams }) {
           title={<>Sign yourself up + create your team's org</>}
           body={
             <>
-              <span>
-                Two things, in order:
-              </span>
+              <span>Two things, in order:</span>
               <ol style={{ paddingLeft: 20, marginTop: 8, lineHeight: 1.7 }}>
                 <li>
                   Open your Clerk app's sign-in page (the Clerk dashboard will give you a URL like{' '}
-                  <code style={inlineMono}>https://&lt;slug&gt;.clerk.accounts.dev</code>) and sign up. This mints
-                  your real <code style={inlineMono}>user_2nKj…</code> id — the FIRST one in your org. Copy it from
-                  the Clerk dashboard's <strong>Users</strong> tab once you're signed up.
+                  <code style={inlineMono}>https://&lt;slug&gt;.clerk.accounts.dev</code>) and sign up. This mints your
+                  real <code style={inlineMono}>user_2nKj…</code> id — the FIRST one in your org. Copy it from the Clerk
+                  dashboard's <strong>Users</strong> tab once you're signed up.
                 </li>
                 <li>
-                  In Clerk's UI, create a new organization for your team. You'll automatically be its admin. Copy
-                  the resulting <code style={inlineMono}>org_2nKj…</code> id from the <strong>Organizations</strong>{' '}
-                  tab.
+                  In Clerk's UI, create a new organization for your team. You'll automatically be its admin. Copy the
+                  resulting <code style={inlineMono}>org_2nKj…</code> id from the <strong>Organizations</strong> tab.
                 </li>
               </ol>
-              <span style={{ marginTop: 10, display: 'block', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--caution)' }}>
+              <span
+                style={{
+                  marginTop: 10,
+                  display: 'block',
+                  fontFamily: 'var(--mono)',
+                  fontSize: 11,
+                  color: 'var(--caution)',
+                }}
+              >
                 Both ids are needed in Step 5. The user_id is yours; the org_id is the team's. They're stable text
                 strings — Clerk hands them out and never recycles them.
               </span>
@@ -452,9 +475,10 @@ function StepThreeClerk({ sp }: { readonly sp: SearchParams }) {
           body={
             <>
               <span>
-                In Clerk’s <strong>API Keys</strong> page, copy <code style={inlineMono}>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code>{' '}
-                and <code style={inlineMono}>CLERK_SECRET_KEY</code>. The web app reads both — the publishable on the client,
-                the secret on the server. They go into <code style={inlineMono}>~/.coodra/.env</code> in step 4.
+                In Clerk’s <strong>API Keys</strong> page, copy{' '}
+                <code style={inlineMono}>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> and{' '}
+                <code style={inlineMono}>CLERK_SECRET_KEY</code>. The web app reads both — the publishable on the
+                client, the secret on the server. They go into <code style={inlineMono}>~/.coodra/.env</code> in step 4.
               </span>
             </>
           }
@@ -471,12 +495,25 @@ function StepThreeClerk({ sp }: { readonly sp: SearchParams }) {
       </div>
 
       <SidePanel
-        title={<>Why <em>Clerk</em>?</>}
+        title={
+          <>
+            Why <em>Clerk</em>?
+          </>
+        }
         rows={[
-          { k: 'Identity', v: 'Stable user_id + org_id every server action can rely on. Coodra RBAC reads from these.' },
-          { k: 'Three roles', v: 'admin / member / viewer. Default Clerk roles + one custom (viewer). No custom auth code.' },
+          {
+            k: 'Identity',
+            v: 'Stable user_id + org_id every server action can rely on. Coodra RBAC reads from these.',
+          },
+          {
+            k: 'Three roles',
+            v: 'admin / member / viewer. Default Clerk roles + one custom (viewer). No custom auth code.',
+          },
           { k: 'Free tier', v: 'Up to 10,000 monthly active users. More than enough for an org.' },
-          { k: 'Replaceable', v: 'If you don’t want Clerk, you can run only the local bridge — but the web app team UI needs Clerk.' },
+          {
+            k: 'Replaceable',
+            v: 'If you don’t want Clerk, you can run only the local bridge — but the web app team UI needs Clerk.',
+          },
         ]}
       />
     </div>
@@ -498,19 +535,17 @@ function StepFourCli({ sp }: { readonly sp: SearchParams }) {
           team-mode env. No flags needed for first-time setup — just paste the two values when asked.
         </p>
         <p style={{ fontSize: 13, color: 'var(--ink-mute)', lineHeight: 1.6, marginBottom: 28 }}>
-          (Phase B, 2026-05-11): the legacy six-flag <code style={inlineMono}>coodra team setup</code> still works
-          for CI / automation — see <code style={inlineMono}>coodra team setup --help</code>. Most users should
-          prefer the interactive <code style={inlineMono}>team init</code> wizard.
+          (Phase B, 2026-05-11): the legacy six-flag <code style={inlineMono}>coodra team setup</code> still works for
+          CI / automation — see <code style={inlineMono}>coodra team setup --help</code>. Most users should prefer the
+          interactive <code style={inlineMono}>team init</code> wizard.
         </p>
 
         <FieldLabel>Run this in your terminal</FieldLabel>
-        <pre style={{ ...codeBlockStyle, padding: 22 }}>
-{`coodra team init`}
-        </pre>
+        <pre style={{ ...codeBlockStyle, padding: 22 }}>{`coodra team init`}</pre>
         <details style={{ marginTop: 14, fontSize: 12, color: 'var(--ink-dim)' }}>
           <summary style={{ cursor: 'pointer' }}>Need a non-interactive command for CI?</summary>
           <pre style={{ ...codeBlockStyle, padding: 18, marginTop: 12 }}>
-{`coodra team setup \\
+            {`coodra team setup \\
   --database-url 'postgresql://postgres.abc123:YOUR-PASSWORD@aws-0-us-east-1.pooler.supabase.com:5432/postgres' \\
   --user-id 'user_2nKjYourClerkUserId' \\
   --org-id 'org_2nKjYourClerkOrgId'`}
@@ -525,19 +560,27 @@ function StepFourCli({ sp }: { readonly sp: SearchParams }) {
             marginTop: 24,
           }}
         >
-          <ParamCard label="--database-url" source="Step 1.2" desc="The Supabase Session-pooler URL with your password." />
+          <ParamCard
+            label="--database-url"
+            source="Step 1.2"
+            desc="The Supabase Session-pooler URL with your password."
+          />
           <ParamCard label="--user-id" source="Step 3.3" desc="Your own Clerk user id from your org membership." />
           <ParamCard label="--org-id" source="Step 3.3" desc="The Clerk org id you created." />
-          <ParamCard label="--secret (optional)" source="auto-generated" desc="Skip — we generate a random 32-byte secret." />
+          <ParamCard
+            label="--secret (optional)"
+            source="auto-generated"
+            desc="Skip — we generate a random 32-byte secret."
+          />
         </div>
 
         <p style={{ marginTop: 24, fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.6 }}>
-          You also need the Clerk keys in <code style={inlineMono}>~/.coodra/.env</code>. Copy this block manually
-          after the CLI runs — three lines, the publishable key appears twice (one for the web app’s React tree, one
-          for the daemons’ Zod-validated env):
+          You also need the Clerk keys in <code style={inlineMono}>~/.coodra/.env</code>. Copy this block manually after
+          the CLI runs — three lines, the publishable key appears twice (one for the web app’s React tree, one for the
+          daemons’ Zod-validated env):
         </p>
         <pre style={{ ...codeBlockStyle, padding: 22 }}>
-{`# append to ~/.coodra/.env
+          {`# append to ~/.coodra/.env
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_…
 CLERK_PUBLISHABLE_KEY=pk_live_…
 CLERK_SECRET_KEY=sk_live_…`}
@@ -557,10 +600,10 @@ CLERK_SECRET_KEY=sk_live_…`}
             ⚠ DEPLOYING THE WEB ANYWHERE (Vercel/Fly/Docker)?
           </strong>
           <br />
-          You MUST set <code style={inlineMono}>COODRA_EXPECTED_ORG_ID=org_…</code> + {' '}
-          <code style={inlineMono}>COODRA_DEPLOYMENT=team-hosted</code> in your deployment env. Without the
-          expected-org pin, anyone with a Clerk account in your Clerk app (including random Google sign-ups) can
-          sign in and read your team's data. The web app refuses to boot in team-hosted mode without it.
+          You MUST set <code style={inlineMono}>COODRA_EXPECTED_ORG_ID=org_…</code> +{' '}
+          <code style={inlineMono}>COODRA_DEPLOYMENT=team-hosted</code> in your deployment env. Without the expected-org
+          pin, anyone with a Clerk account in your Clerk app (including random Google sign-ups) can sign in and read
+          your team's data. The web app refuses to boot in team-hosted mode without it.
         </p>
         <p
           style={{
@@ -572,9 +615,9 @@ CLERK_SECRET_KEY=sk_live_…`}
             lineHeight: 1.7,
           }}
         >
-          The <code style={inlineMono}>NEXT_PUBLIC_</code> prefix exposes the key to the browser bundle; the
-          unprefixed copy is what the MCP server + Hooks Bridge boot-time env validators look for. Skipping the
-          unprefixed line crashes <code style={inlineMono}>coodra start</code> with{' '}
+          The <code style={inlineMono}>NEXT_PUBLIC_</code> prefix exposes the key to the browser bundle; the unprefixed
+          copy is what the MCP server + Hooks Bridge boot-time env validators look for. Skipping the unprefixed line
+          crashes <code style={inlineMono}>coodra start</code> with{' '}
           <code style={inlineMono}>CLERK_PUBLISHABLE_KEY required when CLERK_SECRET_KEY is set</code>.
         </p>
 
@@ -591,7 +634,11 @@ CLERK_SECRET_KEY=sk_live_…`}
       </div>
 
       <SidePanel
-        title={<>What it <em>writes</em></>}
+        title={
+          <>
+            What it <em>writes</em>
+          </>
+        }
         rows={[
           { k: 'config.json', v: '~/.coodra/config.json::team — clerkUserId, clerkOrgId, localHookSecret, joinedAt.' },
           { k: '.env', v: '~/.coodra/.env — COODRA_MODE=team, DATABASE_URL, LOCAL_HOOK_SECRET, COODRA_TEAM_ORG_ID.' },
@@ -621,7 +668,7 @@ function StepFiveInvite() {
 
         <FieldLabel>What to share with each teammate</FieldLabel>
         <pre style={{ ...codeBlockStyle, padding: 22 }}>
-{`database url        postgresql://postgres.abc…@…:5432/postgres
+          {`database url        postgresql://postgres.abc…@…:5432/postgres
 clerk org id        org_2nKjYourClerkOrgId
 local hook secret   <printed by step 4 — don't lose it>
 clerk publishable   pk_live_…   (each teammate appends as BOTH
@@ -633,7 +680,7 @@ clerk secret key    sk_live_…   (each teammate appends as
 
         <FieldLabel style={{ marginTop: 24 }}>Each teammate runs</FieldLabel>
         <pre style={{ ...codeBlockStyle, padding: 22 }}>
-{`coodra team join \\
+          {`coodra team join \\
   --user-id <their-clerk-user-id> \\
   --org-id 'org_2nKjYourClerkOrgId' \\
   --secret '<the-hook-secret-from-step-4>' \\
@@ -661,11 +708,18 @@ clerk secret key    sk_live_…   (each teammate appends as
       </div>
 
       <SidePanel
-        title={<>What teammates <em>get</em></>}
+        title={
+          <>
+            What teammates <em>get</em>
+          </>
+        }
         rows={[
           { k: 'Recent decisions', v: 'They see your last 7 days of decisions injected at every SessionStart.' },
           { k: 'Cross-team packs', v: 'search_packs_nl reads context packs from every org member.' },
-          { k: 'Author attribution', v: 'Every row carries who wrote it. The web app shows “decided by Alice” badges.' },
+          {
+            k: 'Author attribution',
+            v: 'Every row carries who wrote it. The web app shows “decided by Alice” badges.',
+          },
           { k: 'Local-first', v: 'Their local SQLite stays primary. Sync daemon mirrors to your Postgres async.' },
         ]}
       />
@@ -675,7 +729,15 @@ clerk secret key    sk_live_…   (each teammate appends as
 
 /* ---------- shared atoms ---------- */
 
-function Substep({ n, title, body }: { readonly n: string; readonly title: React.ReactNode; readonly body: React.ReactNode }) {
+function Substep({
+  n,
+  title,
+  body,
+}: {
+  readonly n: string;
+  readonly title: React.ReactNode;
+  readonly body: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -705,7 +767,15 @@ function Substep({ n, title, body }: { readonly n: string; readonly title: React
   );
 }
 
-function ParamCard({ label, source, desc }: { readonly label: string; readonly source: string; readonly desc: string }) {
+function ParamCard({
+  label,
+  source,
+  desc,
+}: {
+  readonly label: string;
+  readonly source: string;
+  readonly desc: string;
+}) {
   return (
     <div style={{ padding: 16, border: '1px solid var(--rule)', background: 'var(--bg)' }}>
       <div
@@ -736,7 +806,13 @@ function ParamCard({ label, source, desc }: { readonly label: string; readonly s
   );
 }
 
-function SidePanel({ title, rows }: { readonly title: React.ReactNode; readonly rows: ReadonlyArray<{ k: string; v: string }> }) {
+function SidePanel({
+  title,
+  rows,
+}: {
+  readonly title: React.ReactNode;
+  readonly rows: ReadonlyArray<{ k: string; v: string }>;
+}) {
   return (
     <div className="aside-card">
       <h3 className="aside-card__title" style={{ marginBottom: 16 }}>
@@ -804,7 +880,15 @@ function FieldHint({ children }: { readonly children: React.ReactNode }) {
   );
 }
 
-function Banner({ children, tone, style }: { readonly children: React.ReactNode; readonly tone: 'ok' | 'warn'; readonly style?: React.CSSProperties }) {
+function Banner({
+  children,
+  tone,
+  style,
+}: {
+  readonly children: React.ReactNode;
+  readonly tone: 'ok' | 'warn';
+  readonly style?: React.CSSProperties;
+}) {
   return (
     <div
       style={{
@@ -906,9 +990,9 @@ function ExecuteInBrowserForm({ sp }: { readonly sp: SearchParams }) {
         Or: execute in browser (alternate path)
       </summary>
       <p style={{ fontSize: 12, color: 'var(--ink-dim)', lineHeight: 1.65, marginTop: 14, marginBottom: 14 }}>
-        Paste your DATABASE_URL and Clerk Secret Key below. The form runs the same three-step bootstrap the CLI does
-        and writes to <code style={inlineMono}>~/.coodra/</code> on this machine. Refused in team-hosted
-        deployments — the wizard only ships writes to the laptop running this dev server.
+        Paste your DATABASE_URL and Clerk Secret Key below. The form runs the same three-step bootstrap the CLI does and
+        writes to <code style={inlineMono}>~/.coodra/</code> on this machine. Refused in team-hosted deployments — the
+        wizard only ships writes to the laptop running this dev server.
       </p>
       {failed ? (
         <div

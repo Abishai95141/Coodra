@@ -169,9 +169,7 @@ export function ProjectsHub({ projects, mode, fetchedAt, systemStatus }: Project
             body={
               <>
                 Coodra organises everything around projects. Create one from the web wizard, or run{' '}
-                <span className="font-mono text-accent">
-                  coodra init --project-slug X --no-graphify --ide claude
-                </span>{' '}
+                <span className="font-mono text-accent">coodra init --project-slug X --no-graphify --ide claude</span>{' '}
                 in a project root.
               </>
             }

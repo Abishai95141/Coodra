@@ -146,7 +146,12 @@ function writePackFileOrSidecar(
       writeFileSync(path, cloudContent, 'utf8');
     } catch (err) {
       log.warn(
-        { event: 'team_rows_pack_fs_write_failed', slug, filename, err: err instanceof Error ? err.message : String(err) },
+        {
+          event: 'team_rows_pack_fs_write_failed',
+          slug,
+          filename,
+          err: err instanceof Error ? err.message : String(err),
+        },
         'pack filesystem write failed',
       );
     }
@@ -189,7 +194,12 @@ function writePackFileOrSidecar(
       );
     } catch (err) {
       log.warn(
-        { event: 'team_rows_pack_fs_write_failed', slug, filename, err: err instanceof Error ? err.message : String(err) },
+        {
+          event: 'team_rows_pack_fs_write_failed',
+          slug,
+          filename,
+          err: err instanceof Error ? err.message : String(err),
+        },
         'pack filesystem overwrite failed',
       );
     }
@@ -209,7 +219,12 @@ function writePackFileOrSidecar(
       );
     } catch (err) {
       log.warn(
-        { event: 'team_rows_pack_sidecar_write_failed', slug, filename, err: err instanceof Error ? err.message : String(err) },
+        {
+          event: 'team_rows_pack_sidecar_write_failed',
+          slug,
+          filename,
+          err: err instanceof Error ? err.message : String(err),
+        },
         'pack sidecar write failed',
       );
     }
@@ -696,9 +711,9 @@ export function createTeamRowsPuller(deps: TeamRowsPullerDeps): TeamRowsPullerHa
         // Filesystem writeback — only for published features. Drafts
         // stay in DB until promoted.
         if (row.status !== 'published') continue;
-        const projectRow = localDb.raw
-          .prepare('SELECT cwd FROM projects WHERE id = ? LIMIT 1')
-          .get(row.projectId) as { cwd: string | null } | undefined;
+        const projectRow = localDb.raw.prepare('SELECT cwd FROM projects WHERE id = ? LIMIT 1').get(row.projectId) as
+          | { cwd: string | null }
+          | undefined;
         if (projectRow === undefined || projectRow.cwd === null) {
           // No registered cwd — we can't safely write. The puller
           // skips silently; when the project registers a cwd (next

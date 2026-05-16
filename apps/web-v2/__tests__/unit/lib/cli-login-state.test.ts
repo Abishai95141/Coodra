@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  __cliLoginStateCount,
-  __resetCliLoginStateForTest,
-  consumeCliLoginState,
-} from '../../../lib/cli-login-state';
+import { __cliLoginStateCount, __resetCliLoginStateForTest, consumeCliLoginState } from '../../../lib/cli-login-state';
 
 /**
  * Unit tests for `apps/web-v2/lib/cli-login-state.ts` (Phase G slice G.2).

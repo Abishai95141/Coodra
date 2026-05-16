@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { requireRole, type Role } from '@coodra/shared/auth';
+import { type Role, requireRole } from '@coodra/shared/auth';
 import { redirect } from 'next/navigation';
 
 import { type Actor, getActor } from '@/lib/auth';

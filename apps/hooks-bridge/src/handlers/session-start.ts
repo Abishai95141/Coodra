@@ -123,8 +123,10 @@ export function createSessionStartHandler(deps: CreateSessionStartHandlerDeps): 
     //     inside captureBaseSha; the SessionEnd runner surfaces this as
     //     `error='no_base_sha'` on the run_diffs row.
     if (
-      typeof projectId === 'string' && projectId.length > 0 &&
-      typeof event.cwd === 'string' && event.cwd.length > 0
+      typeof projectId === 'string' &&
+      projectId.length > 0 &&
+      typeof event.cwd === 'string' &&
+      event.cwd.length > 0
     ) {
       void captureBaseSha({
         cwd: event.cwd,

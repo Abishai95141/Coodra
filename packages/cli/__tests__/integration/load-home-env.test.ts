@@ -40,11 +40,7 @@ describe('loadHomeEnv — layered <COODRA_HOME>/.env + <cwd>/.env', () => {
       ['COODRA_GRAPHIFY_ROOT=/var/graphify', 'CLERK_PUBLISHABLE_KEY=pk_test_replace_me'].join('\n'),
       'utf8',
     );
-    writeFileSync(
-      join(cwdDir, '.env'),
-      [`LOCAL_HOOK_SECRET=${'a'.repeat(40)}`, 'COODRA_MODE=solo'].join('\n'),
-      'utf8',
-    );
+    writeFileSync(join(cwdDir, '.env'), [`LOCAL_HOOK_SECRET=${'a'.repeat(40)}`, 'COODRA_MODE=solo'].join('\n'), 'utf8');
 
     const merged = loadHomeEnv(homeDir, cwdDir);
 
@@ -58,11 +54,7 @@ describe('loadHomeEnv — layered <COODRA_HOME>/.env + <cwd>/.env', () => {
     // Per-project override is the more specific scope. A developer who
     // sets COODRA_MODE=team in their project must override whatever
     // the user-global .env says.
-    writeFileSync(
-      join(homeDir, '.env'),
-      ['COODRA_MODE=solo', 'CLERK_SECRET_KEY=sk_test_from_home'].join('\n'),
-      'utf8',
-    );
+    writeFileSync(join(homeDir, '.env'), ['COODRA_MODE=solo', 'CLERK_SECRET_KEY=sk_test_from_home'].join('\n'), 'utf8');
     writeFileSync(
       join(cwdDir, '.env'),
       ['COODRA_MODE=team', 'CLERK_SECRET_KEY=sk_test_from_project'].join('\n'),

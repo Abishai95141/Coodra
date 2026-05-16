@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { existsSync, readdirSync, readFileSync, statSync, type Stats } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 
 import { FEATURE_SLUG_RE, walkFeatures } from '@coodra/shared/features';

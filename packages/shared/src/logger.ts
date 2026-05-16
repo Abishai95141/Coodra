@@ -67,9 +67,7 @@ function resolveDestination(envDest: string | undefined): DestinationStream | un
   const normalized = envDest?.toLowerCase();
   if (normalized === undefined || normalized === '' || normalized === 'stdout') return undefined;
   if (normalized === 'stderr') return pinoDestination({ fd: 2, sync: true });
-  throw new TypeError(
-    `@coodra/shared/logger: COODRA_LOG_DESTINATION must be 'stdout' or 'stderr' (got: '${envDest}')`,
-  );
+  throw new TypeError(`@coodra/shared/logger: COODRA_LOG_DESTINATION must be 'stdout' or 'stderr' (got: '${envDest}')`);
 }
 
 const baseOptions: LoggerOptions = {

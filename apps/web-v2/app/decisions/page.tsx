@@ -43,14 +43,15 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
   // In solo mode no row carries a created_by_user_id so the column
   // collapses into em-dashes — we hide it then to save horizontal space.
   const teamCfg = readTeamConfig();
-  const viewerUserId = teamCfg.mode === 'team' ? teamCfg.team?.clerkUserId ?? null : null;
+  const viewerUserId = teamCfg.mode === 'team' ? (teamCfg.team?.clerkUserId ?? null) : null;
   const showAuthorColumn = teamCfg.mode === 'team' || decisions.some((d) => d.createdByUserId !== null);
   // Batch-resolve every distinct Clerk user id on the page to a display
   // name (full name → email → shortened id fallback). Solo mode skips
   // the Clerk round-trip because there's no team config to authenticate.
-  const userDisplayNames = showAuthorColumn && teamCfg.mode === 'team'
-    ? await resolveClerkDisplayNames(decisions.map((d) => d.createdByUserId))
-    : new Map<string, { label: string; email: string | null }>();
+  const userDisplayNames =
+    showAuthorColumn && teamCfg.mode === 'team'
+      ? await resolveClerkDisplayNames(decisions.map((d) => d.createdByUserId))
+      : new Map<string, { label: string; email: string | null }>();
 
   return (
     <>
@@ -131,8 +132,8 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
             <strong>
               No decisions <em>yet</em>.
             </strong>
-            The agent records decisions via <code style={mono}>coodra__record_decision</code>. They&apos;ll appear
-            here as they&apos;re made.
+            The agent records decisions via <code style={mono}>coodra__record_decision</code>. They&apos;ll appear here
+            as they&apos;re made.
           </div>
         ) : (
           <div className="card" style={{ padding: 0 }}>
@@ -212,7 +213,8 @@ export default async function DecisionsPage({ searchParams }: { searchParams: Pr
                           <ActorBadge
                             userId={d.createdByUserId}
                             viewerUserId={viewerUserId}
-                            {...((d.createdByUserId !== null && userDisplayNames.get(d.createdByUserId)?.label) !== undefined
+                            {...((d.createdByUserId !== null && userDisplayNames.get(d.createdByUserId)?.label) !==
+                            undefined
                               ? { displayName: userDisplayNames.get(d.createdByUserId as string)!.label }
                               : {})}
                           />

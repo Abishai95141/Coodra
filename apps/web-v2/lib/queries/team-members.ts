@@ -146,16 +146,18 @@ export async function listTeamMembers(): Promise<ReadonlyArray<TeamMemberRow>> {
     GROUP BY user_id
     ORDER BY last_seen DESC
   `);
-  return (rows as unknown as Array<{
-    user_id: string;
-    runs: string;
-    decisions: string;
-    context_packs: string;
-    policies: string;
-    feature_packs: string;
-    total: string;
-    last_seen: Date;
-  }>).map((r) => ({
+  return (
+    rows as unknown as Array<{
+      user_id: string;
+      runs: string;
+      decisions: string;
+      context_packs: string;
+      policies: string;
+      feature_packs: string;
+      total: string;
+      last_seen: Date;
+    }>
+  ).map((r) => ({
     userId: r.user_id,
     writeCount: Number(r.total),
     lastSeenAt: (r.last_seen instanceof Date ? r.last_seen : new Date(r.last_seen)).toISOString(),

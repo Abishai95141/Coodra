@@ -50,11 +50,9 @@ export const clerkAppearance = {
     socialButtonsBlockButtonText: 'font-mono uppercase tracking-widest text-xs',
     formButtonPrimary:
       'rounded-none border border-accent bg-accent text-bg uppercase tracking-widest text-xs font-mono font-medium',
-    formButtonReset:
-      'rounded-none border border-rule-strong text-ink-dim uppercase tracking-widest text-xs font-mono',
+    formButtonReset: 'rounded-none border border-rule-strong text-ink-dim uppercase tracking-widest text-xs font-mono',
     formFieldLabel: 'font-mono uppercase tracking-widest text-[10px] text-ink-mute',
-    formFieldInput:
-      'rounded-none bg-bg border-rule-strong text-ink font-mono text-sm',
+    formFieldInput: 'rounded-none bg-bg border-rule-strong text-ink font-mono text-sm',
     identityPreviewText: 'font-mono text-ink-dim',
     identityPreviewEditButtonIcon: 'text-accent',
     formFieldAction: 'text-accent text-xs font-mono uppercase tracking-wider',

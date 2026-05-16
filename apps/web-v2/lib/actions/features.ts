@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import { extname, join } from 'node:path';
 
 import {
-  FEATURE_SLUG_RE,
   featuresRoot as featuresRootShared,
   generateFeaturesIndex,
   parseFeatureMd,
@@ -135,10 +134,7 @@ const CREATE_SCHEMA = z.object({
     .min(1, 'slug is required')
     .max(64, 'slug must be ≤ 64 chars')
     .regex(SLUG_RE, 'slug must be lowercase letters, digits, hyphens or underscores'),
-  description: z
-    .string()
-    .min(1, 'description is required')
-    .max(2000, 'description must be ≤ 2000 chars'),
+  description: z.string().min(1, 'description is required').max(2000, 'description must be ≤ 2000 chars'),
   whenNotToUse: z.string().max(2000).optional(),
   maturity: z.enum(['draft', 'beta', 'stable', 'deprecated']).optional(),
   body: z.string().max(MAX_BODY_BYTES).optional(),
@@ -208,9 +204,7 @@ export async function createFeatureAction(formData: FormData): Promise<void> {
           : {}),
         ...(parsed.data.maturity !== undefined ? { maturity: parsed.data.maturity } : {}),
       },
-      body:
-        parsed.data.body ??
-        scaffoldBody(parsed.data.slug),
+      body: parsed.data.body ?? scaffoldBody(parsed.data.slug),
     });
     writeFileSync(featureMdPath, rendered, 'utf8');
 
@@ -270,7 +264,12 @@ export async function uploadFeatureFileAction(formData: FormData): Promise<void>
   }
   const file = formData.get('file');
   if (!(file instanceof File) || file.size === 0) {
-    redirect(detailHref(parsed.data.projectSlug, parsed.data.fslug, { error: 'no_file', errorMessage: 'Pick a file to upload.' }));
+    redirect(
+      detailHref(parsed.data.projectSlug, parsed.data.fslug, {
+        error: 'no_file',
+        errorMessage: 'Pick a file to upload.',
+      }),
+    );
   }
   if (file.size > MAX_FILE_BYTES) {
     redirect(
@@ -662,7 +661,7 @@ export async function reindexFeaturesAction(formData: FormData): Promise<void> {
     redirect(`/projects?error=invalid_project_slug`);
   }
   const { cwd } = await resolveProjectCwd(projectSlug);
-  let result;
+  let result: ReturnType<typeof generateFeaturesIndex>;
   try {
     result = generateFeaturesIndex({ projectCwd: cwd, projectSlug });
   } catch (err) {

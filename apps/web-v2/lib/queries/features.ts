@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { existsSync, statSync } from 'node:fs';
-
+import { join } from 'node:path';
 import {
   type FeatureRow,
   featuresRoot as featuresRootShared,
@@ -9,7 +9,6 @@ import {
   readFeatureRow,
   walkFeatures,
 } from '@coodra/shared/features';
-import { join } from 'node:path';
 
 /**
  * `apps/web-v2/lib/queries/features.ts` — server-only thin wrappers over
@@ -104,10 +103,7 @@ export function fetchProjectFeaturesSnapshot(args: {
  * Re-exposes the shared `FeatureRow` shape directly — the detail page
  * needs everything the parser produced, no projection.
  */
-export function fetchFeatureDetail(args: {
-  readonly projectCwd: string;
-  readonly slug: string;
-}): FeatureRow | null {
+export function fetchFeatureDetail(args: { readonly projectCwd: string; readonly slug: string }): FeatureRow | null {
   const root = featuresRootShared(args.projectCwd);
   if (!existsSync(root)) return null;
   const dir = join(root, args.slug);

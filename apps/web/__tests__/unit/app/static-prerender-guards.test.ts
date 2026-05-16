@@ -21,7 +21,9 @@ import { describe, expect, it } from 'vitest';
 // hot-path unit test. (Vitest 4 removed the `describe(name, fn, options)`
 // signature; per-test option-objects are now the way to bump timeout.)
 describe('M04 Phase 2 S1 — F1 force-dynamic guards on data-reading routes (post-S2a IA migration)', () => {
-  it('/ (project picker / will be picker after S2b — placeholder home now) declares dynamic = "force-dynamic"', { timeout: 30000 }, async () => {
+  it('/ (project picker / will be picker after S2b — placeholder home now) declares dynamic = "force-dynamic"', {
+    timeout: 30000,
+  }, async () => {
     const mod = await import('@/app/page');
     expect(mod.dynamic).toBe('force-dynamic');
   });

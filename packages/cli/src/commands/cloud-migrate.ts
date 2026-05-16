@@ -114,9 +114,7 @@ export async function runCloudMigrateCommand(
   try {
     handle = createPostgresDb({ databaseUrl });
   } catch (cause) {
-    io.writeStderr(
-      `${pc.red('coodra cloud-migrate')}: failed to construct Postgres client: ${errorMessage(cause)}\n`,
-    );
+    io.writeStderr(`${pc.red('coodra cloud-migrate')}: failed to construct Postgres client: ${errorMessage(cause)}\n`);
     return io.exit(EXIT_USER_RECOVERABLE);
   }
 

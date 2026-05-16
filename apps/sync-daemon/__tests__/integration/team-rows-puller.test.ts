@@ -12,7 +12,6 @@ import {
   type PostgresHandle,
   postgresSchema,
   type SqliteHandle,
-  sqliteSchema,
 } from '@coodra/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -193,7 +192,7 @@ let cloud: PostgresHandle;
     }
   });
 
-  it('pulls projects from cloud — fresh teammate machine inherits the org\'s project list', async () => {
+  it("pulls projects from cloud — fresh teammate machine inherits the org's project list", async () => {
     // Simulate Bob's first sync. Cloud has a project Alice created;
     // Bob's local has only the __global__ sentinel. Pre-fix the puller
     // never pulled projects, so every subsequent runs/decisions row
@@ -206,7 +205,7 @@ let cloud: PostgresHandle;
 
     // Bob's local does NOT have this project — only __global__.
     const beforeRows = local.raw.prepare('SELECT id FROM projects').all();
-    expect(beforeRows.map((r: any) => r.id)).toEqual(['__global__']);
+    expect((beforeRows as Array<{ id: string }>).map((r) => r.id)).toEqual(['__global__']);
 
     // Seed a runs row that references the project so we can confirm the
     // FK chain unblocks once projects pull lands.
@@ -233,9 +232,9 @@ let cloud: PostgresHandle;
       expect(localProject?.id).toBe(cloudProject.id);
       expect(localProject?.org_id).toBe('org-acme');
 
-      const localRun = local.raw
-        .prepare('SELECT id, project_id FROM runs WHERE id = ?')
-        .get('run_alice_seed') as { id: string; project_id: string } | undefined;
+      const localRun = local.raw.prepare('SELECT id, project_id FROM runs WHERE id = ?').get('run_alice_seed') as
+        | { id: string; project_id: string }
+        | undefined;
       expect(localRun?.project_id).toBe(cloudProject.id);
     } finally {
       await puller.stop();
@@ -253,9 +252,9 @@ let cloud: PostgresHandle;
     const puller = createTeamRowsPuller({ localDb: local, cloudDb: cloud, intervalMs: 60_000, skipInitialTick: true });
     try {
       await puller.tickOnce();
-      const localOrphan = local.raw
-        .prepare('SELECT id FROM projects WHERE slug = ?')
-        .get('orphan-solo-1') as { id: string } | undefined;
+      const localOrphan = local.raw.prepare('SELECT id FROM projects WHERE slug = ?').get('orphan-solo-1') as
+        | { id: string }
+        | undefined;
       expect(localOrphan).toBeUndefined();
     } finally {
       await puller.stop();

@@ -39,7 +39,13 @@ interface PageProps {
 }
 
 type Preview =
-  | { readonly kind: 'ok'; readonly email: string; readonly role: 'admin' | 'member' | 'viewer'; readonly expiresAt: string; readonly orgId: string }
+  | {
+      readonly kind: 'ok';
+      readonly email: string;
+      readonly role: 'admin' | 'member' | 'viewer';
+      readonly expiresAt: string;
+      readonly orgId: string;
+    }
   | { readonly kind: 'expired'; readonly expiredAt: string }
   | { readonly kind: 'revoked'; readonly revokedAt: string }
   | { readonly kind: 'already_redeemed'; readonly usedAt: string }
@@ -56,7 +62,8 @@ async function buildPreview(token: string): Promise<Preview> {
     if (verification.reason === 'expired') return { kind: 'expired', expiredAt: 'recently' };
     if (verification.reason === 'bad_signature') return { kind: 'bad_signature' };
     if (verification.reason === 'malformed') return { kind: 'malformed' };
-    if (verification.reason === 'secret_misconfigured') return { kind: 'secret_misconfigured', detail: verification.howToFix };
+    if (verification.reason === 'secret_misconfigured')
+      return { kind: 'secret_misconfigured', detail: verification.howToFix };
     return { kind: 'bad_payload', detail: verification.howToFix };
   }
   // Catch the "relation does not exist" case the cloud throws when the
@@ -115,8 +122,8 @@ export default async function InstallPage({ params }: PageProps) {
             <p className="head__lede">
               {preview.kind === 'ok' ? (
                 <>
-                  Welcome to Coodra. Your Clerk identity is verified and your team membership is active. Pick
-                  the path that matches how you'll use Coodra — both are reversible.
+                  Welcome to Coodra. Your Clerk identity is verified and your team membership is active. Pick the path
+                  that matches how you'll use Coodra — both are reversible.
                 </>
               ) : (
                 <>{copyForFailure(preview)}</>
@@ -135,7 +142,12 @@ export default async function InstallPage({ params }: PageProps) {
         </div>
 
         {preview.kind === 'ok' ? (
-          <OkLayout token={token} preview={preview} baseUrl={resolveDeploymentBaseUrl()} baseUrlUnset={isDeploymentBaseUrlUnset()} />
+          <OkLayout
+            token={token}
+            preview={preview}
+            baseUrl={resolveDeploymentBaseUrl()}
+            baseUrlUnset={isDeploymentBaseUrlUnset()}
+          />
         ) : (
           <FailureLayout preview={preview} />
         )}
@@ -195,60 +207,104 @@ function OkLayout({
             letterSpacing: '0.08em',
           }}
         >
-          The install commands below contain a placeholder URL because{' '}
-          <code>COODRA_PUBLIC_URL</code> is not set on this deployment. Ask the admin to set it to this
-          deployment's external URL (e.g. <code>https://coodra.acme.com</code>) and redeploy before sharing
-          this link.
+          The install commands below contain a placeholder URL because <code>COODRA_PUBLIC_URL</code> is not set on this
+          deployment. Ask the admin to set it to this deployment's external URL (e.g.{' '}
+          <code>https://coodra.acme.com</code>) and redeploy before sharing this link.
         </div>
       ) : null}
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 24 }}>
-      <div className="card" style={{ padding: 36 }}>
-        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.18em', color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 8 }}>
-          01
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 24 }}>
+        <div className="card" style={{ padding: 36 }}>
+          <div
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 11,
+              letterSpacing: '0.18em',
+              color: 'var(--accent)',
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            01
+          </div>
+          <h2 className="card__title" style={{ marginBottom: 14 }}>
+            Just <em>browse</em>
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 18 }}>
+            If you're a PM, designer, or stakeholder who reads decisions and watches what the team is shipping — you're
+            set. Open the dashboard, browse, sign out when you're done.
+          </p>
+          <p
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--mono)',
+              color: 'var(--ink-mute)',
+              lineHeight: 1.7,
+              marginBottom: 22,
+            }}
+          >
+            This invite stays valid until you redeem it on a developer laptop. You can switch paths anytime.
+          </p>
+          <Link href="/" className="btn btn--accent">
+            Open dashboard
+          </Link>
         </div>
-        <h2 className="card__title" style={{ marginBottom: 14 }}>
-          Just <em>browse</em>
-        </h2>
-        <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 18 }}>
-          If you're a PM, designer, or stakeholder who reads decisions and watches what the team is shipping —
-          you're set. Open the dashboard, browse, sign out when you're done.
-        </p>
-        <p style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', lineHeight: 1.7, marginBottom: 22 }}>
-          This invite stays valid until you redeem it on a developer laptop. You can switch paths anytime.
-        </p>
-        <Link href="/" className="btn btn--accent">
-          Open dashboard
-        </Link>
-      </div>
 
-      <div className="card" style={{ padding: 36 }}>
-        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.18em', color: 'var(--accent)', textTransform: 'uppercase', marginBottom: 8 }}>
-          02
+        <div className="card" style={{ padding: 36 }}>
+          <div
+            style={{
+              fontFamily: 'var(--mono)',
+              fontSize: 11,
+              letterSpacing: '0.18em',
+              color: 'var(--accent)',
+              textTransform: 'uppercase',
+              marginBottom: 8,
+            }}
+          >
+            02
+          </div>
+          <h2 className="card__title" style={{ marginBottom: 14 }}>
+            Run AI agents on my <em>laptop</em>
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 18 }}>
+            Installs the Coodra CLI, writes <code style={inlineMono}>~/.coodra/config.json</code>, and joins you to{' '}
+            <span style={{ color: 'var(--ink)' }}>{preview.orgId.slice(0, 14)}…</span> as{' '}
+            <span style={{ color: 'var(--ink)' }}>{preview.role}</span>. Runs in ~30 seconds.
+          </p>
+
+          <p
+            style={{
+              fontSize: 11,
+              fontFamily: 'var(--mono)',
+              color: 'var(--ink-mute)',
+              lineHeight: 1.7,
+              marginBottom: 8,
+            }}
+          >
+            ONE-LINE INSTALL
+          </p>
+          <pre style={codeBlock}>{installCmd}</pre>
+
+          <p
+            style={{
+              marginTop: 18,
+              fontSize: 11,
+              fontFamily: 'var(--mono)',
+              color: 'var(--ink-mute)',
+              lineHeight: 1.7,
+              marginBottom: 8,
+            }}
+          >
+            OR — IF YOU ALREADY HAVE THE CLI
+          </p>
+          <pre style={codeBlock}>{altCmd}</pre>
+
+          <p
+            style={{ marginTop: 18, fontSize: 11, color: 'var(--caution)', fontFamily: 'var(--mono)', lineHeight: 1.7 }}
+          >
+            Running either command consumes this invite. Re-running the URL afterward will 410.
+          </p>
         </div>
-        <h2 className="card__title" style={{ marginBottom: 14 }}>
-          Run AI agents on my <em>laptop</em>
-        </h2>
-        <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 18 }}>
-          Installs the Coodra CLI, writes <code style={inlineMono}>~/.coodra/config.json</code>, and joins
-          you to <span style={{ color: 'var(--ink)' }}>{preview.orgId.slice(0, 14)}…</span> as{' '}
-          <span style={{ color: 'var(--ink)' }}>{preview.role}</span>. Runs in ~30 seconds.
-        </p>
-
-        <p style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', lineHeight: 1.7, marginBottom: 8 }}>
-          ONE-LINE INSTALL
-        </p>
-        <pre style={codeBlock}>{installCmd}</pre>
-
-        <p style={{ marginTop: 18, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--ink-mute)', lineHeight: 1.7, marginBottom: 8 }}>
-          OR — IF YOU ALREADY HAVE THE CLI
-        </p>
-        <pre style={codeBlock}>{altCmd}</pre>
-
-        <p style={{ marginTop: 18, fontSize: 11, color: 'var(--caution)', fontFamily: 'var(--mono)', lineHeight: 1.7 }}>
-          Running either command consumes this invite. Re-running the URL afterward will 410.
-        </p>
       </div>
-    </div>
     </>
   );
 }
@@ -261,8 +317,8 @@ function FailureLayout({ preview }: { readonly preview: Exclude<Preview, { kind:
       </h2>
       <p style={{ fontSize: 14, color: 'var(--ink-dim)', lineHeight: 1.65, marginBottom: 18 }}>
         Reach out to whoever invited you and ask them to mint a fresh invite from{' '}
-        <code style={inlineMono}>/settings/team</code>. If you don't know who that is, the contact is whoever
-        deployed this Coodra instance.
+        <code style={inlineMono}>/settings/team</code>. If you don't know who that is, the contact is whoever deployed
+        this Coodra instance.
       </p>
       <p style={{ fontSize: 11, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', lineHeight: 1.7 }}>
         Reason · <span style={{ color: 'var(--warn)' }}>{preview.kind}</span>

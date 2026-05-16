@@ -27,10 +27,7 @@ export default async function ImportFeaturesPage({
 
   return (
     <>
-      <Topbar
-        crumb={`${project.slug} / features / import`}
-        crumbPrefix="coodra / projects"
-      />
+      <Topbar crumb={`${project.slug} / features / import`} crumbPrefix="coodra / projects" />
       <section className="screen">
         <div className="head">
           <div>
@@ -48,11 +45,19 @@ export default async function ImportFeaturesPage({
           </div>
           <div>
             <div className="head__meta">
-              <strong>{result.candidates.length} candidate{result.candidates.length === 1 ? '' : 's'}</strong>
+              <strong>
+                {result.candidates.length} candidate{result.candidates.length === 1 ? '' : 's'}
+              </strong>
               <br />
-              {result.scannedDirs.length > 0 ? `${result.scannedDirs.length} dir${result.scannedDirs.length === 1 ? '' : 's'} scanned` : 'no doc dirs found'}
+              {result.scannedDirs.length > 0
+                ? `${result.scannedDirs.length} dir${result.scannedDirs.length === 1 ? '' : 's'} scanned`
+                : 'no doc dirs found'}
               <br />
-              {result.truncated ? <span style={{ color: 'var(--warn)' }}>capped at 50 — refine paths</span> : 'all visible'}
+              {result.truncated ? (
+                <span style={{ color: 'var(--warn)' }}>capped at 50 — refine paths</span>
+              ) : (
+                'all visible'
+              )}
             </div>
             <div className="head__actions">
               <Link className="btn btn--ghost" href={`/projects/${encodeURIComponent(project.slug)}/features`}>
@@ -91,10 +96,7 @@ export default async function ImportFeaturesPage({
               your spec files anywhere under <code style={mono}>docs/</code> / <code style={mono}>specs/</code> /{' '}
               <code style={mono}>architecture/</code>, or use the blank create form to author one from scratch.
             </p>
-            <Link
-              className="btn btn--accent"
-              href={`/projects/${encodeURIComponent(project.slug)}/features/new`}
-            >
+            <Link className="btn btn--accent" href={`/projects/${encodeURIComponent(project.slug)}/features/new`}>
               + Create from scratch
             </Link>
           </div>

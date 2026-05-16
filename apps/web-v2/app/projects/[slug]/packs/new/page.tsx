@@ -113,9 +113,9 @@ export default async function NewProjectPackPage({
 
         {primaryIsStub ? (
           <div className="banner">
-            The primary pack is a <code style={mono}>coodra init</code> template stub. Uploading with the default
-            slug below will silently replace it (no force-overwrite needed) — the action treats stubs as the
-            obvious replace-target. Auto-link is treated as off when replacing a stub.
+            The primary pack is a <code style={mono}>coodra init</code> template stub. Uploading with the default slug
+            below will silently replace it (no force-overwrite needed) — the action treats stubs as the obvious
+            replace-target. Auto-link is treated as off when replacing a stub.
           </div>
         ) : null}
 

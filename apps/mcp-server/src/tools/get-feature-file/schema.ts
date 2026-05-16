@@ -23,10 +23,7 @@ const RELATIVE_PATH_RE = /^[a-zA-Z0-9_][a-zA-Z0-9_\-./]{0,255}$/;
 
 export const getFeatureFileInputSchema = z
   .object({
-    projectSlug: z
-      .string()
-      .min(1, 'projectSlug is required')
-      .max(128, 'projectSlug must be ≤ 128 chars'),
+    projectSlug: z.string().min(1, 'projectSlug is required').max(128, 'projectSlug must be ≤ 128 chars'),
     slug: z
       .string()
       .min(1, 'slug is required')

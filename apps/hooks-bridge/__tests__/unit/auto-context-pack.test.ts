@@ -85,11 +85,8 @@ describe('buildAutoSummary', () => {
       diff: {
         baseSha: 'a'.repeat(40),
         headSha: 'b'.repeat(40),
-        unifiedDiff:
-          'diff --git a/src/foo.ts b/src/foo.ts\n@@ -1,1 +1,2 @@\n hello\n+world\n',
-        filesChanged: [
-          { path: 'src/foo.ts', status: 'modified', additions: 1, deletions: 0 },
-        ],
+        unifiedDiff: 'diff --git a/src/foo.ts b/src/foo.ts\n@@ -1,1 +1,2 @@\n hello\n+world\n',
+        filesChanged: [{ path: 'src/foo.ts', status: 'modified', additions: 1, deletions: 0 }],
         truncated: false,
         error: null,
       },

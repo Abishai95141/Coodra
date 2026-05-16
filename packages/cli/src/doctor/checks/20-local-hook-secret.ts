@@ -35,8 +35,7 @@ export const localHookSecretCheck: Check = {
       return {
         status: 'yellow',
         detail: 'LOCAL_HOOK_SECRET not set in env and no config.json present',
-        remediation:
-          'Set LOCAL_HOOK_SECRET in your env (solo mode) or run `coodra team login` (team mode, when GA).',
+        remediation: 'Set LOCAL_HOOK_SECRET in your env (solo mode) or run `coodra team login` (team mode, when GA).',
       };
     }
   },

@@ -2,11 +2,7 @@ import type { IdempotencyKeyBuilder } from '../../framework/idempotency.js';
 import type { ToolRegistration } from '../../framework/tool-registry.js';
 
 import { createGetFeatureFileHandler, type GetFeatureFileHandlerDeps } from './handler.js';
-import {
-  type GetFeatureFileInput,
-  getFeatureFileInputSchema,
-  getFeatureFileOutputSchema,
-} from './schema.js';
+import { type GetFeatureFileInput, getFeatureFileInputSchema, getFeatureFileOutputSchema } from './schema.js';
 
 const getFeatureFileIdempotencyKey: IdempotencyKeyBuilder<GetFeatureFileInput> = (input, ctx) => {
   const proj = typeof input?.projectSlug === 'string' && input.projectSlug.length > 0 ? input.projectSlug : 'unknown';

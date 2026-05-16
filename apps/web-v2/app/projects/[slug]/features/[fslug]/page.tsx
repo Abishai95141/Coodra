@@ -43,14 +43,13 @@ export default async function FeatureDetailPage({
 
   return (
     <>
-      <Topbar
-        crumb={`${project.slug} / features / ${row.slug}`}
-        crumbPrefix="coodra / projects"
-      />
+      <Topbar crumb={`${project.slug} / features / ${row.slug}`} crumbPrefix="coodra / projects" />
       <section className="screen">
         <div className="head">
           <div>
-            <div className="head__num">/01 · PROJECT · {project.slug.toUpperCase()} · FEATURE · {row.slug.toUpperCase()}</div>
+            <div className="head__num">
+              /01 · PROJECT · {project.slug.toUpperCase()} · FEATURE · {row.slug.toUpperCase()}
+            </div>
             <h1 className="head__title">
               <em>{row.slug}</em>
               {fm.maturity && fm.maturity !== 'stable' ? (
@@ -68,7 +67,9 @@ export default async function FeatureDetailPage({
           </div>
           <div>
             <div className="head__meta">
-              <strong>{row.files.length + 1} file{row.files.length === 0 ? '' : 's'}</strong>
+              <strong>
+                {row.files.length + 1} file{row.files.length === 0 ? '' : 's'}
+              </strong>
               <br />
               {formatBytes(row.totalBytes)} · last updated {fmtRelative(row.lastUpdatedAt)}
               <br />
@@ -97,8 +98,8 @@ export default async function FeatureDetailPage({
           <Banner tone="warn">
             <strong>Validation warnings ({row.warnings.length}):</strong>
             <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 20 }}>
-              {row.warnings.map((w, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
+              {row.warnings.map((w) => (
+                <li key={w} style={{ marginBottom: 4 }}>
                   {w}
                 </li>
               ))}
@@ -137,9 +138,7 @@ export default async function FeatureDetailPage({
           <div>
             <div className="aside-card">
               <div className="aside-card__head">
-                <h3 className="aside-card__title">
-                  Frontmatter
-                </h3>
+                <h3 className="aside-card__title">Frontmatter</h3>
               </div>
               <dl style={{ fontFamily: 'var(--mono)', fontSize: 11, lineHeight: 1.8, margin: 0 }}>
                 <Field label="name" value={fm.name} />
@@ -187,7 +186,15 @@ export default async function FeatureDetailPage({
                   On <em>disk</em>
                 </h3>
               </div>
-              <p style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-dim)', wordBreak: 'break-all', margin: 0 }}>
+              <p
+                style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 10,
+                  color: 'var(--ink-dim)',
+                  wordBreak: 'break-all',
+                  margin: 0,
+                }}
+              >
                 {row.dir}
               </p>
             </div>

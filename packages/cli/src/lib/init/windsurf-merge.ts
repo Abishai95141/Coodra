@@ -1,7 +1,7 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isCoodraEntryEqual, type CoodraMcpEntry } from './mcp-merge.js';
+import { type CoodraMcpEntry, isCoodraEntryEqual } from './mcp-merge.js';
 import type { WriteOutcome } from './types.js';
 
 /**

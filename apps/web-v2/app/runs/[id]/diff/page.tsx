@@ -210,7 +210,8 @@ function renderDiff(diff: string): React.ReactNode {
       style = { color: 'var(--ink)', fontWeight: 600, marginTop: idx === 0 ? 0 : 4 };
     }
     return (
-      <span key={idx} style={style}>
+      // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are SSR-rendered once and never reorder; blank lines can repeat so content-keying would collide.
+      <span key={`diff-line-${idx}`} style={style}>
         {line}
         {'\n'}
       </span>

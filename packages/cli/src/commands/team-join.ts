@@ -215,7 +215,7 @@ export async function runTeamJoinInviteCommand(
   // Generate state, start loopback listener
   const { randomBytes } = await import('node:crypto');
   const state = randomBytes(STATE_BYTES).toString('base64url');
-  let listener;
+  let listener: Awaited<ReturnType<typeof startLoopbackListener>>;
   try {
     listener = await startLoopbackListener({
       expectedState: state,

@@ -6,8 +6,8 @@ import { deleteProjectAction, renameProjectAction, resetProjectAction } from '@/
 import { cancelAllInProgressRunsAction } from '@/lib/actions/runs';
 import { fmtClockSec, fmtRelative } from '@/lib/format';
 import { resolveProjectFromParams } from '@/lib/project-context';
-import type { ProjectHomePackInfo } from '@/lib/queries/project-home';
 import { fetchProjectFeaturesSnapshot } from '@/lib/queries/features';
+import type { ProjectHomePackInfo } from '@/lib/queries/project-home';
 import { fetchProjectHomeSnapshot } from '@/lib/queries/project-home';
 import { listRuns } from '@/lib/queries/runs';
 import { listTemplates, type TemplateRow } from '@/lib/queries/templates';
@@ -122,7 +122,12 @@ export default async function ProjectHomePage({
         {sp.packUploaded !== undefined ? (
           <Banner tone="ok">
             Pack <code style={packCodeStyle}>{sp.packUploaded}</code> uploaded
-            {sp.replaced === 'stub' ? <> · replaced the <code style={packCodeStyle}>coodra init</code> template stub</> : null}
+            {sp.replaced === 'stub' ? (
+              <>
+                {' '}
+                · replaced the <code style={packCodeStyle}>coodra init</code> template stub
+              </>
+            ) : null}
             {sp.linked === '1' ? (
               <>
                 {' · linked as parent of '}
@@ -311,19 +316,13 @@ export default async function ProjectHomePage({
                 No <em>features</em> yet.
               </strong>
               Define a feature for each meaningful slice of this project — auth, billing, the import pipeline. Drop in
-              any md / spec / code samples that help an agent understand it. We index the triggers; the agent picks
-              what to load.
+              any md / spec / code samples that help an agent understand it. We index the triggers; the agent picks what
+              to load.
               <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Link
-                  className="btn btn--accent"
-                  href={`/projects/${encodeURIComponent(project.slug)}/features/new`}
-                >
+                <Link className="btn btn--accent" href={`/projects/${encodeURIComponent(project.slug)}/features/new`}>
                   + Define your first feature
                 </Link>
-                <Link
-                  className="btn btn--ghost"
-                  href={`/projects/${encodeURIComponent(project.slug)}/features`}
-                >
+                <Link className="btn btn--ghost" href={`/projects/${encodeURIComponent(project.slug)}/features`}>
                   Open features panel
                 </Link>
               </div>
@@ -343,7 +342,9 @@ export default async function ProjectHomePage({
                       <div className="row__title">
                         <em>{f.slug}</em>
                         {f.maturity !== 'stable' ? (
-                          <span style={{ marginLeft: 8, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                          <span
+                            style={{ marginLeft: 8, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', fontSize: 11 }}
+                          >
                             · {f.maturity}
                           </span>
                         ) : null}
@@ -370,20 +371,22 @@ export default async function ProjectHomePage({
                 ))}
               </div>
               <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <Link
-                  className="btn btn--accent"
-                  href={`/projects/${encodeURIComponent(project.slug)}/features/new`}
-                >
+                <Link className="btn btn--accent" href={`/projects/${encodeURIComponent(project.slug)}/features/new`}>
                   + Add feature
                 </Link>
-                <Link
-                  className="btn btn--ghost"
-                  href={`/projects/${encodeURIComponent(project.slug)}/features`}
-                >
+                <Link className="btn btn--ghost" href={`/projects/${encodeURIComponent(project.slug)}/features`}>
                   Open features panel
                 </Link>
                 {featuresSnap.features.length > 6 ? (
-                  <span style={{ marginLeft: 'auto', alignSelf: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-mute)' }}>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      alignSelf: 'center',
+                      fontFamily: 'var(--mono)',
+                      fontSize: 11,
+                      color: 'var(--ink-mute)',
+                    }}
+                  >
                     showing 6 of {featuresSnap.features.length}
                   </span>
                 ) : null}
@@ -512,9 +515,11 @@ function Field({
   readonly required?: boolean;
   readonly pattern?: string;
 }) {
+  const inputId = `project-field-${name}`;
   return (
     <div style={{ marginBottom: 12 }}>
       <label
+        htmlFor={inputId}
         style={{
           fontFamily: 'var(--mono)',
           fontSize: 9,
@@ -528,6 +533,7 @@ function Field({
         {label}
       </label>
       <input
+        id={inputId}
         name={name}
         placeholder={placeholder}
         required={required}
@@ -624,8 +630,8 @@ function FeaturePackPanel({
         <Banner tone="ok">
           Primary pack is a <code style={packCodeStyle}>coodra init</code> template stub — uploading via{' '}
           <strong>+ Upload pack</strong> below will silently replace it (no force-overwrite needed). Tip: next time, run{' '}
-          <code style={packCodeStyle}>coodra init --feature-pack=empty</code> to skip the template scaffold and
-          upload your own <code style={packCodeStyle}>.md</code> from the start.
+          <code style={packCodeStyle}>coodra init --feature-pack=empty</code> to skip the template scaffold and upload
+          your own <code style={packCodeStyle}>.md</code> from the start.
         </Banner>
       ) : null}
 
@@ -649,9 +655,9 @@ function FeaturePackPanel({
         <>
           <div className="dash-list" style={{ marginTop: 12 }}>
             {pack.chain.map((row) => (
-              <PackChainRow key={row.slug} row={row} role="ancestor" />
+              <PackChainRow key={row.slug} row={row} kind="ancestor" />
             ))}
-            <PackChainRow row={pack.primary} role="primary" />
+            <PackChainRow row={pack.primary} kind="primary" />
           </div>
 
           <div style={{ marginTop: 18, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -682,8 +688,10 @@ function FeaturePackPanel({
                 <input type="hidden" name="packSlug" value={projectSlug} />
                 <input type="hidden" name="cwd" value={cwd} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <label style={packLabelStyle}>Template</label>
-                <select name="templateName" required style={packInputStyle} defaultValue="">
+                <label htmlFor="pack-template-select" style={packLabelStyle}>
+                  Template
+                </label>
+                <select id="pack-template-select" name="templateName" required style={packInputStyle} defaultValue="">
                   <option value="">— pick a template —</option>
                   {templates.map((t) => (
                     <option key={`${t.source}:${t.name}`} value={t.name}>
@@ -691,10 +699,16 @@ function FeaturePackPanel({
                     </option>
                   ))}
                 </select>
-                <label style={packLabelStyle}>
+                <label htmlFor="pack-confirmation-input" style={packLabelStyle}>
                   Confirmation (type <code style={packCodeStyle}>install &lt;template&gt;</code>)
                 </label>
-                <input name="confirmation" required placeholder="install <template>" style={packInputStyle} />
+                <input
+                  id="pack-confirmation-input"
+                  name="confirmation"
+                  required
+                  placeholder="install <template>"
+                  style={packInputStyle}
+                />
                 <button className="btn btn--sm" type="submit">
                   Overlay template
                 </button>
@@ -717,7 +731,7 @@ function FeaturePackPanel({
 
 function PackChainRow({
   row,
-  role,
+  kind,
 }: {
   readonly row: {
     readonly slug: string;
@@ -725,7 +739,7 @@ function PackChainRow({
     readonly parentSlug: string | null;
     readonly isActive: boolean;
   };
-  readonly role: 'primary' | 'ancestor';
+  readonly kind: 'primary' | 'ancestor';
 }) {
   const status =
     row.fileCount === 4
@@ -733,9 +747,9 @@ function PackChainRow({
       : row.fileCount === 0
         ? { label: 'EMPTY', cls: 'badge--warn' }
         : { label: `${row.fileCount}/4`, cls: 'badge--caution' };
-  const dotCls = role === 'primary' ? '' : 'row__dot--w';
+  const dotCls = kind === 'primary' ? '' : 'row__dot--w';
   const eyebrow =
-    role === 'primary'
+    kind === 'primary'
       ? 'PRIMARY · auto-injected'
       : `ANCESTOR · ${row.parentSlug !== null ? `→ ${row.parentSlug}` : 'root'}`;
   return (
@@ -748,7 +762,7 @@ function PackChainRow({
       <div className="row__main">
         <div className="row__title">
           <em>{row.slug}</em>
-          {row.parentSlug !== null && role === 'primary' ? (
+          {row.parentSlug !== null && kind === 'primary' ? (
             <span style={{ marginLeft: 8, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', fontSize: 11 }}>
               · child of {row.parentSlug}
             </span>

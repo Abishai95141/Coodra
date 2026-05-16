@@ -51,13 +51,14 @@ export default async function ContextPacksPage({ searchParams }: { searchParams:
   // Team-mode "authored by" attribution. Bridge-auto packs have no
   // author (the bridge runs as a daemon with no session-bound user).
   const teamCfg = readTeamConfig();
-  const viewerUserId = teamCfg.mode === 'team' ? teamCfg.team?.clerkUserId ?? null : null;
+  const viewerUserId = teamCfg.mode === 'team' ? (teamCfg.team?.clerkUserId ?? null) : null;
   const showAuthorColumn = teamCfg.mode === 'team' || packs.some((p) => p.createdByUserId !== null);
   // Batch-resolve Clerk user ids to display names so the "Authored by"
   // column shows the actual person instead of an opaque `user_…` id.
-  const userDisplayNames = showAuthorColumn && teamCfg.mode === 'team'
-    ? await resolveClerkDisplayNames(packs.map((p) => p.createdByUserId))
-    : new Map<string, { label: string; email: string | null }>();
+  const userDisplayNames =
+    showAuthorColumn && teamCfg.mode === 'team'
+      ? await resolveClerkDisplayNames(packs.map((p) => p.createdByUserId))
+      : new Map<string, { label: string; email: string | null }>();
 
   return (
     <>
@@ -217,7 +218,8 @@ export default async function ContextPacksPage({ searchParams }: { searchParams:
                         <ActorBadge
                           userId={p.createdByUserId}
                           viewerUserId={viewerUserId}
-                          {...((p.createdByUserId !== null && userDisplayNames.get(p.createdByUserId)?.label) !== undefined
+                          {...((p.createdByUserId !== null && userDisplayNames.get(p.createdByUserId)?.label) !==
+                          undefined
                             ? { displayName: userDisplayNames.get(p.createdByUserId as string)!.label }
                             : {})}
                         />

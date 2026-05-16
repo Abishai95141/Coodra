@@ -18,11 +18,9 @@ vi.mock('@clerk/backend', () => ({
   verifyToken: mockVerifyToken,
 }));
 
-const {
-  clearVerifyClerkJwtCache,
-  verifyClerkJwtAndExtractClaims,
-  __extractClaimsForTest,
-} = await import('../../../src/auth/verify-clerk-jwt.js');
+const { clearVerifyClerkJwtCache, verifyClerkJwtAndExtractClaims, __extractClaimsForTest } = await import(
+  '../../../src/auth/verify-clerk-jwt.js'
+);
 
 function baseEnv(): AuthEnv {
   return {
@@ -206,16 +204,12 @@ describe('extractClaims — edge cases', () => {
 describe('verifyClerkJwtAndExtractClaims — Clerk verification failure', () => {
   it('throws UnauthorizedError when @clerk/backend rejects', async () => {
     mockVerifyToken.mockRejectedValue(new Error('JWT signature is invalid'));
-    await expect(verifyClerkJwtAndExtractClaims('bad-jwt', baseEnv())).rejects.toThrow(
-      /JWT signature is invalid/,
-    );
+    await expect(verifyClerkJwtAndExtractClaims('bad-jwt', baseEnv())).rejects.toThrow(/JWT signature is invalid/);
   });
 
   it('wraps non-Error rejections', async () => {
     mockVerifyToken.mockRejectedValue('something weird');
-    await expect(verifyClerkJwtAndExtractClaims('bad-jwt', baseEnv())).rejects.toThrow(
-      /something weird/,
-    );
+    await expect(verifyClerkJwtAndExtractClaims('bad-jwt', baseEnv())).rejects.toThrow(/something weird/);
   });
 });
 

@@ -1,11 +1,5 @@
 import { createLogger } from '@coodra/shared';
-import {
-  type AuthEnv,
-  type Identity,
-  SOLO_IDENTITY,
-  verifyClerkJwt,
-  verifyLocalHookSecret,
-} from '@coodra/shared/auth';
+import { type AuthEnv, type Identity, SOLO_IDENTITY, verifyClerkJwt, verifyLocalHookSecret } from '@coodra/shared/auth';
 import type { Context, MiddlewareHandler } from 'hono';
 
 /**

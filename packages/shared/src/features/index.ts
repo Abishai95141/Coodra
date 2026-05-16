@@ -16,10 +16,10 @@
  *     import the primitives below and orchestrate them.
  */
 
-export { parseFeatureMd, renderFeatureMd } from './parse.js';
-export { FRONTMATTER_SCHEMA, FEATURE_SLUG_RE, validateFrontmatterQuality } from './schema.js';
-export { featuresRoot, walkFeatures, readFeatureRow } from './walk.js';
+export type { GenerateIndexOptions, GenerateIndexResult } from './index-gen.js';
 export { generateFeaturesIndex, renderIndexMd } from './index-gen.js';
+export { parseFeatureMd, renderFeatureMd } from './parse.js';
+export { FEATURE_SLUG_RE, FRONTMATTER_SCHEMA, validateFrontmatterQuality } from './schema.js';
 export type {
   FeatureFile,
   FeatureFrontmatter,
@@ -29,4 +29,4 @@ export type {
   FeatureRow,
   ParsedFeatureMd,
 } from './types.js';
-export type { GenerateIndexOptions, GenerateIndexResult } from './index-gen.js';
+export { featuresRoot, readFeatureRow, walkFeatures } from './walk.js';

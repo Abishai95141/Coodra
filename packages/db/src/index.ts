@@ -24,8 +24,8 @@ export { type EnsureDefaultPolicyResult, ensureDefaultPolicy } from './ensure-de
 export { ensureGlobalProject, GLOBAL_PROJECT_ID, GLOBAL_PROJECT_SLUG } from './ensure-global-project.js';
 export {
   type EnsureProjectArgs,
-  type EnsureProjectErrorCode,
   EnsureProjectError,
+  type EnsureProjectErrorCode,
   type EnsureProjectResult,
   ensureProject,
   GLOBAL_ORG_ID,

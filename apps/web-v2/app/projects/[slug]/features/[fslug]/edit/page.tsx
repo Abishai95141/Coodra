@@ -33,10 +33,7 @@ export default async function EditFeaturePage({
 
   return (
     <>
-      <Topbar
-        crumb={`${project.slug} / features / ${row.slug} / edit`}
-        crumbPrefix="coodra / projects"
-      />
+      <Topbar crumb={`${project.slug} / features / ${row.slug} / edit`} crumbPrefix="coodra / projects" />
       <section className="screen">
         <div className="head">
           <div>
@@ -45,8 +42,8 @@ export default async function EditFeaturePage({
               Edit <em>{row.slug}</em>
             </h1>
             <p className="head__lede">
-              Edit the trigger description, body, or maturity. Save to overwrite{' '}
-              <code style={mono}>feature.md</code> on disk; the index regenerates automatically.
+              Edit the trigger description, body, or maturity. Save to overwrite <code style={mono}>feature.md</code> on
+              disk; the index regenerates automatically.
             </p>
           </div>
           <div>
@@ -136,16 +133,10 @@ export default async function EditFeaturePage({
               <label style={labelStyle} htmlFor="edit-feature-body">
                 Body
               </label>
-              <textarea
-                id="edit-feature-body"
-                name="body"
-                rows={20}
-                defaultValue={row.body}
-                style={textareaStyle}
-              />
+              <textarea id="edit-feature-body" name="body" rows={20} defaultValue={row.body} style={textareaStyle} />
               <p style={hintStyle}>
-                Free-form markdown. Loaded by <code style={mono}>coodra__get_feature</code>. The frontmatter is
-                emitted deterministically by the server action — your edits round-trip without diff noise.
+                Free-form markdown. Loaded by <code style={mono}>coodra__get_feature</code>. The frontmatter is emitted
+                deterministically by the server action — your edits round-trip without diff noise.
               </p>
             </div>
 
@@ -198,8 +189,8 @@ export default async function EditFeaturePage({
             <span className="card__role">irreversible · deletes the directory</span>
           </div>
           <p style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--warn)', marginBottom: 12 }}>
-            Deletes <code style={mono}>{row.dir}</code> from disk and regenerates the index. Re-creatable via the
-            create form.
+            Deletes <code style={mono}>{row.dir}</code> from disk and regenerates the index. Re-creatable via the create
+            form.
           </p>
           <form action={removeFeatureAction} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input type="hidden" name="projectSlug" value={project.slug} />
@@ -210,11 +201,7 @@ export default async function EditFeaturePage({
               placeholder={`Type "remove ${row.slug}" to confirm`}
               style={textInputStyle}
             />
-            <button
-              type="submit"
-              className="btn btn--sm"
-              style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}
-            >
+            <button type="submit" className="btn btn--sm" style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}>
               Remove feature
             </button>
           </form>

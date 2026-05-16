@@ -41,11 +41,7 @@ interface SearchParams {
   readonly actor_role?: string;
 }
 
-export default async function ForbiddenPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
+export default async function ForbiddenPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const reason = sp.reason ?? 'unknown';
   const isTeamHosted = resolveDeploymentMode() === 'team-hosted';
@@ -64,7 +60,8 @@ export default async function ForbiddenPage({
 
       {reason === 'no_org' && isTeamHosted ? <NoOrgBootstrap /> : null}
 
-      {(reason === 'org_mismatch' || reason === 'insufficient_role') && (sp.expected !== undefined || sp.needed !== undefined) ? (
+      {(reason === 'org_mismatch' || reason === 'insufficient_role') &&
+      (sp.expected !== undefined || sp.needed !== undefined) ? (
         <Diagnostic sp={sp} />
       ) : null}
 
@@ -165,12 +162,11 @@ async function NoOrgBootstrap() {
           First-admin bootstrap
         </div>
         <p style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}>
-          Use the widget below to create your team's organization. Clerk will name you admin
-          automatically. After creation, copy the resulting <code style={inlineMono}>org_…</code> id
-          and set <code style={inlineMono}>COODRA_EXPECTED_ORG_ID</code> in this deployment's env
-          (Vercel project settings, fly secrets, docker -e, etc.), then redeploy. Until that
-          variable is set to your new org id, the middleware will keep bouncing every signed-in
-          user to this page.
+          Use the widget below to create your team's organization. Clerk will name you admin automatically. After
+          creation, copy the resulting <code style={inlineMono}>org_…</code> id and set{' '}
+          <code style={inlineMono}>COODRA_EXPECTED_ORG_ID</code> in this deployment's env (Vercel project settings, fly
+          secrets, docker -e, etc.), then redeploy. Until that variable is set to your new org id, the middleware will
+          keep bouncing every signed-in user to this page.
         </p>
       </div>
       <CreateOrganization

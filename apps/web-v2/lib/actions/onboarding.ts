@@ -1,8 +1,7 @@
 'use server';
 
-import { redirect } from 'next/navigation';
-
 import { createPostgresDb } from '@coodra/db';
+import { redirect } from 'next/navigation';
 
 /**
  * `apps/web-v2/lib/actions/onboarding.ts` — server action backing the

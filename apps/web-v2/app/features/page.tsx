@@ -2,8 +2,8 @@ import Link from 'next/link';
 
 import { Topbar } from '@/components/Topbar';
 import { tryGetActor } from '@/lib/auth';
-import { listFeaturesAcrossProjects } from '@/lib/queries/features-list';
 import { resolveClerkDisplayNames } from '@/lib/queries/clerk-users';
+import { listFeaturesAcrossProjects } from '@/lib/queries/features-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -119,9 +119,7 @@ export default async function FeaturesPage() {
               No features <em>yet</em>.
             </strong>
             Create one with{' '}
-            <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>
-              coodra feature add &lt;slug&gt;
-            </span>{' '}
+            <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra feature add &lt;slug&gt;</span>{' '}
             from any project root. In team mode the row appears here within ~10 seconds of the daemon's next sync tick.
           </div>
         ) : (
@@ -135,13 +133,9 @@ export default async function FeaturesPage() {
               const authorName =
                 f.createdByUserId === null
                   ? null
-                  : displayNames.get(f.createdByUserId)?.label ?? f.createdByUserId.slice(0, 12);
+                  : (displayNames.get(f.createdByUserId)?.label ?? f.createdByUserId.slice(0, 12));
               return (
-                <div
-                  key={f.id}
-                  className="pack"
-                  style={{ textDecoration: 'none', cursor: 'default' }}
-                >
+                <div key={f.id} className="pack" style={{ textDecoration: 'none', cursor: 'default' }}>
                   <div
                     className="pack__num"
                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
@@ -159,12 +153,8 @@ export default async function FeaturesPage() {
                   <div className="pack__meta">
                     <span style={{ color: 'var(--ink)' }}>● maturity: {maturityTag}</span>
                     <span style={{ color: 'var(--ink-mute)' }}>● {formatBytes(f.bodyBytes)}</span>
-                    {authorName !== null ? (
-                      <span style={{ color: 'var(--ink-mute)' }}>● {authorName}</span>
-                    ) : null}
-                    <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>
-                      {formatRelative(f.updatedAt)}
-                    </span>
+                    {authorName !== null ? <span style={{ color: 'var(--ink-mute)' }}>● {authorName}</span> : null}
+                    <span style={{ marginLeft: 'auto', color: 'var(--ink-mute)' }}>{formatRelative(f.updatedAt)}</span>
                   </div>
                 </div>
               );

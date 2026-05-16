@@ -1,12 +1,11 @@
 import { statSync } from 'node:fs';
-
+import { createLogger } from '@coodra/shared';
 import {
   type FeatureIndex,
   type FeatureIndexEntry,
   featuresRoot,
   generateFeaturesIndex,
 } from '@coodra/shared/features';
-import { createLogger } from '@coodra/shared';
 
 /**
  * `apps/hooks-bridge/src/lib/features-index-loader` — reads
@@ -182,10 +181,7 @@ export async function loadFeaturesIndexForSession(
  */
 const FOOTER_RESERVATION_BYTES = 256;
 
-function renderForInjection(
-  index: FeatureIndex,
-  maxBytes: number,
-): { content: string; shown: number; total: number } {
+function renderForInjection(index: FeatureIndex, maxBytes: number): { content: string; shown: number; total: number } {
   const total = index.features.length;
   const ordered = [...index.features].sort((a, b) => a.slug.localeCompare(b.slug));
 

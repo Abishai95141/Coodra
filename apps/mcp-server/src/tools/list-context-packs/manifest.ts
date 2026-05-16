@@ -2,11 +2,7 @@ import type { IdempotencyKeyBuilder } from '../../framework/idempotency.js';
 import type { ToolRegistration } from '../../framework/tool-registry.js';
 
 import { createListContextPacksHandler, type ListContextPacksHandlerDeps } from './handler.js';
-import {
-  type ListContextPacksInput,
-  listContextPacksInputSchema,
-  listContextPacksOutputSchema,
-} from './schema.js';
+import { type ListContextPacksInput, listContextPacksInputSchema, listContextPacksOutputSchema } from './schema.js';
 
 /**
  * Registration factory for `coodra__list_context_packs` (M05 §5.1).
@@ -38,7 +34,7 @@ export function createListContextPacksToolRegistration(
       'Call this when you need to enumerate Context Packs for a project — answering "what work has happened here recently" or "have we tackled this kind of problem before". ' +
       'Returns a paginated list ordered by save time newest-first, with title, excerpt, runId, savedAt, and source. ' +
       'Use the `source` field to distinguish agent-authored narratives ("agent") from bridge auto-summaries ("bridge_auto") — prefer the former when reading detail. ' +
-      'Pair with `read_context_pack` to load full content for any candidate. Pagination via opaque `cursor` from the prior response\'s `nextCursor`. ' +
+      "Pair with `read_context_pack` to load full content for any candidate. Pagination via opaque `cursor` from the prior response's `nextCursor`. " +
       'Soft-failures: project_not_found, malformed_cursor.',
     inputSchema: listContextPacksInputSchema,
     outputSchema: listContextPacksOutputSchema,

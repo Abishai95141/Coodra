@@ -15,10 +15,7 @@ const DEFAULT_LIMIT = 20 as const;
 
 export const listContextPacksInputSchema = z
   .object({
-    projectSlug: z
-      .string()
-      .min(1, 'projectSlug is required')
-      .max(128, 'projectSlug must be at most 128 characters'),
+    projectSlug: z.string().min(1, 'projectSlug is required').max(128, 'projectSlug must be at most 128 characters'),
     limit: z
       .number()
       .int()
@@ -26,10 +23,7 @@ export const listContextPacksInputSchema = z
       .max(MAX_LIMIT)
       .optional()
       .describe(`Max packs to return (default ${DEFAULT_LIMIT}, capped at ${MAX_LIMIT}).`),
-    cursor: z
-      .string()
-      .optional()
-      .describe('Opaque cursor from a prior call. Pass to fetch the next page.'),
+    cursor: z.string().optional().describe('Opaque cursor from a prior call. Pass to fetch the next page.'),
   })
   .strict()
   .describe('Input for coodra__list_context_packs.');

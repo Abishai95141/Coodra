@@ -109,7 +109,7 @@ export function createWebCloudDb(): Extract<DbHandle, { kind: 'postgres' }> {
     postgres: { databaseUrl: url, max: Number.isFinite(max) && max > 0 ? max : 5 },
   });
   if (handle.kind !== 'postgres') {
-    throw new Error('createWebCloudDb: createDb({ kind: \'cloud\' }) returned non-postgres handle (impossible)');
+    throw new Error("createWebCloudDb: createDb({ kind: 'cloud' }) returned non-postgres handle (impossible)");
   }
   cachedCloud = handle;
   return handle;

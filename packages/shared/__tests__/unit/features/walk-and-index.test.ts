@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { generateFeaturesIndex, renderIndexMd } from '../../../src/features/index-gen.js';
-import { walkFeatures, readFeatureRow, featuresRoot } from '../../../src/features/walk.js';
 import { renderFeatureMd } from '../../../src/features/parse.js';
+import { featuresRoot, readFeatureRow, walkFeatures } from '../../../src/features/walk.js';
 
 /**
  * Phase A unit tests — filesystem walker + INDEX generator.

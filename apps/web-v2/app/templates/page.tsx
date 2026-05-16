@@ -56,9 +56,7 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
               No templates <em>found</em>.
             </strong>
             Drop one under{' '}
-            <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>
-              ~/.coodra/templates/&lt;name&gt;/
-            </span>{' '}
+            <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>~/.coodra/templates/&lt;name&gt;/</span>{' '}
             with a template.json, or install one below.
           </div>
         ) : (
@@ -67,7 +65,15 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
               <div key={`${t.source}:${t.name}`} className="tpl" style={tplStyle}>
                 <div className="tpl__head" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
                   <div className="tpl__icon" style={tplIconStyle}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" width={24} height={24}>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      width={24}
+                      height={24}
+                      aria-hidden="true"
+                    >
                       <rect x="3" y="3" width="8" height="8" />
                       <rect x="13" y="3" width="8" height="8" />
                       <rect x="3" y="13" width="8" height="8" />
@@ -146,9 +152,8 @@ export default async function TemplatesPage({ searchParams }: { searchParams: Pr
               <span className="card__role">local-cli operation</span>
             </div>
             <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.65 }}>
-              Templates live under{' '}
-              <code style={inlineMono}>~/.coodra/templates/</code> on each developer's laptop. To install
-              a custom template, run on your local terminal:
+              Templates live under <code style={inlineMono}>~/.coodra/templates/</code> on each developer's laptop. To
+              install a custom template, run on your local terminal:
             </p>
             <pre
               style={{
@@ -261,9 +266,11 @@ function Field({
   placeholder?: string;
   required?: boolean;
 }) {
+  const inputId = `tpl-field-${name}`;
   return (
     <div>
       <label
+        htmlFor={inputId}
         style={{
           fontFamily: 'var(--mono)',
           fontSize: 9,
@@ -277,6 +284,7 @@ function Field({
         {label}
       </label>
       <input
+        id={inputId}
         name={name}
         placeholder={placeholder}
         required={required}

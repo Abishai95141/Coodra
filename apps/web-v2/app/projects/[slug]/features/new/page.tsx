@@ -1,7 +1,6 @@
 import Link from 'next/link';
-
-import { Topbar } from '@/components/Topbar';
 import { DescriptionQualityHint } from '@/components/features/DescriptionQualityHint';
+import { Topbar } from '@/components/Topbar';
 import { createFeatureAction } from '@/lib/actions/features';
 import { resolveProjectFromParams } from '@/lib/project-context';
 import { featuresRootForProject, walkProjectFeatures } from '@/lib/queries/features';
@@ -28,10 +27,7 @@ export default async function NewFeaturePage({
 
   return (
     <>
-      <Topbar
-        crumb={`${project.slug} / features / new`}
-        crumbPrefix="coodra / projects"
-      />
+      <Topbar crumb={`${project.slug} / features / new`} crumbPrefix="coodra / projects" />
       <section className="screen">
         <div className="head">
           <div>

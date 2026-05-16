@@ -21,9 +21,7 @@ const mockReadVerifiedToken = vi.hoisted(() => vi.fn());
 const mockReadTeamConfig = vi.hoisted(() => vi.fn());
 
 vi.mock('@coodra/shared/auth', async () => {
-  const actual = await vi.importActual<typeof import('@coodra/shared/auth')>(
-    '@coodra/shared/auth',
-  );
+  const actual = await vi.importActual<typeof import('@coodra/shared/auth')>('@coodra/shared/auth');
   return {
     ...actual,
     readVerifiedToken: mockReadVerifiedToken,
@@ -60,7 +58,10 @@ afterEach(() => {
 describe('getActorIdentity', () => {
   it('returns clerk-sourced identity when verified token exists', async () => {
     mockReadVerifiedToken.mockResolvedValue(clerkClaims());
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'stale_user', clerkOrgId: 'stale_org', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'stale_user', clerkOrgId: 'stale_org', localHookSecret: 'x', joinedAt: 0 },
+    });
 
     const id = await getActorIdentity();
     expect(id).toEqual({ userId: 'user_abc', orgId: 'org_xyz', source: 'clerk' });
@@ -110,7 +111,10 @@ describe('requireActorIdentityForTeamMode', () => {
   });
 
   it('returns identity:clerk in team mode with verified token', async () => {
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'unused', clerkOrgId: 'unused', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'unused', clerkOrgId: 'unused', localHookSecret: 'x', joinedAt: 0 },
+    });
     mockReadVerifiedToken.mockResolvedValue(clerkClaims({ userId: 'user_real', orgId: 'org_real' }));
     const result = await requireActorIdentityForTeamMode();
     expect(result).toEqual({
@@ -133,7 +137,10 @@ describe('requireActorIdentityForTeamMode', () => {
   });
 
   it('returns auth_required when readVerifiedToken throws', async () => {
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'x', clerkOrgId: 'y', localHookSecret: 'z', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'x', clerkOrgId: 'y', localHookSecret: 'z', joinedAt: 0 },
+    });
     mockReadVerifiedToken.mockRejectedValue(new Error('network'));
     const result = await requireActorIdentityForTeamMode();
     expect(result.kind).toBe('auth_required');

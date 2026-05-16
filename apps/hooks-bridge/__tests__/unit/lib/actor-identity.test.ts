@@ -42,7 +42,9 @@ afterEach(() => {
 
 const { getActorIdentity } = await import('../../../src/lib/actor-identity.js');
 
-function writeClerkTokenMirror(opts: { userId?: string; orgId?: string; expiresOffsetMs?: number; omitMirror?: boolean } = {}): void {
+function writeClerkTokenMirror(
+  opts: { userId?: string; orgId?: string; expiresOffsetMs?: number; omitMirror?: boolean } = {},
+): void {
   const stored = {
     version: 1,
     token: 'jwt.body.sig',
@@ -66,7 +68,10 @@ function writeClerkTokenMirror(opts: { userId?: string; orgId?: string; expiresO
 describe('getActorIdentity — Phase G primary path (clerk-token.json)', () => {
   it('returns clerk-sourced identity from claimsMirror', () => {
     writeClerkTokenMirror({ userId: 'user_real', orgId: 'org_real' });
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'stale', clerkOrgId: 'stale', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'stale', clerkOrgId: 'stale', localHookSecret: 'x', joinedAt: 0 },
+    });
 
     const id = getActorIdentity();
     expect(id).toEqual({ userId: 'user_real', orgId: 'org_real', source: 'clerk' });
@@ -82,7 +87,10 @@ describe('getActorIdentity — Phase G primary path (clerk-token.json)', () => {
 
   it('falls back to legacy config when mirror is missing', () => {
     writeClerkTokenMirror({ omitMirror: true });
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 },
+    });
     const id = getActorIdentity();
     expect(id).toEqual({ userId: 'user_legacy', orgId: 'org_legacy', source: 'config' });
   });
@@ -90,7 +98,10 @@ describe('getActorIdentity — Phase G primary path (clerk-token.json)', () => {
 
 describe('getActorIdentity — legacy fallback', () => {
   it('returns config.json team values when no clerk-token.json', () => {
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 },
+    });
     expect(getActorIdentity()).toEqual({ userId: 'user_legacy', orgId: 'org_legacy', source: 'config' });
   });
 
@@ -108,7 +119,10 @@ describe('getActorIdentity — legacy fallback', () => {
 describe('getActorIdentity — malformed file handling', () => {
   it('falls back when clerk-token.json is unparseable JSON', () => {
     writeFileSync(join(homeDir, 'clerk-token.json'), '{ not json', { mode: 0o600 });
-    mockReadTeamConfig.mockReturnValue({ mode: 'team', team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 } });
+    mockReadTeamConfig.mockReturnValue({
+      mode: 'team',
+      team: { clerkUserId: 'user_legacy', clerkOrgId: 'org_legacy', localHookSecret: 'x', joinedAt: 0 },
+    });
     const id = getActorIdentity();
     expect(id?.source).toBe('config');
   });

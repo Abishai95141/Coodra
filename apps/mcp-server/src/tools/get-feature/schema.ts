@@ -17,10 +17,7 @@ import { z } from 'zod';
 
 export const getFeatureInputSchema = z
   .object({
-    projectSlug: z
-      .string()
-      .min(1, 'projectSlug is required')
-      .max(128, 'projectSlug must be ≤ 128 chars'),
+    projectSlug: z.string().min(1, 'projectSlug is required').max(128, 'projectSlug must be ≤ 128 chars'),
     slug: z
       .string()
       .min(1, 'slug is required')
@@ -55,9 +52,7 @@ const successBranch = z
     slug: z.string().min(1),
     frontmatter: featureFrontmatterSchema,
     body: z.string().describe('Body of feature.md after the closing frontmatter fence.'),
-    files: z
-      .array(featureFileSchema)
-      .describe('Supporting files in this feature directory (excludes feature.md).'),
+    files: z.array(featureFileSchema).describe('Supporting files in this feature directory (excludes feature.md).'),
     warnings: z
       .array(z.string())
       .describe('Validation warnings — non-fatal hints to surface to the user via the web UI.'),

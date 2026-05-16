@@ -118,7 +118,9 @@ describe('parseFeatureMd — structural failures', () => {
   it('errors when YAML is malformed', () => {
     const out = parseFeatureMd('---\n: missing key\n  bad: indent\n---\nbody\n');
     expect(out.frontmatter).toBeNull();
-    expect(out.errors.some((e) => /frontmatter_yaml_parse_failed|frontmatter_yaml_not_object|frontmatter_invalid/.test(e))).toBe(true);
+    expect(
+      out.errors.some((e) => /frontmatter_yaml_parse_failed|frontmatter_yaml_not_object|frontmatter_invalid/.test(e)),
+    ).toBe(true);
   });
 
   it('errors when frontmatter is an array instead of a mapping', () => {
@@ -147,22 +149,14 @@ describe('parseFeatureMd — structural failures', () => {
 
 describe('parseFeatureMd — quality warnings (non-fatal)', () => {
   it('warns when description is short', () => {
-    const out = parseFeatureMd(
-      ['---', 'name: foo', 'description: Too short.', '---', ''].join('\n'),
-    );
+    const out = parseFeatureMd(['---', 'name: foo', 'description: Too short.', '---', ''].join('\n'));
     expect(out.errors).toEqual([]);
     expect(out.warnings.some((w) => /short \(< 30 chars\)/.test(w))).toBe(true);
   });
 
   it('warns when description starts with the TODO placeholder', () => {
     const out = parseFeatureMd(
-      [
-        '---',
-        'name: foo',
-        'description: "TODO: describe when this feature applies."',
-        '---',
-        '',
-      ].join('\n'),
+      ['---', 'name: foo', 'description: "TODO: describe when this feature applies."', '---', ''].join('\n'),
     );
     expect(out.errors).toEqual([]);
     expect(out.warnings.some((w) => /TODO placeholder/.test(w))).toBe(true);

@@ -91,8 +91,11 @@ export default async function NewPackPage({ searchParams }: { searchParams: Prom
             />
 
             <div className="field">
-              <label style={fieldLabelStyle}>Markdown file</label>
+              <label htmlFor="packs-new-file" style={fieldLabelStyle}>
+                Markdown file
+              </label>
               <input
+                id="packs-new-file"
                 type="file"
                 name="file"
                 accept=".md,.markdown,text/markdown,text/plain"
@@ -120,8 +123,11 @@ export default async function NewPackPage({ searchParams }: { searchParams: Prom
             </div>
 
             <div className="field">
-              <label style={fieldLabelStyle}>Markdown body</label>
+              <label htmlFor="packs-new-content" style={fieldLabelStyle}>
+                Markdown body
+              </label>
               <textarea
+                id="packs-new-content"
                 name="content"
                 placeholder={
                   '# my-pack\n\nA reference document the agent will load as context.\n\n## Section\n\n- bullet\n- bullet'
@@ -212,10 +218,14 @@ function Field({
   required?: boolean;
   hint?: string;
 }) {
+  const inputId = `packs-new-field-${name}`;
   return (
     <div className="field">
-      <label style={fieldLabelStyle}>{label}</label>
+      <label htmlFor={inputId} style={fieldLabelStyle}>
+        {label}
+      </label>
       <input
+        id={inputId}
         name={name}
         {...(placeholder !== undefined ? { placeholder } : {})}
         {...(required === true ? { required: true } : {})}

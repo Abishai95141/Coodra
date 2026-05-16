@@ -7,12 +7,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
 import { assertActorRole, refuseInLocalSolo } from '@/lib/action-guards';
-import {
-  describeInviteSecretConfig,
-  type InviteRole,
-  newJti,
-  signInviteToken,
-} from '@/lib/invite-token';
+import { describeInviteSecretConfig, type InviteRole, newJti, signInviteToken } from '@/lib/invite-token';
 import { isMissingTeamInvitesTableError } from '@/lib/postgres-errors';
 import { resolveDeploymentBaseUrl } from '@/lib/public-url';
 import { insertInvite } from '@/lib/queries/invites';
@@ -102,9 +97,7 @@ export async function mintInviteAction(formData: FormData): Promise<void> {
   // Caveat E — fail-loud on missing HMAC secret with a usable remediation.
   const secretIssue = describeInviteSecretConfig();
   if (secretIssue !== null) {
-    redirect(
-      `/settings/team?error=${encodeURIComponent(`Invite secret misconfigured: ${secretIssue}`)}`,
-    );
+    redirect(`/settings/team?error=${encodeURIComponent(`Invite secret misconfigured: ${secretIssue}`)}`);
   }
 
   const { email, role, expiresInDays } = parsed.data;
@@ -130,9 +123,7 @@ export async function mintInviteAction(formData: FormData): Promise<void> {
   } catch (err) {
     // Schema validation OR secret loading failed. Both rare given the
     // earlier check, but a defensive path.
-    redirect(
-      `/settings/team?error=${encodeURIComponent(`Failed to sign invite token: ${(err as Error).message}`)}`,
-    );
+    redirect(`/settings/team?error=${encodeURIComponent(`Failed to sign invite token: ${(err as Error).message}`)}`);
   }
 
   // Step 1 — durable row first. If the DB throws (schema missing /

@@ -128,9 +128,9 @@ export default async function SoloOnboardingPage() {
               </h3>
               <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.65 }}>
                 Open your repo in Claude Code, Cursor, or Windsurf. The first session will hit{' '}
-                <code style={inlineMono}>coodra start</code> and traces appear here in real-time. Decisions and
-                context packs land in <code style={inlineMono}>~/.coodra/data.db</code>; future sessions read them on
-                start so the agent has prior context before writing new code.
+                <code style={inlineMono}>coodra start</code> and traces appear here in real-time. Decisions and context
+                packs land in <code style={inlineMono}>~/.coodra/data.db</code>; future sessions read them on start so
+                the agent has prior context before writing new code.
               </p>
             </div>
 

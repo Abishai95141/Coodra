@@ -100,10 +100,7 @@ export default async function FeatureFilePage({ params }: { params: Promise<Rout
 
   return (
     <>
-      <Topbar
-        crumb={`${project.slug} / features / ${featureSlug} / ${relPath}`}
-        crumbPrefix="coodra / projects"
-      />
+      <Topbar crumb={`${project.slug} / features / ${featureSlug} / ${relPath}`} crumbPrefix="coodra / projects" />
       <section className="screen">
         <div className="head">
           <div>
@@ -149,9 +146,7 @@ export default async function FeatureFilePage({ params }: { params: Promise<Rout
               <code style={mono}> get_feature_file</code> would also refuse this with{' '}
               <code style={mono}>extension_blocked</code>.
             </p>
-            <p>
-              Allowed extensions: {Array.from(ALLOWED_EXTENSIONS).sort().join(', ')}
-            </p>
+            <p>Allowed extensions: {Array.from(ALLOWED_EXTENSIONS).sort().join(', ')}</p>
           </div>
         ) : tooLarge ? (
           <div

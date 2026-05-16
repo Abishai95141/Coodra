@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 
-import { lookupProjectBySlug, type DbHandle } from '@coodra/db';
-import { featuresRoot } from '@coodra/shared/features';
+import { type DbHandle, lookupProjectBySlug } from '@coodra/db';
 import { createLogger } from '@coodra/shared';
+import { featuresRoot } from '@coodra/shared/features';
 
 import type { ToolContext } from '../../framework/tool-context.js';
 import type { GetFeatureFileInput, GetFeatureFileOutput } from './schema.js';
@@ -95,8 +95,7 @@ export function createGetFeatureFileHandler(
       return {
         ok: false,
         error: 'feature_not_found',
-        howToFix:
-          `No feature at \`${featureDir}\`. Call \`coodra__list_features\` to see what's available, or scaffold via \`coodra feature add ${input.slug}\`.`,
+        howToFix: `No feature at \`${featureDir}\`. Call \`coodra__list_features\` to see what's available, or scaffold via \`coodra feature add ${input.slug}\`.`,
       };
     }
 
@@ -127,7 +126,8 @@ export function createGetFeatureFileHandler(
       return {
         ok: false,
         error: 'path_escape',
-        howToFix: 'path must stay inside the feature directory; `..` segments and symlinks pointing outside are refused.',
+        howToFix:
+          'path must stay inside the feature directory; `..` segments and symlinks pointing outside are refused.',
       };
     }
 
@@ -135,8 +135,7 @@ export function createGetFeatureFileHandler(
       return {
         ok: false,
         error: 'file_not_found',
-        howToFix:
-          `No file at \`${candidate}\`. Call \`coodra__get_feature\` to list valid paths under this feature.`,
+        howToFix: `No file at \`${candidate}\`. Call \`coodra__get_feature\` to list valid paths under this feature.`,
       };
     }
     let stat: ReturnType<typeof statSync>;
@@ -182,8 +181,7 @@ export function createGetFeatureFileHandler(
       return {
         ok: false,
         error: 'file_too_large',
-        howToFix:
-          `File is ${stat.size} bytes; cap is ${MAX_FILE_BYTES}. Split the file into smaller pieces under this feature, or trim it.`,
+        howToFix: `File is ${stat.size} bytes; cap is ${MAX_FILE_BYTES}. Split the file into smaller pieces under this feature, or trim it.`,
         bytes: stat.size,
         capBytes: MAX_FILE_BYTES,
       };

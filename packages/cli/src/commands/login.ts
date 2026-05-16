@@ -153,7 +153,7 @@ export async function runLoginCommand(options: LoginOptions = {}, io: LoginIO = 
   const state = randomBytes(STATE_BYTES).toString('base64url');
   io.writeStdout(`${pc.gray(`coodra login → opening browser at ${webUrl}…`)}\n`);
 
-  let listener;
+  let listener: Awaited<ReturnType<typeof startLoopbackListener>>;
   try {
     listener = await startLoopbackListener({
       expectedState: state,
@@ -198,7 +198,7 @@ export async function runLoginCommand(options: LoginOptions = {}, io: LoginIO = 
   }
 
   // 5. Verify + persist token
-  let claims;
+  let claims: Awaited<ReturnType<typeof writeToken>>;
   try {
     claims = await writeToken(token, webUrl, { homeOverride: home });
   } catch (err) {

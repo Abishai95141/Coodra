@@ -39,9 +39,9 @@ export const getFeaturePackToolRegistration: ToolRegistration<
   name: 'get_feature_pack',
   title: 'Coodra: get_feature_pack',
   description:
-    'Call this at SessionStart (or when switching to a different module mid-session) for the project\'s ' +
+    "Call this at SessionStart (or when switching to a different module mid-session) for the project's " +
     'architectural blueprint — the MODULE-level spec, conventions, permitted files, and gotchas the tech lead has ' +
-    'recorded for the area you\'re working in. Returns one Feature Pack scoped to the project (or to the module ' +
+    "recorded for the area you're working in. Returns one Feature Pack scoped to the project (or to the module " +
     'that owns `filePath` if provided): spec.md + implementation.md + techstack.md + meta.json. This is the ' +
     'long-lived architectural reference — NOT a callable skill. For on-demand skills (per-task recipes triggered ' +
     'by user prompts) use `list_features` + `get_feature` instead.',

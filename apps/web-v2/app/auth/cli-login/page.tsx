@@ -238,8 +238,8 @@ function renderError(code: RenderedError['code'], message: RenderedError['messag
         ERROR · {code}
       </p>
       <p style={{ marginTop: 28, fontSize: 13, color: 'var(--ink-mute, #888)', lineHeight: 1.65 }}>
-        Return to your terminal and re-run <code style={{ fontFamily: 'var(--mono, ui-monospace)' }}>coodra login</code>.
-        Your CLI listener will time out after 5 minutes; if it's already gone, the new <code>coodra login</code> will
+        Return to your terminal and re-run <code style={{ fontFamily: 'var(--mono, ui-monospace)' }}>coodra login</code>
+        . Your CLI listener will time out after 5 minutes; if it's already gone, the new <code>coodra login</code> will
         spin up a fresh one.
       </p>
     </main>

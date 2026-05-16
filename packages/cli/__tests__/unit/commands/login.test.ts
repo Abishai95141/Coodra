@@ -137,9 +137,7 @@ describe('runLoginCommand — preconditions', () => {
     });
     mockOpenBrowser.mockReturnValue(true);
     mockWriteToken.mockResolvedValue(fakeClaims());
-    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(
-      /__exit__:0/,
-    );
+    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(/__exit__:0/);
     expect(captured.stderr.join('')).toMatch(/DATABASE_URL is not set/);
   });
 });
@@ -159,9 +157,7 @@ describe('runLoginCommand — happy path', () => {
     mockOpenBrowser.mockReturnValue(true);
     mockWriteToken.mockResolvedValue(fakeClaims());
 
-    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(
-      /__exit__:0/,
-    );
+    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(/__exit__:0/);
 
     expect(mockOpenBrowser).toHaveBeenCalledOnce();
     const url = mockOpenBrowser.mock.calls[0]?.[0] as string;
@@ -180,9 +176,7 @@ describe('runLoginCommand — happy path', () => {
     mockOpenBrowser.mockReturnValue(true);
     mockWriteToken.mockResolvedValue(fakeClaims({ email: 'me@team.com', role: 'member' }));
 
-    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(
-      /__exit__:0/,
-    );
+    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir } }, io)).rejects.toThrow(/__exit__:0/);
 
     expect(mockWriteToken).toHaveBeenCalledWith('jwt-good', expect.stringContaining('http'), { homeOverride: homeDir });
     expect(captured.stdout.join('')).toMatch(/Signed in as.*me@team\.com/);
@@ -198,9 +192,9 @@ describe('runLoginCommand — happy path', () => {
     });
     mockWriteToken.mockResolvedValue(fakeClaims());
 
-    await expect(
-      runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir }, noOpen: true }, io),
-    ).rejects.toThrow(/__exit__:0/);
+    await expect(runLoginCommand({ home: homeDir, env: { COODRA_HOME: homeDir }, noOpen: true }, io)).rejects.toThrow(
+      /__exit__:0/,
+    );
 
     expect(mockOpenBrowser).not.toHaveBeenCalled();
     expect(captured.stdout.join('')).toMatch(/Open this URL/);

@@ -63,9 +63,7 @@ export async function fetchPickerSnapshot(): Promise<PickerSnapshot> {
   }
 
   const allProjects = await selectAllProjects(handle);
-  const projects = allProjects.filter(
-    (p) => !SENTINEL_PROJECT_SLUGS.has(p.slug) && p.orgId === actorOrgId,
-  );
+  const projects = allProjects.filter((p) => !SENTINEL_PROJECT_SLUGS.has(p.slug) && p.orgId === actorOrgId);
   if (projects.length === 0) {
     return { projects: [], mode, fetchedAt: new Date().toISOString() };
   }

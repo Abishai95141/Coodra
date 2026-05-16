@@ -119,8 +119,7 @@ export async function runStart(input: RunStartInput = {}): Promise<RunStartResul
   return {
     ok: false,
     error: exitCode === 70 ? 'startup_failed' : 'unknown_failure',
-    howToFix:
-      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service start failed; check ~/.coodra/logs/.',
+    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service start failed; check ~/.coodra/logs/.',
     exitCode,
     stdout,
     stderr,
@@ -164,8 +163,7 @@ export async function runStop(input: RunStopInput = {}): Promise<RunStopResult |
   return {
     ok: false,
     error: 'unknown_failure',
-    howToFix:
-      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service stop failed; check ~/.coodra/logs/.',
+    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Service stop failed; check ~/.coodra/logs/.',
     exitCode,
     stdout,
     stderr,
@@ -239,8 +237,7 @@ export async function runStatus(): Promise<RunStatusResult> {
   return {
     ok: false,
     error: 'status_failed',
-    howToFix:
-      stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Status check failed; check ~/.coodra/logs/.',
+    howToFix: stderr.split('\n').slice(0, 3).join(' ').slice(0, 240) || 'Status check failed; check ~/.coodra/logs/.',
     stdout,
     stderr,
     exitCode,

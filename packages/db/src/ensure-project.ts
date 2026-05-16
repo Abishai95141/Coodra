@@ -3,8 +3,8 @@ import { createLogger } from '@coodra/shared';
 import { eq } from 'drizzle-orm';
 
 import type { DbHandle } from './client.js';
-import { postgresSchema, sqliteSchema } from './schema/index.js';
 import { scheduleDurableWrite } from './schedule-durable-write.js';
+import { postgresSchema, sqliteSchema } from './schema/index.js';
 
 /**
  * `packages/db/src/ensure-project` — idempotent project seed for an
@@ -39,7 +39,9 @@ export const GLOBAL_ORG_ID = '__global__';
  * cloud Postgres. The promote flow swaps them for a real Clerk org id.
  */
 function isLocalOnlyOrg(orgId: string | null | undefined): boolean {
-  return orgId === SOLO_ORG_ID || orgId === GLOBAL_ORG_ID || orgId === null || orgId === undefined || orgId.length === 0;
+  return (
+    orgId === SOLO_ORG_ID || orgId === GLOBAL_ORG_ID || orgId === null || orgId === undefined || orgId.length === 0
+  );
 }
 
 export type EnsureProjectErrorCode = 'org_mismatch' | 'team_to_solo_refused';

@@ -178,26 +178,24 @@ describe('assertCanAuthorKnowledge (Phase F.3)', () => {
 });
 
 describe('assertCanEditKnowledge (Phase F.3)', () => {
-  it('admin can edit anyone\'s knowledge artifact', () => {
+  it("admin can edit anyone's knowledge artifact", () => {
     expect(() => assertCanEditKnowledge(actor('admin'), { createdByUserId: 'someone-else' })).not.toThrow();
   });
 
   it('member can edit own knowledge artifact (default allowOwner=true)', () => {
-    expect(() =>
-      assertCanEditKnowledge(actor('member', 'user_42'), { createdByUserId: 'user_42' }),
-    ).not.toThrow();
+    expect(() => assertCanEditKnowledge(actor('member', 'user_42'), { createdByUserId: 'user_42' })).not.toThrow();
   });
 
   it("member cannot edit another member's knowledge artifact", () => {
-    expect(() =>
-      assertCanEditKnowledge(actor('member', 'user_42'), { createdByUserId: 'user_99' }),
-    ).toThrow(ForbiddenError);
+    expect(() => assertCanEditKnowledge(actor('member', 'user_42'), { createdByUserId: 'user_99' })).toThrow(
+      ForbiddenError,
+    );
   });
 
   it('viewer cannot edit even own knowledge artifacts (read-only role)', () => {
-    expect(() =>
-      assertCanEditKnowledge(actor('viewer', 'user_42'), { createdByUserId: 'user_42' }),
-    ).toThrow(ForbiddenError);
+    expect(() => assertCanEditKnowledge(actor('viewer', 'user_42'), { createdByUserId: 'user_42' })).toThrow(
+      ForbiddenError,
+    );
   });
 
   it('allowOwner=false locks member out of own-resource edits (admin-only)', () => {
@@ -207,9 +205,9 @@ describe('assertCanEditKnowledge (Phase F.3)', () => {
   });
 
   it('null createdByUserId is admin-only even with allowOwner=true', () => {
-    expect(() =>
-      assertCanEditKnowledge(actor('member'), { createdByUserId: null }, { allowOwner: true }),
-    ).toThrow(ForbiddenError);
+    expect(() => assertCanEditKnowledge(actor('member'), { createdByUserId: null }, { allowOwner: true })).toThrow(
+      ForbiddenError,
+    );
   });
 });
 

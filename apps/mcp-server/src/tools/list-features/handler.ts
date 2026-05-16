@@ -1,8 +1,8 @@
 import { existsSync, statSync } from 'node:fs';
 
-import { lookupProjectBySlug, type DbHandle } from '@coodra/db';
-import { featuresRoot, generateFeaturesIndex } from '@coodra/shared/features';
+import { type DbHandle, lookupProjectBySlug } from '@coodra/db';
 import { createLogger } from '@coodra/shared';
+import { featuresRoot, generateFeaturesIndex } from '@coodra/shared/features';
 
 import type { ToolContext } from '../../framework/tool-context.js';
 import type { ListFeaturesInput, ListFeaturesOutput } from './schema.js';
@@ -79,8 +79,7 @@ export function createListFeaturesHandler(
       return {
         ok: false,
         error: 'features_dir_missing',
-        howToFix:
-          `No \`docs/features/\` directory in this project. Add a first feature via the web UI (Project home → Features → + Add feature) or run \`coodra feature add <slug>\` from inside the project root.`,
+        howToFix: `No \`docs/features/\` directory in this project. Add a first feature via the web UI (Project home → Features → + Add feature) or run \`coodra feature add <slug>\` from inside the project root.`,
       };
     }
 

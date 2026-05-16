@@ -1,8 +1,7 @@
-import { notFound } from 'next/navigation';
+import { sqliteSchema } from '@coodra/db';
 
 import { eq } from 'drizzle-orm';
-
-import { sqliteSchema } from '@coodra/db';
+import { notFound } from 'next/navigation';
 
 import { Topbar } from '@/components/Topbar';
 import { deletePackAction, regeneratePackAction, togglePackStatusAction } from '@/lib/actions/packs';
@@ -163,11 +162,7 @@ export default async function PackDetailPage({
                     ? 'Hide from agent contexts (MCP get_feature_pack will return slug_not_found). The filesystem files stay; only the agent-visible status flips.'
                     : 'Make agent-visible. Teammates will pull the published pack on the next sync tick.'
                 }
-                style={
-                  packStatus === 'draft'
-                    ? { borderColor: 'var(--accent)', color: 'var(--accent)' }
-                    : undefined
-                }
+                style={packStatus === 'draft' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
               >
                 {packStatus === 'published' ? 'Move to draft' : 'Publish'}
               </button>
@@ -179,63 +174,63 @@ export default async function PackDetailPage({
               no Delete button; if they need to delete, an admin must
               do it for them. */}
           {isAdmin ? (
-          <details style={{ position: 'relative' }}>
-            <summary
-              className="btn btn--sm btn--ghost"
-              style={{ borderColor: 'var(--warn)', color: 'var(--warn)', listStyle: 'none', cursor: 'pointer' }}
-            >
-              Delete pack…
-            </summary>
-            <form
-              action={deletePackAction}
-              style={{
-                marginTop: 12,
-                padding: 14,
-                border: '1px solid var(--warn)',
-                background: 'var(--warn-glow)',
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              <input type="hidden" name="projectSlug" value={pack.slug} />
-              <input type="hidden" name="packSlug" value={pack.slug} />
-              <input type="hidden" name="cwd" value={cwd} />
-              <span
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 11,
-                  color: 'var(--warn)',
-                  letterSpacing: '0.04em',
-                }}
+            <details style={{ position: 'relative' }}>
+              <summary
+                className="btn btn--sm btn--ghost"
+                style={{ borderColor: 'var(--warn)', color: 'var(--warn)', listStyle: 'none', cursor: 'pointer' }}
               >
-                Type <strong>delete {pack.slug}</strong> to confirm
-              </span>
-              <input
-                name="confirmation"
-                placeholder={`delete ${pack.slug}`}
-                required
+                Delete pack…
+              </summary>
+              <form
+                action={deletePackAction}
                 style={{
-                  padding: '6px 10px',
-                  background: 'var(--bg)',
+                  marginTop: 12,
+                  padding: 14,
                   border: '1px solid var(--warn)',
-                  color: 'var(--ink)',
-                  fontFamily: 'var(--mono)',
-                  fontSize: 12,
-                  flex: 1,
-                  minWidth: 200,
+                  background: 'var(--warn-glow)',
+                  display: 'flex',
+                  gap: 10,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
                 }}
-              />
-              <button
-                className="btn btn--sm"
-                type="submit"
-                style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}
               >
-                Delete
-              </button>
-            </form>
-          </details>
+                <input type="hidden" name="projectSlug" value={pack.slug} />
+                <input type="hidden" name="packSlug" value={pack.slug} />
+                <input type="hidden" name="cwd" value={cwd} />
+                <span
+                  style={{
+                    fontFamily: 'var(--mono)',
+                    fontSize: 11,
+                    color: 'var(--warn)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  Type <strong>delete {pack.slug}</strong> to confirm
+                </span>
+                <input
+                  name="confirmation"
+                  placeholder={`delete ${pack.slug}`}
+                  required
+                  style={{
+                    padding: '6px 10px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--warn)',
+                    color: 'var(--ink)',
+                    fontFamily: 'var(--mono)',
+                    fontSize: 12,
+                    flex: 1,
+                    minWidth: 200,
+                  }}
+                />
+                <button
+                  className="btn btn--sm"
+                  type="submit"
+                  style={{ borderColor: 'var(--warn)', color: 'var(--warn)' }}
+                >
+                  Delete
+                </button>
+              </form>
+            </details>
           ) : null}
 
           {/* Phase F.6 — viewer banner so the read-only state is

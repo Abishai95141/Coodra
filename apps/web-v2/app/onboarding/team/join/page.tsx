@@ -42,11 +42,7 @@ interface SearchParams {
   readonly joinMissing?: string;
 }
 
-export default async function TeamJoinPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
+export default async function TeamJoinPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // The page writes ~/.coodra/config.json + .env on the local
   // laptop. On a deployed server there's no ~/.coodra. Hide.
   if (resolveDeploymentMode() === 'team-hosted') notFound();
@@ -64,8 +60,8 @@ export default async function TeamJoinPage({
               Bring this machine <em>in</em>.
             </h1>
             <p className="head__lede">
-              You have a team already — somewhere your admin set it up. Paste the credential bundle they shared and
-              this machine joins. We never see your credentials; everything stays on your laptop and your cloud.
+              You have a team already — somewhere your admin set it up. Paste the credential bundle they shared and this
+              machine joins. We never see your credentials; everything stays on your laptop and your cloud.
             </p>
           </div>
           <div>
@@ -124,8 +120,8 @@ export default async function TeamJoinPage({
               required
             />
             <FieldHint>
-              <strong>Your own</strong> Clerk user id, not the admin's. Sign into the team's Clerk app once to find it
-              — usually shown on your Clerk profile page as <code style={inlineMono}>user_2nKj…</code>.
+              <strong>Your own</strong> Clerk user id, not the admin's. Sign into the team's Clerk app once to find it —
+              usually shown on your Clerk profile page as <code style={inlineMono}>user_2nKj…</code>.
             </FieldHint>
 
             <FieldLabel style={{ marginTop: 22 }}>3 · The team's Clerk org id</FieldLabel>
@@ -141,14 +137,10 @@ export default async function TeamJoinPage({
             <FieldHint>The Clerk org your admin created. Shared across all teammates.</FieldHint>
 
             <FieldLabel style={{ marginTop: 22 }}>4 · Org slug (optional)</FieldLabel>
-            <input
-              name="orgSlug"
-              type="text"
-              autoComplete="off"
-              style={fieldInputStyle}
-              placeholder="acme-team"
-            />
-            <FieldHint>Display label that shows up in your sidebar header. Cosmetic only — leave blank if unsure.</FieldHint>
+            <input name="orgSlug" type="text" autoComplete="off" style={fieldInputStyle} placeholder="acme-team" />
+            <FieldHint>
+              Display label that shows up in your sidebar header. Cosmetic only — leave blank if unsure.
+            </FieldHint>
 
             <FieldLabel style={{ marginTop: 22 }}>5 · Local hook secret</FieldLabel>
             <input
@@ -161,8 +153,8 @@ export default async function TeamJoinPage({
               required
             />
             <FieldHint>
-              The 32-byte hex string the admin generated at <code style={inlineMono}>coodra team setup</code> time.
-              Same value as in their <code style={inlineMono}>~/.coodra/.env</code> under{' '}
+              The 32-byte hex string the admin generated at <code style={inlineMono}>coodra team setup</code> time. Same
+              value as in their <code style={inlineMono}>~/.coodra/.env</code> under{' '}
               <code style={inlineMono}>LOCAL_HOOK_SECRET</code>. <strong>This is a sensitive secret.</strong>
             </FieldHint>
 
@@ -177,15 +169,31 @@ export default async function TeamJoinPage({
           </form>
 
           <SidePanel
-            title={<>What this <em>does</em></>}
+            title={
+              <>
+                What this <em>does</em>
+              </>
+            }
             rows={[
-              { k: '1 · validates Postgres', v: 'SELECT 1 + counts the 12 Coodra tables. Catches typos before they corrupt your local config.' },
-              { k: '2 · writes config.json', v: '~/.coodra/config.json::team — the file every coodra CLI command consults.' },
-              { k: '3 · writes .env', v: '~/.coodra/.env — COODRA_MODE=team, DATABASE_URL, LOCAL_HOOK_SECRET, COODRA_TEAM_ORG_ID.' },
-              { k: '4 · redirects', v: 'You land on the team-mode dashboard. Sidebar flips to green "● Team workspace".' },
+              {
+                k: '1 · validates Postgres',
+                v: 'SELECT 1 + counts the 12 Coodra tables. Catches typos before they corrupt your local config.',
+              },
+              {
+                k: '2 · writes config.json',
+                v: '~/.coodra/config.json::team — the file every coodra CLI command consults.',
+              },
+              {
+                k: '3 · writes .env',
+                v: '~/.coodra/.env — COODRA_MODE=team, DATABASE_URL, LOCAL_HOOK_SECRET, COODRA_TEAM_ORG_ID.',
+              },
+              {
+                k: '4 · redirects',
+                v: 'You land on the team-mode dashboard. Sidebar flips to green "● Team workspace".',
+              },
               {
                 k: 'note · Clerk keys',
-                v: 'After this, manually append NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY + CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY to ~/.coodra/.env. The admin shares those too — they\'re the same for every teammate.',
+                v: "After this, manually append NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY + CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY to ~/.coodra/.env. The admin shares those too — they're the same for every teammate.",
               },
             ]}
           />
@@ -234,7 +242,7 @@ export default async function TeamJoinPage({
               overflowX: 'auto',
             }}
           >
-{`coodra team join \\
+            {`coodra team join \\
   --user-id user_yours \\
   --org-id org_team \\
   --secret <64-char-hex> \\
@@ -253,9 +261,9 @@ function explainError(sp: SearchParams): string {
   if (err === 'empty_url') return 'Database URL is empty.';
   if (err === 'bad_protocol') return 'URL must start with postgres:// or postgresql://.';
   if (err === 'empty_user_id') return 'Your Clerk user id is required.';
-  if (err === 'bad_user_id') return "Clerk user id should look like `user_2nKj...`.";
+  if (err === 'bad_user_id') return 'Clerk user id should look like `user_2nKj...`.';
   if (err === 'empty_org_id') return "Team's Clerk org id is required.";
-  if (err === 'bad_org_id') return "Clerk org id should look like `org_2nKj...`.";
+  if (err === 'bad_org_id') return 'Clerk org id should look like `org_2nKj...`.';
   if (err === 'bad_secret') return 'Hook secret must be at least 32 characters (the admin generated 64-char hex).';
   if (err === 'cannot_construct') return `Cannot construct Postgres client — ${msg}.`;
   if (err === 'select_one_failed')
@@ -267,7 +275,13 @@ function explainError(sp: SearchParams): string {
   return msg.length > 0 ? msg : 'Unknown error.';
 }
 
-function SidePanel({ title, rows }: { readonly title: React.ReactNode; readonly rows: ReadonlyArray<{ k: string; v: string }> }) {
+function SidePanel({
+  title,
+  rows,
+}: {
+  readonly title: React.ReactNode;
+  readonly rows: ReadonlyArray<{ k: string; v: string }>;
+}) {
   return (
     <div className="aside-card">
       <h3 className="aside-card__title" style={{ marginBottom: 16 }}>
@@ -335,7 +349,15 @@ function FieldHint({ children }: { readonly children: React.ReactNode }) {
   );
 }
 
-function Banner({ children, tone, style }: { readonly children: React.ReactNode; readonly tone: 'ok' | 'warn'; readonly style?: React.CSSProperties }) {
+function Banner({
+  children,
+  tone,
+  style,
+}: {
+  readonly children: React.ReactNode;
+  readonly tone: 'ok' | 'warn';
+  readonly style?: React.CSSProperties;
+}) {
   return (
     <div
       style={{

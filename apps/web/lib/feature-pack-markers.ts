@@ -23,12 +23,7 @@
  * rules without a Next.js render harness.
  */
 
-import {
-  type AutoSection,
-  type ParseError,
-  type ParseResult,
-  parseAutoSections,
-} from '@coodra/cli/lib/auto-marker';
+import { type AutoSection, type ParseError, type ParseResult, parseAutoSections } from '@coodra/cli/lib/auto-marker';
 
 export type { AutoSection, ParseError, ParseResult };
 export { parseAutoSections };

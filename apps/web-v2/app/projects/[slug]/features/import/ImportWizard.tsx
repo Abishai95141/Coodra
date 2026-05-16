@@ -61,15 +61,15 @@ export function ImportWizard({
   const update = (key: string, patch: Partial<RowState>) =>
     setRows((prev) => ({ ...prev, [key]: { ...(prev[key] ?? initial[key]!), ...patch } }));
 
-  const selectedItems = candidates
-    .map((c) => ({ candidate: c, row: rows[c.absPath]! }))
-    .filter((p) => p.row.checked);
+  const selectedItems = candidates.map((c) => ({ candidate: c, row: rows[c.absPath]! })).filter((p) => p.row.checked);
 
   // Validate every selected row. Returns an empty array when ready to submit.
   const validationErrors = selectedItems.flatMap(({ candidate, row }) => {
     const errs: string[] = [];
-    if (!SLUG_RE.test(row.slug)) errs.push(`${candidate.relPath}: slug must be lowercase letters, digits, hyphens, underscores`);
-    if (existingSlugs.includes(row.slug)) errs.push(`${candidate.relPath}: slug "${row.slug}" already exists under docs/features/`);
+    if (!SLUG_RE.test(row.slug))
+      errs.push(`${candidate.relPath}: slug must be lowercase letters, digits, hyphens, underscores`);
+    if (existingSlugs.includes(row.slug))
+      errs.push(`${candidate.relPath}: slug "${row.slug}" already exists under docs/features/`);
     if (row.description.trim().length < 1) errs.push(`${candidate.relPath}: description is required`);
     if (row.description.length > 2000) errs.push(`${candidate.relPath}: description ≤ 2000 chars`);
     return errs;
@@ -120,18 +120,10 @@ export function ImportWizard({
           fontSize: 11,
         }}
       >
-        <button
-          type="button"
-          className="btn btn--sm btn--ghost"
-          onClick={() => checkAll(true)}
-        >
+        <button type="button" className="btn btn--sm btn--ghost" onClick={() => checkAll(true)}>
           Select all
         </button>
-        <button
-          type="button"
-          className="btn btn--sm btn--ghost"
-          onClick={() => checkAll(false)}
-        >
+        <button type="button" className="btn btn--sm btn--ghost" onClick={() => checkAll(false)}>
           Clear
         </button>
         <span style={{ color: 'var(--ink-dim)' }}>
@@ -159,10 +151,12 @@ export function ImportWizard({
             color: 'var(--warn)',
           }}
         >
-          <strong>{validationErrors.length} issue{validationErrors.length === 1 ? '' : 's'} to fix:</strong>
+          <strong>
+            {validationErrors.length} issue{validationErrors.length === 1 ? '' : 's'} to fix:
+          </strong>
           <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
-            {validationErrors.map((e, i) => (
-              <li key={i}>{e}</li>
+            {validationErrors.map((e) => (
+              <li key={e}>{e}</li>
             ))}
           </ul>
         </div>

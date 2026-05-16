@@ -72,6 +72,7 @@ export function RunLiveClient({ runId, initialSnapshot, initialLastModified }: R
 
   // Auto-scroll the log tail when new events arrive.
   const tailRef = useRef<HTMLDivElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: events.length is the trigger we WANT — re-scroll whenever a new event lands. The effect doesn't read events.length inside, but the dep is intentional.
   useEffect(() => {
     const el = tailRef.current;
     if (el === null) return;

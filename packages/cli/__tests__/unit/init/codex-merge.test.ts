@@ -48,7 +48,7 @@ describe('mergeCodexConfig — Codex .codex/config.toml writer', () => {
     expect(second.action).toBe('unchanged');
   });
 
-  it('merge-don\'t-clobber: preserves other tables + other MCP servers', async () => {
+  it("merge-don't-clobber: preserves other tables + other MCP servers", async () => {
     await mkdir(join(cwd, '.codex'), { recursive: true });
     await writeFile(
       join(cwd, '.codex', 'config.toml'),
@@ -66,15 +66,13 @@ describe('mergeCodexConfig — Codex .codex/config.toml writer', () => {
 
   it('preserves a drifted coodra entry without --force', async () => {
     await mkdir(join(cwd, '.codex'), { recursive: true });
-    await writeFile(
-      join(cwd, '.codex', 'config.toml'),
-      '[mcp_servers.coodra]\ncommand = "custom-node"\n',
-      'utf8',
-    );
+    await writeFile(join(cwd, '.codex', 'config.toml'), '[mcp_servers.coodra]\ncommand = "custom-node"\n', 'utf8');
     const result = await mergeCodexConfig({ cwd, entry: ENTRY, force: false, dryRun: false });
     expect(result.action).toBe('unchanged');
     const parsed = parseToml(await readFile(join(cwd, '.codex', 'config.toml'), 'utf8')) as Record<string, unknown>;
-    expect((parsed.mcp_servers as Record<string, Record<string, unknown> | undefined>).coodra?.command).toBe('custom-node');
+    expect((parsed.mcp_servers as Record<string, Record<string, unknown> | undefined>).coodra?.command).toBe(
+      'custom-node',
+    );
   });
 
   it('--force overwrites a drifted coodra entry with the baseline', async () => {

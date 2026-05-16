@@ -1,9 +1,9 @@
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { lookupProjectBySlug, type DbHandle } from '@coodra/db';
-import { featuresRoot, readFeatureRow } from '@coodra/shared/features';
+import { type DbHandle, lookupProjectBySlug } from '@coodra/db';
 import { createLogger } from '@coodra/shared';
+import { featuresRoot, readFeatureRow } from '@coodra/shared/features';
 
 import type { ToolContext } from '../../framework/tool-context.js';
 import type { GetFeatureInput, GetFeatureOutput } from './schema.js';
@@ -36,8 +36,7 @@ export function createGetFeatureHandler(
       return {
         ok: false,
         error: 'project_not_found',
-        howToFix:
-          `No projects row for slug "${input.projectSlug}". Run \`coodra init\` from the project root, or check the slug.`,
+        howToFix: `No projects row for slug "${input.projectSlug}". Run \`coodra init\` from the project root, or check the slug.`,
       };
     }
     if (project.cwd === null) {
@@ -57,8 +56,7 @@ export function createGetFeatureHandler(
       return {
         ok: false,
         error: 'feature_not_found',
-        howToFix:
-          `No feature at \`${dir}\`. Call \`coodra__list_features\` to see what's available, or \`coodra feature add ${input.slug}\` to create it.`,
+        howToFix: `No feature at \`${dir}\`. Call \`coodra__list_features\` to see what's available, or \`coodra feature add ${input.slug}\` to create it.`,
       };
     }
     const row = readFeatureRow(input.slug, dir);
@@ -70,8 +68,7 @@ export function createGetFeatureHandler(
       return {
         ok: false,
         error: 'feature_not_found',
-        howToFix:
-          `\`${dir}\` exists but has no \`feature.md\`. Either remove the empty directory or run \`coodra feature add ${input.slug} --force\` to scaffold one.`,
+        howToFix: `\`${dir}\` exists but has no \`feature.md\`. Either remove the empty directory or run \`coodra feature add ${input.slug} --force\` to scaffold one.`,
       };
     }
 

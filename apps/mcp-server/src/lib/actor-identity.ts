@@ -1,5 +1,5 @@
-import { readVerifiedToken } from '@coodra/shared/auth';
 import { readTeamConfig } from '@coodra/cli/lib/team-config';
+import { readVerifiedToken } from '@coodra/shared/auth';
 
 /**
  * `apps/mcp-server/src/lib/actor-identity.ts` — Phase G slice G.6.
@@ -127,7 +127,7 @@ export async function requireActorIdentityForTeamMode(): Promise<RequireActorRes
   }
 
   // Team mode — require a Clerk-verified token.
-  let claims;
+  let claims: Awaited<ReturnType<typeof readVerifiedToken>> | null;
   try {
     claims = await readVerifiedToken();
   } catch {

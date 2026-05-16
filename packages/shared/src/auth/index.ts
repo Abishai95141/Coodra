@@ -25,9 +25,9 @@ export {
   assertCanResumeKillSwitch,
   hasRole,
   parseClerkRole,
-  requireRole,
-  type Role,
   ROLES,
+  type Role,
+  requireRole,
   SOLO_ACTOR,
 } from './roles.js';
 export type { AuthClient, AuthEnv, Identity } from './types.js';

@@ -82,9 +82,7 @@ export async function runInviteCommand(
 ): Promise<never> {
   const email = rawEmail.trim();
   if (email.length === 0 || !isValidEmail(email)) {
-    io.writeStderr(
-      `${pc.red('coodra invite')}: invalid email "${rawEmail}". Expected a shape like name@domain.tld.\n`,
-    );
+    io.writeStderr(`${pc.red('coodra invite')}: invalid email "${rawEmail}". Expected a shape like name@domain.tld.\n`);
     return io.exit(EXIT_USER_ACTION_REQUIRED);
   }
 
@@ -160,7 +158,7 @@ export async function runInviteCommand(
 
   io.writeStdout(pc.gray(`Minting invite for ${pc.cyan(email)} (role=${role}) …\n`));
 
-  let result;
+  let result: Awaited<ReturnType<typeof mintInviteFromCli>>;
   try {
     result = await mintInviteFromCli({
       databaseUrl: envBlock.databaseUrl,

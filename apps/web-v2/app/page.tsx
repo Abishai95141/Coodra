@@ -85,10 +85,7 @@ export default async function DashboardPage({
 
   return (
     <>
-      <Topbar
-        crumb="Dashboard"
-        crumbPrefix={isTeam ? `coodra · ${teamLabel ?? 'team'}` : 'coodra · solo'}
-      />
+      <Topbar crumb="Dashboard" crumbPrefix={isTeam ? `coodra · ${teamLabel ?? 'team'}` : 'coodra · solo'} />
       <section className="screen">
         <div className="head">
           <div>
@@ -138,9 +135,9 @@ export default async function DashboardPage({
 
         {sp.joined === 'ok' ? (
           <BannerStrip tone="ok">
-            ● Joined team {sp.org !== undefined ? sp.org : ''} · ~/.coodra/config.json + ~/.coodra/.env written ·
-            run <code style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra start</code> in a project
-            dir to bring this machine online.
+            ● Joined team {sp.org !== undefined ? sp.org : ''} · ~/.coodra/config.json + ~/.coodra/.env written · run{' '}
+            <code style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra start</code> in a project dir to
+            bring this machine online.
           </BannerStrip>
         ) : null}
         {sp.started !== undefined ? (
@@ -300,12 +297,7 @@ export default async function DashboardPage({
                   <SystemRow title="Web shell" sub="Next.js · this deployment" tone="ok" />
                   <SystemRow title="Identity" sub="Clerk session JWT" tone="ok" />
                   <SystemRow title="Storage" sub="cloud postgres · supabase" tone="ok" />
-                  <SystemRow
-                    title="Local daemons"
-                    sub="run on each developer's laptop"
-                    tone="ok"
-                    last
-                  />
+                  <SystemRow title="Local daemons" sub="run on each developer's laptop" tone="ok" last />
                 </>
               ) : (
                 <>
@@ -578,8 +570,11 @@ function FreshTeamMemberBanner({ orgLabel }: { readonly orgLabel: string }) {
         </div>
         <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.55, marginTop: 6, maxWidth: 640 }}>
           No runs or decisions yet — this team's audit history is empty so far. When teammates use Coodra in their
-          editors (Claude Code, Cursor, Windsurf), their decisions and context packs appear here within seconds. If
-          you also want to run AI agents on your own machine, see <Link href="/onboarding/team/join" style={{ color: 'var(--accent)' }}>Connect to existing</Link>{' '}
+          editors (Claude Code, Cursor, Windsurf), their decisions and context packs appear here within seconds. If you
+          also want to run AI agents on your own machine, see{' '}
+          <Link href="/onboarding/team/join" style={{ color: 'var(--accent)' }}>
+            Connect to existing
+          </Link>{' '}
           for the CLI install command.
         </p>
       </div>
@@ -611,8 +606,8 @@ function TeamMisconfiguredBanner() {
           ⚠ TEAM MODE — INCOMPLETE SETUP
         </strong>
         <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.55, marginTop: 6 }}>
-          <code style={inlineMono}>COODRA_MODE=team</code> is set in <code style={inlineMono}>~/.coodra/.env</code>{' '}
-          but <code style={inlineMono}>~/.coodra/config.json::team</code> has no team block. Run{' '}
+          <code style={inlineMono}>COODRA_MODE=team</code> is set in <code style={inlineMono}>~/.coodra/.env</code> but{' '}
+          <code style={inlineMono}>~/.coodra/config.json::team</code> has no team block. Run{' '}
           <code style={inlineMono}>coodra team setup</code> or follow the wizard.
         </p>
       </div>
@@ -659,9 +654,7 @@ function TeamHealthyBanner({ orgId }: { readonly orgId: string }) {
           team mode · {orgId.slice(0, 16)}
           {orgId.length > 16 ? '…' : ''}
         </span>
-        <span style={{ fontSize: 13, color: 'var(--ink-dim)' }}>
-          syncing local SQLite ⇄ cloud Postgres every 10 s
-        </span>
+        <span style={{ fontSize: 13, color: 'var(--ink-dim)' }}>syncing local SQLite ⇄ cloud Postgres every 10 s</span>
       </div>
       <Link href="/settings/team" className="btn btn--sm btn--ghost" style={{ flexShrink: 0 }}>
         Team settings

@@ -71,9 +71,7 @@ export async function runTeamInitWizardAction(formData: FormData): Promise<void>
     redirect('/onboarding/team?execStatus=err&execError=missing_clerk_key');
   }
 
-  const { bootstrapClerk, bootstrapPostgres, finalizeConfig } = await import(
-    '@coodra/cli/lib/team-init'
-  );
+  const { bootstrapClerk, bootstrapPostgres, finalizeConfig } = await import('@coodra/cli/lib/team-init');
 
   // Step 1 — Postgres
   const pg = await bootstrapPostgres({ databaseUrl });
@@ -110,9 +108,7 @@ export async function runTeamInitWizardAction(formData: FormData): Promise<void>
     const params = new URLSearchParams({
       execStatus: 'pickOrg',
       execStep: 'clerk',
-      execOrgs: JSON.stringify(
-        clerk.orgs.map((o) => ({ id: o.id, slug: o.slug, name: o.name, role: o.role })),
-      ),
+      execOrgs: JSON.stringify(clerk.orgs.map((o) => ({ id: o.id, slug: o.slug, name: o.name, role: o.role }))),
       execDatabaseUrl: databaseUrl,
       execClerkSecretKey: clerkSecretKey,
     });

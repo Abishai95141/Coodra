@@ -82,13 +82,11 @@ export async function resolveClerkDisplayNames(
         u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ??
         u.emailAddresses[0]?.emailAddress ??
         null;
-      const fullName = [u.firstName, u.lastName].filter((s) => typeof s === 'string' && s.length > 0).join(' ').trim();
-      const label =
-        fullName.length > 0
-          ? fullName
-          : primaryEmail !== null
-            ? primaryEmail
-            : shortenUserId(u.id);
+      const fullName = [u.firstName, u.lastName]
+        .filter((s) => typeof s === 'string' && s.length > 0)
+        .join(' ')
+        .trim();
+      const label = fullName.length > 0 ? fullName : primaryEmail !== null ? primaryEmail : shortenUserId(u.id);
       out.set(u.id, { label, email: primaryEmail });
     }
   } catch {

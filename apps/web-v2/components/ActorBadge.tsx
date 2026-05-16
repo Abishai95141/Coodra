@@ -65,7 +65,7 @@ export function ActorBadge({ userId, viewerUserId, displayName, size = 'sm', com
   }
 
   const isYou = viewerUserId !== undefined && viewerUserId !== null && viewerUserId === userId;
-  const label = isYou ? 'You' : displayName ?? shortenUserId(userId);
+  const label = isYou ? 'You' : (displayName ?? shortenUserId(userId));
   const initial = (isYou ? 'Y' : (displayName ?? userId).replace(/^(user_)?/, '').charAt(0)).toUpperCase();
   const fg = isYou ? 'var(--accent)' : 'var(--ink)';
   const bg = isYou ? 'var(--accent-glow)' : 'transparent';

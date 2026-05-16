@@ -2,11 +2,7 @@ import type { IdempotencyKeyBuilder } from '../../framework/idempotency.js';
 import type { ToolRegistration } from '../../framework/tool-registry.js';
 
 import { createListFeaturesHandler, type ListFeaturesHandlerDeps } from './handler.js';
-import {
-  type ListFeaturesInput,
-  listFeaturesInputSchema,
-  listFeaturesOutputSchema,
-} from './schema.js';
+import { type ListFeaturesInput, listFeaturesInputSchema, listFeaturesOutputSchema } from './schema.js';
 
 /**
  * Registration factory for `coodra__list_features`.
@@ -37,13 +33,13 @@ export function createListFeaturesToolRegistration(
     title: 'Coodra: list_features',
     description:
       'Call when you need to discover available SKILLS for this project — atomic, reusable recipes the agent fetches ' +
-      'on demand when a user prompt matches a feature\'s trigger description (the Anthropic Skills pattern). ' +
+      "on demand when a user prompt matches a feature's trigger description (the Anthropic Skills pattern). " +
       'Distinct from `get_feature_pack`: Feature Packs are MODULE blueprints (push, loaded at SessionStart). ' +
       'Features are SKILLS (pull, loaded on trigger match). Returns { ok: true, features: [{slug, description, ' +
       'whenNotToUse, maturity, fileCount, ...}] } sorted by slug, OR soft-failure with project_not_found / ' +
       'project_cwd_unknown / features_dir_missing. Read each description, then call `get_feature(slug)` only for ' +
       'features whose triggers match the current task — never load every feature blindly. Re-run when the user ' +
-      'mentions a topic you don\'t recognise.',
+      "mentions a topic you don't recognise.",
     inputSchema: listFeaturesInputSchema,
     outputSchema: listFeaturesOutputSchema,
     idempotencyKey: listFeaturesIdempotencyKey,

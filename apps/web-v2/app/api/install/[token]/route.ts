@@ -57,11 +57,7 @@ interface InstallBundle {
   readonly clerkPublishableKey: string | null;
 }
 
-function errorResponse(
-  status: number,
-  error: string,
-  howToFix: string,
-): NextResponse {
+function errorResponse(status: number, error: string, howToFix: string): NextResponse {
   return NextResponse.json({ ok: false, error, howToFix }, { status });
 }
 
@@ -93,11 +89,7 @@ async function preflight(
     };
     return {
       ok: false,
-      response: errorResponse(
-        statusByReason[verification.reason] ?? 400,
-        verification.reason,
-        verification.howToFix,
-      ),
+      response: errorResponse(statusByReason[verification.reason] ?? 400, verification.reason, verification.howToFix),
     };
   }
 
@@ -336,7 +328,8 @@ export async function POST(_request: Request, { params }: RouteParams): Promise<
   }
 
   const baseUrl = resolveDeploymentBaseUrl();
-  const clerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? null;
+  const clerkPublishableKey =
+    process.env.CLERK_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? null;
   const bundle: InstallBundle = {
     ok: true,
     userId: resolvedUserId,
@@ -351,4 +344,3 @@ export async function POST(_request: Request, { params }: RouteParams): Promise<
   };
   return NextResponse.json(bundle);
 }
-

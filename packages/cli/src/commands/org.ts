@@ -64,7 +64,7 @@ export async function runOrgStatusCommand(options: OrgStatusOptions = {}, io: Or
     env: options.env ?? process.env,
   });
 
-  let claims;
+  let claims: Awaited<ReturnType<typeof readVerifiedToken>> | null;
   try {
     claims = await readVerifiedToken({ homeOverride: home });
   } catch {

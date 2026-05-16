@@ -29,11 +29,11 @@ export {
   MAX_UNIFIED_DIFF_BYTES,
   parseRunDiffFilesChanged,
   type RunDiffErrorCode,
-  runDiffErrorCodeSchema,
   type RunDiffFileEntry,
+  type RunDiffFileStatus,
+  runDiffErrorCodeSchema,
   runDiffFileEntrySchema,
   runDiffFileStatusSchema,
   runDiffFilesChangedSchema,
-  type RunDiffFileStatus,
   truncateUnifiedDiff,
 } from './run-diff.js';

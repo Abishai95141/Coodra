@@ -54,9 +54,9 @@ export default async function ProjectFeaturesPage({
               Features as <em>skills</em>.
             </h1>
             <p className="head__lede">
-              Each feature is a self-contained knowledge unit — a description that tells the agent <em>when to use it</em>,
-              plus a body and any supporting files. The agent reads the index on every SessionStart, then loads a feature
-              body on demand via <code style={mono}>coodra__get_feature</code>.
+              Each feature is a self-contained knowledge unit — a description that tells the agent{' '}
+              <em>when to use it</em>, plus a body and any supporting files. The agent reads the index on every
+              SessionStart, then loads a feature body on demand via <code style={mono}>coodra__get_feature</code>.
             </p>
           </div>
           <div>
@@ -106,7 +106,9 @@ export default async function ProjectFeaturesPage({
         {sp.reindexed !== undefined ? (
           <Banner tone="ok">
             INDEX regenerated.{' '}
-            {sp.reindexed === 'unchanged' ? 'No content changed.' : 'Disk content was newer than the index — refreshed.'}
+            {sp.reindexed === 'unchanged'
+              ? 'No content changed.'
+              : 'Disk content was newer than the index — refreshed.'}
           </Banner>
         ) : null}
         {sp.imported !== undefined && sp.imported.length > 0 ? (
@@ -125,9 +127,10 @@ export default async function ProjectFeaturesPage({
 
         {!cwdRecorded ? (
           <Banner tone="warn">
-            This project has no recorded <code style={mono}>cwd</code> — reads / writes are pointed at the web server&apos;s
-            working directory (<code style={mono}>{projectCwd}</code>), which may not be the project&apos;s real folder.
-            Open Claude Code inside the project root once or re-run <code style={mono}>coodra init</code>.
+            This project has no recorded <code style={mono}>cwd</code> — reads / writes are pointed at the web
+            server&apos;s working directory (<code style={mono}>{projectCwd}</code>), which may not be the
+            project&apos;s real folder. Open Claude Code inside the project root once or re-run{' '}
+            <code style={mono}>coodra init</code>.
           </Banner>
         ) : null}
 
@@ -163,13 +166,10 @@ export default async function ProjectFeaturesPage({
               <code style={mono}>docs/features/</code> exists but is empty.
             </h2>
             <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-dim)', marginBottom: 24 }}>
-              Run <code style={mono}>coodra feature add &lt;slug&gt;</code> from the project root, or click below to
-              add one via the web wizard.
+              Run <code style={mono}>coodra feature add &lt;slug&gt;</code> from the project root, or click below to add
+              one via the web wizard.
             </p>
-            <Link
-              className="btn btn--accent"
-              href={`/projects/${encodeURIComponent(project.slug)}/features/new`}
-            >
+            <Link className="btn btn--accent" href={`/projects/${encodeURIComponent(project.slug)}/features/new`}>
               + Add feature
             </Link>
           </div>
@@ -187,7 +187,9 @@ export default async function ProjectFeaturesPage({
                   <div className="row__title">
                     <em>{f.slug}</em>
                     {f.maturity !== 'stable' ? (
-                      <span style={{ marginLeft: 8, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', fontSize: 11 }}>
+                      <span
+                        style={{ marginLeft: 8, color: 'var(--ink-mute)', fontFamily: 'var(--mono)', fontSize: 11 }}
+                      >
                         · {f.maturity}
                       </span>
                     ) : null}

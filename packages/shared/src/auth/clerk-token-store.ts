@@ -8,8 +8,8 @@ import { createLogger } from '../logger.js';
 import type { AuthEnv } from './types.js';
 import {
   clearVerifyClerkJwtCache,
-  verifyClerkJwtAndExtractClaims,
   type VerifiedClerkClaims,
+  verifyClerkJwtAndExtractClaims,
 } from './verify-clerk-jwt.js';
 
 /**
@@ -142,10 +142,7 @@ export function getClerkTokenPath(homeOverride?: string): string {
  * always win for team-mode JWT verification regardless of which
  * project directory the CLI was launched from.
  */
-const SOLO_BYPASS_SENTINELS: ReadonlySet<string> = new Set([
-  'sk_test_replace_me',
-  'pk_test_replace_me',
-]);
+const SOLO_BYPASS_SENTINELS: ReadonlySet<string> = new Set(['sk_test_replace_me', 'pk_test_replace_me']);
 
 function isRealKey(value: string | undefined): boolean {
   if (typeof value !== 'string' || value.length === 0) return false;
@@ -158,11 +155,12 @@ export function loadHomeEnvForVerify(homeOverride?: string): AuthEnv {
   if (!existsSync(envPath)) {
     return {
       CLERK_SECRET_KEY: isRealKey(process.env.CLERK_SECRET_KEY) ? process.env.CLERK_SECRET_KEY : undefined,
-      CLERK_PUBLISHABLE_KEY: isRealKey(process.env.CLERK_PUBLISHABLE_KEY) ? process.env.CLERK_PUBLISHABLE_KEY : undefined,
-      CLERK_JWT_ISSUER: process.env.CLERK_JWT_ISSUER ?? null,
-      COODRA_MODE: process.env.COODRA_MODE === 'team' || process.env.COODRA_MODE === 'solo'
-        ? process.env.COODRA_MODE
+      CLERK_PUBLISHABLE_KEY: isRealKey(process.env.CLERK_PUBLISHABLE_KEY)
+        ? process.env.CLERK_PUBLISHABLE_KEY
         : undefined,
+      CLERK_JWT_ISSUER: process.env.CLERK_JWT_ISSUER ?? null,
+      COODRA_MODE:
+        process.env.COODRA_MODE === 'team' || process.env.COODRA_MODE === 'solo' ? process.env.COODRA_MODE : undefined,
     };
   }
   const parsed = parseEnvFile(readFileSync(envPath, 'utf8'));
@@ -195,10 +193,7 @@ function parseEnvFile(raw: string): Record<string, string> {
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
     // Strip matching single/double quotes if present
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
     out[key] = value;

@@ -80,9 +80,7 @@ export function Sidebar({
   // (broken header) plus all the audit nav links they can't actually
   // reach yet. Match the same matchers the middleware treats as public.
   const isPublicPath =
-    pathname.startsWith('/auth') ||
-    pathname.startsWith('/forbidden') ||
-    pathname.startsWith('/install');
+    pathname.startsWith('/auth') || pathname.startsWith('/forbidden') || pathname.startsWith('/install');
   if (isPublicPath) return null;
 
   // Resolve the project shown in the pill: URL slug if we're under
@@ -129,9 +127,7 @@ export function Sidebar({
   // click into a 404.
   const isHosted = deploymentMode === 'team-hosted';
 
-  const teamGroupItems: NavItem[] = [
-    { href: '/settings/team', label: 'Members + org', icon: <IconUsers /> },
-  ];
+  const teamGroupItems: NavItem[] = [{ href: '/settings/team', label: 'Members + org', icon: <IconUsers /> }];
   if (!isHosted) {
     teamGroupItems.push({ href: '/sync', label: 'Sync queue', icon: <IconSync /> });
   }
@@ -310,7 +306,15 @@ export function Sidebar({
             style={{ listStyle: 'none', cursor: 'pointer', textDecoration: 'none' }}
             title="Click to switch project"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              aria-hidden="true"
+            >
               <path d="M3 7l9-4 9 4-9 4-9-4z" />
               <path d="M3 12l9 4 9-4" />
               <path d="M3 17l9 4 9-4" />
@@ -327,6 +331,7 @@ export function Sidebar({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
+              aria-hidden="true"
             >
               <path d="M8 9l4-4 4 4M8 15l4 4 4-4" />
             </svg>
@@ -460,7 +465,7 @@ function truncateMiddle(value: string, maxLen: number): string {
 /* ---------- Icons (1.4 stroke, 24x24, sized via .side__link svg) ---------- */
 function IconDashboard() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <rect x="3" y="3" width="7" height="9" />
       <rect x="14" y="3" width="7" height="5" />
       <rect x="14" y="12" width="7" height="9" />
@@ -470,7 +475,7 @@ function IconDashboard() {
 }
 function IconStack() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M3 7l9-4 9 4-9 4-9-4z" />
       <path d="M3 12l9 4 9-4" />
       <path d="M3 17l9 4 9-4" />
@@ -479,7 +484,7 @@ function IconStack() {
 }
 function IconLedger() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <rect x="3" y="4" width="18" height="16" />
       <line x1="3" y1="9" x2="21" y2="9" />
       <circle cx="6.5" cy="6.5" r="0.6" fill="currentColor" />
@@ -488,7 +493,7 @@ function IconLedger() {
 }
 function IconGraph() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="6" cy="6" r="2.5" />
       <circle cx="18" cy="6" r="2.5" />
       <circle cx="12" cy="18" r="2.5" />
@@ -500,14 +505,14 @@ function IconGraph() {
 }
 function IconShield() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z" />
     </svg>
   );
 }
 function IconKill() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="12" cy="12" r="9" />
       <line x1="12" y1="3" x2="12" y2="13" />
     </svg>
@@ -515,7 +520,7 @@ function IconKill() {
 }
 function IconPack() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M4 5h16v14H4z" />
       <line x1="4" y1="9" x2="20" y2="9" />
       <line x1="9" y1="5" x2="9" y2="19" />
@@ -524,7 +529,7 @@ function IconPack() {
 }
 function IconGrid() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <rect x="3" y="3" width="8" height="8" />
       <rect x="13" y="3" width="8" height="8" />
       <rect x="3" y="13" width="8" height="8" />
@@ -534,7 +539,7 @@ function IconGrid() {
 }
 function IconRack() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <rect x="4" y="6" width="16" height="12" />
       <line x1="4" y1="10" x2="20" y2="10" />
       <circle cx="7" cy="8" r="0.6" fill="currentColor" />
@@ -543,7 +548,7 @@ function IconRack() {
 }
 function IconSync() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3" />
       <path d="M16 6h4V2M8 18H4v4" />
     </svg>
@@ -551,7 +556,7 @@ function IconSync() {
 }
 function IconCog() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 01-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1A1.7 1.7 0 004.5 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 012.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 012.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" />
     </svg>
@@ -559,7 +564,7 @@ function IconCog() {
 }
 function IconUsers() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="9" cy="8" r="3.2" />
       <path d="M3 19c0-3.5 2.7-6 6-6s6 2.5 6 6" />
       <circle cx="17" cy="9" r="2.5" />
@@ -569,21 +574,21 @@ function IconUsers() {
 }
 function IconStar() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M12 3l2.6 6 6.4.6-4.9 4.4 1.5 6.4L12 17l-5.6 3.4 1.5-6.4L3 9.6 9.4 9 12 3z" />
     </svg>
   );
 }
 function IconSwitch() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <path d="M4 7h12l-3-3M20 17H8l3 3" />
     </svg>
   );
 }
 function IconKey() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
       <circle cx="8" cy="14" r="3.5" />
       <path d="M11 14h10v4M17 14v4" />
     </svg>

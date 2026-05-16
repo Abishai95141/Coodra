@@ -105,7 +105,12 @@ const validationFailedBranch = z
   })
   .strict();
 
-export const readContextPackOutputSchema = z.union([foundBranch, notFoundBranch, tooLargeBranch, validationFailedBranch]);
+export const readContextPackOutputSchema = z.union([
+  foundBranch,
+  notFoundBranch,
+  tooLargeBranch,
+  validationFailedBranch,
+]);
 
 export type ReadContextPackInput = z.infer<typeof readContextPackInputSchema>;
 export type ReadContextPackOutput = z.infer<typeof readContextPackOutputSchema>;

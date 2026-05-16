@@ -21,14 +21,8 @@ vi.mock('@clerk/backend', () => ({
   verifyToken: mockVerifyToken,
 }));
 
-const {
-  deleteToken,
-  getClerkTokenPath,
-  hasStoredToken,
-  loadHomeEnvForVerify,
-  readVerifiedToken,
-  writeToken,
-} = await import('../../../src/auth/clerk-token-store.js');
+const { deleteToken, getClerkTokenPath, hasStoredToken, loadHomeEnvForVerify, readVerifiedToken, writeToken } =
+  await import('../../../src/auth/clerk-token-store.js');
 const { clearVerifyClerkJwtCache } = await import('../../../src/auth/verify-clerk-jwt.js');
 
 const FAKE_WEB_URL = 'http://localhost:3001';
@@ -41,7 +35,9 @@ function envFixture(): AuthEnv {
   };
 }
 
-function payloadFor(opts: { exp?: number; sub?: string; orgId?: string; role?: string; email?: string } = {}): Record<string, unknown> {
+function payloadFor(
+  opts: { exp?: number; sub?: string; orgId?: string; role?: string; email?: string } = {},
+): Record<string, unknown> {
   const nowSec = Math.floor(Date.now() / 1000);
   return {
     sub: opts.sub ?? 'user_abc',
@@ -276,12 +272,9 @@ describe('loadHomeEnvForVerify', () => {
   it('parses key=value pairs from .env', () => {
     writeFileSync(
       resolve(tmpHome, '.env'),
-      [
-        'CLERK_SECRET_KEY=sk_test_from_file',
-        'CLERK_PUBLISHABLE_KEY=pk_test_from_file',
-        'COODRA_MODE=team',
-        '',
-      ].join('\n'),
+      ['CLERK_SECRET_KEY=sk_test_from_file', 'CLERK_PUBLISHABLE_KEY=pk_test_from_file', 'COODRA_MODE=team', ''].join(
+        '\n',
+      ),
     );
     const env = loadHomeEnvForVerify(tmpHome);
     // process.env wins, so we have to clear/set them for this test to be deterministic

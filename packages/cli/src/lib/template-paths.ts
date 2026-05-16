@@ -88,8 +88,7 @@ export function resolveTemplatePath(
   }
 
   // (2) User templates.
-  const userDir =
-    options.coodraHome !== undefined ? join(options.coodraHome, 'templates') : resolveUserTemplatesDir();
+  const userDir = options.coodraHome !== undefined ? join(options.coodraHome, 'templates') : resolveUserTemplatesDir();
   const userCandidate = join(userDir, trimmed);
   if (isTemplateDir(userCandidate)) {
     return { name: trimmed, source: 'user', dir: userCandidate };
@@ -116,8 +115,7 @@ export function listAvailableTemplates(
   const seen = new Set<string>();
   const out: { name: string; source: 'bundled' | 'user'; dir: string }[] = [];
 
-  const userDir =
-    options.coodraHome !== undefined ? join(options.coodraHome, 'templates') : resolveUserTemplatesDir();
+  const userDir = options.coodraHome !== undefined ? join(options.coodraHome, 'templates') : resolveUserTemplatesDir();
   if (existsSync(userDir)) {
     const { readdirSync } = require('node:fs') as typeof import('node:fs');
     for (const name of readdirSync(userDir)) {

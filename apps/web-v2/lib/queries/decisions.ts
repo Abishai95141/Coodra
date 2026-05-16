@@ -1,9 +1,4 @@
-import {
-  type DbHandle,
-  type DecisionWithProject,
-  type ListDecisionsFilter,
-  listAllDecisions,
-} from '@coodra/db';
+import { type DbHandle, type DecisionWithProject, type ListDecisionsFilter, listAllDecisions } from '@coodra/db';
 
 import { createWebDb } from '@/lib/db';
 

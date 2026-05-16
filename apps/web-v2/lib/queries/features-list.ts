@@ -67,7 +67,10 @@ function extractFrontmatterFields(blob: string): {
       return {
         description: typeof obj.description === 'string' ? obj.description : '(no description)',
         maturity:
-          obj.maturity === 'draft' || obj.maturity === 'beta' || obj.maturity === 'stable' || obj.maturity === 'deprecated'
+          obj.maturity === 'draft' ||
+          obj.maturity === 'beta' ||
+          obj.maturity === 'stable' ||
+          obj.maturity === 'deprecated'
             ? obj.maturity
             : null,
       };
@@ -106,7 +109,6 @@ function extractFrontmatterFields(blob: string): {
       if (val === 'draft' || val === 'beta' || val === 'stable' || val === 'deprecated') {
         maturity = val;
       }
-      continue;
     }
   }
   return { description, maturity };

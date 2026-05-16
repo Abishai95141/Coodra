@@ -1,9 +1,4 @@
-import {
-  type DbHandle,
-  findKillSwitchMatchingEvent,
-  type KillSwitchRecord,
-  listActiveKillSwitches,
-} from '@coodra/db';
+import { type DbHandle, findKillSwitchMatchingEvent, type KillSwitchRecord, listActiveKillSwitches } from '@coodra/db';
 import { createLogger } from '@coodra/shared';
 
 /**

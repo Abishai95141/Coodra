@@ -41,8 +41,7 @@ export async function revokeInviteAction(formData: FormData): Promise<void> {
   }
   if (existing.orgId !== actor.orgId) {
     redirect(
-      '/settings/team?error=' +
-        encodeURIComponent('Refusing to revoke an invite from a different organization'),
+      '/settings/team?error=' + encodeURIComponent('Refusing to revoke an invite from a different organization'),
     );
   }
   if (existing.usedAt !== null) {
@@ -53,18 +52,14 @@ export async function revokeInviteAction(formData: FormData): Promise<void> {
     );
   }
   if (existing.revokedAt !== null) {
-    redirect(
-      `/settings/team?error=${encodeURIComponent('That invite was already revoked. Nothing to do.')}`,
-    );
+    redirect(`/settings/team?error=${encodeURIComponent('That invite was already revoked. Nothing to do.')}`);
   }
 
   const updated = await revokeInvite({ jti, userId: actor.userId });
   if (updated === null) {
     // Race: another admin clicked Revoke at the same moment. Treat as
     // a no-op; the row is in the desired state.
-    redirect(
-      `/settings/team?error=${encodeURIComponent('Concurrent revoke; the invite is already disabled.')}`,
-    );
+    redirect(`/settings/team?error=${encodeURIComponent('Concurrent revoke; the invite is already disabled.')}`);
   }
 
   // Best-effort: revoke Clerk-side invitation too.

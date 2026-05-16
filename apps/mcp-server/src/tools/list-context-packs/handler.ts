@@ -94,8 +94,7 @@ export function createListContextPacksHandler(deps: ListContextPacksHandlerDeps)
       return {
         ok: false,
         error: 'project_not_found',
-        howToFix:
-          'Register this project via the Web App or run `coodra init` in the project root before retrying.',
+        howToFix: 'Register this project via the Web App or run `coodra init` in the project root before retrying.',
       };
     }
 
@@ -108,7 +107,7 @@ export function createListContextPacksHandler(deps: ListContextPacksHandlerDeps)
         return {
           ok: false,
           error: 'malformed_cursor',
-          howToFix: 'Pass a `cursor` value from a prior call\'s `nextCursor`, or omit it to start from the newest pack.',
+          howToFix: "Pass a `cursor` value from a prior call's `nextCursor`, or omit it to start from the newest pack.",
         };
       }
     }
@@ -196,9 +195,10 @@ export function createListContextPacksHandler(deps: ListContextPacksHandlerDeps)
     }
 
     const lastRow = pageRows[pageRows.length - 1];
-    const nextCursor = hasMore && lastRow !== undefined
-      ? encodeCursor({ lastCreatedAt: lastRow.createdAt.getTime(), lastId: lastRow.id })
-      : null;
+    const nextCursor =
+      hasMore && lastRow !== undefined
+        ? encodeCursor({ lastCreatedAt: lastRow.createdAt.getTime(), lastId: lastRow.id })
+        : null;
 
     return {
       ok: true,

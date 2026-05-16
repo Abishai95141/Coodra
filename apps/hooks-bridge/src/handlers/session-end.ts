@@ -7,8 +7,8 @@ import type { HookDispatchResult } from '../app.js';
 import { getActorIdentity } from '../lib/actor-identity.js';
 import { saveAutoContextPack } from '../lib/auto-context-pack.js';
 import type { ProjectSlugResolver } from '../lib/resolve-project-slug.js';
-import type { RunRecorder } from '../lib/run-recorder.js';
 import { runRunDiff } from '../lib/run-diff-runner.js';
+import type { RunRecorder } from '../lib/run-recorder.js';
 import { clearSessionState } from '../lib/session-state.js';
 
 /**

@@ -85,10 +85,7 @@ export function clearVerifyClerkJwtCache(): void {
  * same `token` for up to 30s OR until `expiresAt` — whichever comes
  * first. After that, a fresh `@clerk/backend::verifyToken` call lands.
  */
-export async function verifyClerkJwtAndExtractClaims(
-  token: string,
-  env: AuthEnv,
-): Promise<VerifiedClerkClaims> {
+export async function verifyClerkJwtAndExtractClaims(token: string, env: AuthEnv): Promise<VerifiedClerkClaims> {
   if (typeof token !== 'string' || token.length === 0) {
     throw new UnauthorizedError('verifyClerkJwtAndExtractClaims: token is empty');
   }

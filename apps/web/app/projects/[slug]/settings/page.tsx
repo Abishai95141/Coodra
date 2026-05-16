@@ -226,8 +226,7 @@ export default async function ProjectSettingsPage({
         {isSentinel ? (
           <Banner kind="warning">
             The <span className="font-mono">__global__</span> sentinel project (F7 invariant) cannot be reset from this
-            UI. Run <span className="font-mono">coodra project reset __global__ --force</span> after backing up
-            data.db.
+            UI. Run <span className="font-mono">coodra project reset __global__ --force</span> after backing up data.db.
           </Banner>
         ) : (
           <Card size="md">

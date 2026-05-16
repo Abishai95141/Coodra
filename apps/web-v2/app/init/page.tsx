@@ -54,8 +54,8 @@ export default async function InitWizardPage({ searchParams }: { searchParams: P
             </h1>
             <p className="head__lede">
               Web parity with <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span>.
-              Provisions <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>~/.coodra/data.db</span>
-              , scaffolds a feature pack at{' '}
+              Provisions <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>~/.coodra/data.db</span>,
+              scaffolds a feature pack at{' '}
               <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>
                 {`<cwd>/docs/feature-packs/<slug>/`}
               </span>
@@ -193,13 +193,15 @@ function Field(props: {
   readonly hint?: string;
 }) {
   const { label, name, placeholder, required, pattern, defaultValue, hint } = props;
+  const inputId = `field-${name}`;
   return (
     <div style={{ marginBottom: 18 }}>
-      <label style={fieldLabelStyle}>
+      <label htmlFor={inputId} style={fieldLabelStyle}>
         {label}
         {required === true ? <span style={{ color: 'var(--warn)' }}>*</span> : null}
       </label>
       <input
+        id={inputId}
         name={name}
         {...(placeholder !== undefined ? { placeholder } : {})}
         {...(required === true ? { required: true } : {})}
@@ -238,10 +240,13 @@ function SelectField({
   readonly defaultValue?: string;
   readonly hint?: string;
 }) {
+  const selectId = `select-${name}`;
   return (
     <div style={{ marginBottom: 18 }}>
-      <label style={fieldLabelStyle}>{label}</label>
-      <select name={name} defaultValue={defaultValue} style={fieldInputStyle}>
+      <label htmlFor={selectId} style={fieldLabelStyle}>
+        {label}
+      </label>
+      <select id={selectId} name={name} defaultValue={defaultValue} style={fieldInputStyle}>
         {options.map((opt) => (
           <option key={opt.value || '_none'} value={opt.value}>
             {opt.label}

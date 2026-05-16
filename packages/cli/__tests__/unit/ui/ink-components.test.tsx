@@ -136,14 +136,10 @@ describe('<TimelineRow>', () => {
 
 describe('<CommandRow>', () => {
   it('shows the cursor + bold name when active', () => {
-    const active = plain(
-      render(<CommandRow active name="coodra init" description="Set up Coodra" />).lastFrame(),
-    );
+    const active = plain(render(<CommandRow active name="coodra init" description="Set up Coodra" />).lastFrame());
     expect(active).toContain('▸');
     expect(active).toContain('coodra init');
-    const idle = plain(
-      render(<CommandRow active={false} name="coodra stop" description="Stop daemons" />).lastFrame(),
-    );
+    const idle = plain(render(<CommandRow active={false} name="coodra stop" description="Stop daemons" />).lastFrame());
     expect(idle).not.toContain('▸');
     expect(idle).toContain('coodra stop');
   });

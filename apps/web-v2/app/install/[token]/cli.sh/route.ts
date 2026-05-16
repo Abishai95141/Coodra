@@ -100,8 +100,7 @@ export async function GET(_request: Request, { params }: RouteParams): Promise<R
   // first `.` or `+` or `@`. If empty, fall back to "team member".
   const emailLocal = verification.payload.email.split('@')[0] ?? '';
   const firstSeg = emailLocal.split(/[.+]/)[0] ?? '';
-  const friendlyName =
-    firstSeg.length > 0 ? `${firstSeg.charAt(0).toUpperCase()}${firstSeg.slice(1)}` : 'team member';
+  const friendlyName = firstSeg.length > 0 ? `${firstSeg.charAt(0).toUpperCase()}${firstSeg.slice(1)}` : 'team member';
 
   // The script body. Kept deliberately readable so a paranoid teammate
   // can `curl -sSL .../cli.sh` and inspect before piping to `sh`.

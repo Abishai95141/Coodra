@@ -78,7 +78,7 @@ function loadInviteSecret(): Buffer {
   const raw = process.env.COODRA_INVITE_HMAC_SECRET;
   if (typeof raw !== 'string' || raw.length === 0) {
     throw new InviteSecretMissingError(
-      "COODRA_INVITE_HMAC_SECRET is not set. Generate one with `openssl rand -hex 32` and add it to the deployment env, then redeploy.",
+      'COODRA_INVITE_HMAC_SECRET is not set. Generate one with `openssl rand -hex 32` and add it to the deployment env, then redeploy.',
     );
   }
   // Prefer hex when the string looks like hex (64 chars, [0-9a-f]).
@@ -154,7 +154,11 @@ export function signInviteToken(payload: InviteTokenPayload): string {
  */
 export type VerifyResult =
   | { readonly ok: true; readonly payload: InviteTokenPayload }
-  | { readonly ok: false; readonly reason: 'malformed' | 'bad_signature' | 'bad_payload' | 'expired' | 'secret_misconfigured'; readonly howToFix: string };
+  | {
+      readonly ok: false;
+      readonly reason: 'malformed' | 'bad_signature' | 'bad_payload' | 'expired' | 'secret_misconfigured';
+      readonly howToFix: string;
+    };
 
 /**
  * Verify an invite token. Returns a `VerifyResult` discriminated

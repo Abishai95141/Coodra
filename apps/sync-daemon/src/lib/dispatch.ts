@@ -1,16 +1,5 @@
-import type {
-  OutboxDispatchHandler,
-  OutboxDispatchOutcome,
-  OutboxJob,
-  SyncLookup,
-} from '@coodra/cli/lib/outbox';
-import {
-  type DbHandle,
-  type PostgresHandle,
-  postgresSchema,
-  type SqliteHandle,
-  sqliteSchema,
-} from '@coodra/db';
+import type { OutboxDispatchHandler, OutboxDispatchOutcome, OutboxJob, SyncLookup } from '@coodra/cli/lib/outbox';
+import { type DbHandle, type PostgresHandle, postgresSchema, type SqliteHandle, sqliteSchema } from '@coodra/db';
 import { createLogger, type Logger } from '@coodra/shared';
 import { and, eq } from 'drizzle-orm';
 
@@ -440,7 +429,10 @@ async function ensureRunAndProjectInCloud(
     await localDb.db.select().from(sqliteSchema.runs).where(eq(sqliteSchema.runs.id, runId)).limit(1)
   )[0];
   if (!localRun) {
-    helperLog.warn({ event: 'ensure_parent_local_run_missing', runId }, 'local runs row missing; cannot push parent chain');
+    helperLog.warn(
+      { event: 'ensure_parent_local_run_missing', runId },
+      'local runs row missing; cannot push parent chain',
+    );
     return 'missing';
   }
   // Parent project first. If it's local-only (solo / global sentinel),
@@ -449,11 +441,20 @@ async function ensureRunAndProjectInCloud(
   // runs insert, which FK-failed and dead-lettered the job. Post-fix we
   // return 'local_only' so the caller's dependent insert is skipped too.
   const localProject = (
-    await localDb.db.select().from(sqliteSchema.projects).where(eq(sqliteSchema.projects.id, localRun.projectId)).limit(1)
+    await localDb.db
+      .select()
+      .from(sqliteSchema.projects)
+      .where(eq(sqliteSchema.projects.id, localRun.projectId))
+      .limit(1)
   )[0];
   if (localProject === undefined || localProject.id === '__global__' || LOCAL_ONLY_ORGS.has(localProject.orgId)) {
     helperLog.info(
-      { event: 'ensure_parent_local_only', runId, projectId: localRun.projectId, orgId: localProject?.orgId ?? '(no project row)' },
+      {
+        event: 'ensure_parent_local_only',
+        runId,
+        projectId: localRun.projectId,
+        orgId: localProject?.orgId ?? '(no project row)',
+      },
       'parent project is local-only; skipping cloud chain',
     );
     return 'local_only';

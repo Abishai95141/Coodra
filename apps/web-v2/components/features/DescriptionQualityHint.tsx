@@ -41,10 +41,7 @@ function evaluate(description: string): { rules: RuleResult[]; score: number } {
   const notTodo = !TODO_RE.test(desc) && desc.length > 0;
   const imperative = IMPERATIVE_RE.test(desc);
   const concrete =
-    /`[^`]+`/.test(desc) ||
-    /[a-z]+\.[a-z]+/i.test(desc) ||
-    /\/[A-Za-z]/.test(desc) ||
-    /\b[A-Z]{2,}\b/.test(desc);
+    /`[^`]+`/.test(desc) || /[a-z]+\.[a-z]+/i.test(desc) || /\/[A-Za-z]/.test(desc) || /\b[A-Z]{2,}\b/.test(desc);
   const rules: RuleResult[] = [
     { key: 'todo', label: 'No "TODO" placeholder', pass: notTodo },
     { key: 'len', label: '≥ 30 chars', pass: isLong },

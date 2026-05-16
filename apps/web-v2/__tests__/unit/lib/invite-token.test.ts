@@ -194,9 +194,7 @@ describe('invite-token round-trip', () => {
       Object.fromEntries(Object.entries(bogusPayload).sort(([a], [b]) => a.localeCompare(b))),
     );
     const encoded = Buffer.from(sortedJson).toString('base64url');
-    const sig = createHmac('sha256', Buffer.from(TEST_SECRET_HEX, 'hex'))
-      .update(encoded)
-      .digest('base64url');
+    const sig = createHmac('sha256', Buffer.from(TEST_SECRET_HEX, 'hex')).update(encoded).digest('base64url');
     const token = `${encoded}.${sig}`;
     const result = verifyInviteToken(token, Math.floor(Date.now() / 1000));
     expect(result.ok).toBe(false);

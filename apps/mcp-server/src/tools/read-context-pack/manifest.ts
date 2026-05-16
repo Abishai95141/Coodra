@@ -2,11 +2,7 @@ import type { IdempotencyKeyBuilder } from '../../framework/idempotency.js';
 import type { ToolRegistration } from '../../framework/tool-registry.js';
 
 import { createReadContextPackHandler, type ReadContextPackHandlerDeps } from './handler.js';
-import {
-  type ReadContextPackInput,
-  readContextPackInputSchema,
-  readContextPackOutputSchema,
-} from './schema.js';
+import { type ReadContextPackInput, readContextPackInputSchema, readContextPackOutputSchema } from './schema.js';
 
 /**
  * Registration factory for `coodra__read_context_pack` (M05 §5.2).

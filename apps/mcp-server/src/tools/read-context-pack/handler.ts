@@ -122,11 +122,7 @@ async function selectPackByRunId(db: DbHandle, runId: string): Promise<PackRow |
   return rows[0] ?? null;
 }
 
-async function selectDecisionsForRun(
-  db: DbHandle,
-  runId: string,
-  limit: number,
-): Promise<DecisionRow[]> {
+async function selectDecisionsForRun(db: DbHandle, runId: string, limit: number): Promise<DecisionRow[]> {
   if (db.kind === 'sqlite') {
     const d = sqliteSchema.decisions;
     return (await db.db
@@ -226,7 +222,12 @@ export function createReadContextPackHandler(deps: ReadContextPackHandlerDeps) {
   ): Promise<ReadContextPackOutput> {
     // Zod refine guarantees exactly one is set, but we double-check for
     // type narrowing.
-    const lookupKey = input.packId !== undefined ? { kind: 'pack' as const, value: input.packId } : input.runId !== undefined ? { kind: 'run' as const, value: input.runId } : null;
+    const lookupKey =
+      input.packId !== undefined
+        ? { kind: 'pack' as const, value: input.packId }
+        : input.runId !== undefined
+          ? { kind: 'run' as const, value: input.runId }
+          : null;
     if (lookupKey === null) {
       return {
         ok: false,
@@ -235,9 +236,10 @@ export function createReadContextPackHandler(deps: ReadContextPackHandlerDeps) {
       };
     }
 
-    const pack = lookupKey.kind === 'pack'
-      ? await selectPackByPackId(deps.db, lookupKey.value)
-      : await selectPackByRunId(deps.db, lookupKey.value);
+    const pack =
+      lookupKey.kind === 'pack'
+        ? await selectPackByPackId(deps.db, lookupKey.value)
+        : await selectPackByRunId(deps.db, lookupKey.value);
 
     if (pack === null) {
       handlerLogger.info(

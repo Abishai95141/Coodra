@@ -100,7 +100,10 @@ export async function fetchProjectHomeSnapshot(args: {
  * Async since Phase F.6+ — `listPacks()` is async now so it can query
  * the cloud Postgres in team-hosted mode + the local SQLite mirror.
  */
-export async function fetchProjectPackInfo(projectSlug: string, cwd: string = process.cwd()): Promise<ProjectHomePackInfo> {
+export async function fetchProjectPackInfo(
+  projectSlug: string,
+  cwd: string = process.cwd(),
+): Promise<ProjectHomePackInfo> {
   const allPacks = await listPacks(cwd);
   const bySlug = new Map(allPacks.map((p) => [p.slug, p]));
   const primary = bySlug.get(projectSlug) ?? null;

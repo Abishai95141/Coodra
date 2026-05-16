@@ -20,7 +20,7 @@ export function createGetFeatureToolRegistration(
     name: 'get_feature',
     title: 'Coodra: get_feature',
     description:
-      'Call when the user\'s prompt matches a skill\'s trigger description from `list_features` — never blindly ' +
+      "Call when the user's prompt matches a skill's trigger description from `list_features` — never blindly " +
       'pre-load. Features are pull-based SKILLS (single markdown + frontmatter + optional supporting files), ' +
       'distinct from Feature Packs which are MODULE blueprints (push, via `get_feature_pack`). Returns { ok: true, ' +
       'slug, frontmatter, body, files: [{path, bytes, modifiedAt}] } where `body` is the full feature.md content ' +

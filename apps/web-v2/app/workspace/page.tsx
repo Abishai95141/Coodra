@@ -96,8 +96,8 @@ export default async function WorkspacePage({ searchParams }: { searchParams: Pr
               Local <em>services</em>.
             </h1>
             <p className="head__lede">
-              All Coodra daemons running on this machine. Health-probed live; solo mode runs MCP + Hooks; team mode
-              adds Sync.
+              All Coodra daemons running on this machine. Health-probed live; solo mode runs MCP + Hooks; team mode adds
+              Sync.
             </p>
           </div>
           <div>

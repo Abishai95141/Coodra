@@ -61,10 +61,7 @@ export default async function PoliciesPage({
 
   return (
     <>
-      <Topbar
-        crumb="Policies"
-        crumbPrefix={scopedProject !== null ? `coodra / ${scopedProject.slug}` : 'coodra'}
-      />
+      <Topbar crumb="Policies" crumbPrefix={scopedProject !== null ? `coodra / ${scopedProject.slug}` : 'coodra'} />
       <section className="screen">
         <div className="head">
           <div>
@@ -132,8 +129,8 @@ export default async function PoliciesPage({
                 No rules <em>yet</em>.
               </strong>
               Add one below or run{' '}
-              <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span> to seed the
-              default chain.
+              <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)' }}>coodra init</span> to seed the default
+              chain.
             </div>
           ) : (
             <>
@@ -264,10 +261,16 @@ export default async function PoliciesPage({
             <form action={addRuleAction}>
               {projects.length > 1 ? (
                 <div className="field" style={{ marginBottom: 14 }}>
-                  <label className="field__label" style={fieldLabelStyle}>
+                  <label htmlFor="policy-project" className="field__label" style={fieldLabelStyle}>
                     Project
                   </label>
-                  <select name="projectId" defaultValue={projects[0]?.id ?? ''} style={fieldInputStyle} required>
+                  <select
+                    id="policy-project"
+                    name="projectId"
+                    defaultValue={projects[0]?.id ?? ''}
+                    style={fieldInputStyle}
+                    required
+                  >
                     {projects.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.slug}
@@ -371,9 +374,11 @@ function Field({
   required?: boolean;
   textarea?: boolean;
 }) {
+  const fieldId = `policy-field-${name}`;
   return (
     <div className="field" style={{ marginBottom: 14 }}>
       <label
+        htmlFor={fieldId}
         className="field__label"
         style={{
           fontFamily: 'var(--mono)',
@@ -388,21 +393,29 @@ function Field({
         {label}
       </label>
       {textarea ? (
-        <textarea name={name} placeholder={placeholder} required={required} style={fieldInputStyle} rows={2} />
+        <textarea
+          id={fieldId}
+          name={name}
+          placeholder={placeholder}
+          required={required}
+          style={fieldInputStyle}
+          rows={2}
+        />
       ) : (
-        <input name={name} placeholder={placeholder} required={required} style={fieldInputStyle} />
+        <input id={fieldId} name={name} placeholder={placeholder} required={required} style={fieldInputStyle} />
       )}
     </div>
   );
 }
 
 function SelectField({ label, name, options }: { label: string; name: string; options: ReadonlyArray<string> }) {
+  const selectId = `policy-select-${name}`;
   return (
     <div className="field" style={{ marginBottom: 14 }}>
-      <label className="field__label" style={fieldLabelStyle}>
+      <label htmlFor={selectId} className="field__label" style={fieldLabelStyle}>
         {label}
       </label>
-      <select name={name} style={fieldInputStyle}>
+      <select id={selectId} name={name} style={fieldInputStyle}>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}

@@ -49,10 +49,10 @@ export default async function WelcomePage() {
               Pick your <em>path</em>.
             </h1>
             <p className="head__lede">
-              Coodra is MIT, fully self-hosted. There is no Coodra-operated service — every team brings their
-              own Postgres + Clerk and runs everything on machines they own. Three paths in: solo (no cloud), create
-              a new team (you'll be the admin), or connect to an existing team (someone already set it up and gave
-              you the bundle).
+              Coodra is MIT, fully self-hosted. There is no Coodra-operated service — every team brings their own
+              Postgres + Clerk and runs everything on machines they own. Three paths in: solo (no cloud), create a new
+              team (you'll be the admin), or connect to an existing team (someone already set it up and gave you the
+              bundle).
             </p>
           </div>
           <div>
@@ -142,14 +142,14 @@ export default async function WelcomePage() {
             tagline="Anyone with a credential bundle: admin-on-new-machine, member, viewer."
             bullets={[
               'Paste the 5-piece bundle your admin shared.',
-              'Web validates against your team\'s Postgres in seconds.',
+              "Web validates against your team's Postgres in seconds.",
               'No CLI knowledge required — same flow on first machine + replacement.',
               'Your role (admin / member / viewer) lives in Clerk, not on this laptop.',
             ]}
             need={[
-              'Your team\'s database URL.',
+              "Your team's database URL.",
               'Your own Clerk user id.',
-              'The team\'s org id + hook secret.',
+              "The team's org id + hook secret.",
               'Clerk publishable + secret keys.',
             ]}
             cta={{ href: '/onboarding/team/join', label: 'Connect to team' }}
@@ -194,10 +194,12 @@ export default async function WelcomePage() {
             About self-hosted team mode
           </div>
           <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.7, marginBottom: 8 }}>
-            Coodra doesn't operate any service. <strong style={{ color: 'var(--ink)' }}>Your team's identity is
-            the tuple (your Supabase project, your Clerk org)</strong>. There's no central directory to look up; the
-            credential bundle is the team. That's the trade — you own everything, including the cost of losing the
-            credentials if you don't store them safely.
+            Coodra doesn't operate any service.{' '}
+            <strong style={{ color: 'var(--ink)' }}>
+              Your team's identity is the tuple (your Supabase project, your Clerk org)
+            </strong>
+            . There's no central directory to look up; the credential bundle is the team. That's the trade — you own
+            everything, including the cost of losing the credentials if you don't store them safely.
           </p>
           <p style={{ fontSize: 13, color: 'var(--ink-dim)', lineHeight: 1.7 }}>
             "Connect to existing team" works for the same person on a new laptop, a new teammate joining, or a viewer
@@ -233,7 +235,16 @@ function ModeCard(props: {
     >
       <div>
         <div className="pack__num">{props.badge}</div>
-        <h2 style={{ fontFamily: 'var(--serif)', fontSize: 56, lineHeight: 1, fontWeight: 400, letterSpacing: '-0.02em', marginTop: 12 }}>
+        <h2
+          style={{
+            fontFamily: 'var(--serif)',
+            fontSize: 56,
+            lineHeight: 1,
+            fontWeight: 400,
+            letterSpacing: '-0.02em',
+            marginTop: 12,
+          }}
+        >
           {props.title}
         </h2>
         <p style={{ fontSize: 15, color: 'var(--ink-dim)', marginTop: 14, lineHeight: 1.55 }}>{props.tagline}</p>
@@ -294,7 +305,16 @@ function ModeCard(props: {
         >
           You’ll need
         </div>
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: '0 0 24px 0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+        >
           {props.need.map((n) => (
             <li
               key={n}
@@ -310,7 +330,11 @@ function ModeCard(props: {
             </li>
           ))}
         </ul>
-        <Link href={props.cta.href} className={`btn ${props.ctaTone === 'accent' ? 'btn--accent' : ''}`} style={{ display: 'inline-block' }}>
+        <Link
+          href={props.cta.href}
+          className={`btn ${props.ctaTone === 'accent' ? 'btn--accent' : ''}`}
+          style={{ display: 'inline-block' }}
+        >
           {props.cta.label}
         </Link>
       </div>
@@ -369,8 +393,8 @@ function SignedInRedirectHint({ orgSlug }: { readonly orgSlug: string }) {
               You're <em>in.</em>
             </h1>
             <p className="head__lede">
-              Signed into <strong>{orgSlug}</strong>. This deployment serves a single team — there's no mode picker
-              for you to navigate here. Head to the dashboard.
+              Signed into <strong>{orgSlug}</strong>. This deployment serves a single team — there's no mode picker for
+              you to navigate here. Head to the dashboard.
             </p>
           </div>
         </div>
