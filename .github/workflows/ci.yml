@@ -174,7 +174,15 @@ jobs:
           pnpm --filter @coodra/hooks-bridge build
 
       - name: Integration tests (Postgres migrations + hooks-bridge auth chain + mcp-server boot)
-        run: pnpm test:integration
+        # `--concurrency=1` is load-bearing: each workspace's integration
+        # suite owns the shared CI Postgres exclusively for its run (the
+        # tests DROP / re-migrate the public schema in `beforeAll`). With
+        # default parallelism turbo would race apps/sync-daemon and apps/
+        # mcp-server against each other and one would wipe the other's
+        # tables mid-test. Cross-workspace test isolation via per-suite
+        # schemas / databases is the proper long-term fix; for now,
+        # serializing the integration step is the surgical, correct call.
+        run: pnpm exec turbo run test:integration --concurrency=1
 
   hook-adapter-smoke:
     name: hook-adapter shell scripts (windsurf + cursor)
