@@ -56,15 +56,31 @@ jobs:
         # command (see packages/db/scripts/check-migration-lock.mjs).
         run: pnpm --filter @coodra/db run check:migration-lock
 
-      - name: Build @coodra/web-v2 (required for cli bundle + services tests)
-        # The cli's bundle.mjs copies apps/web-v2/.next/standalone into
-        # dist/runtime/web/. bundle.mjs soft-skips when the standalone
-        # tree is missing (cli builds still succeed in workspace dev),
-        # but the cli's services.test.ts asserts `dist/runtime/web/apps/
-        # web-v2/server.js` resolves through `resolveRuntimeBinary` —
-        # so on CI we must produce the standalone tree before tests run.
-        # ~30-60s once per verify job.
-        run: pnpm --filter @coodra/web-v2 build
+      - name: Build workspace packages in dep order (required for tests)
+        # On a clean CI checkout, none of the workspace dist/ trees exist.
+        # The verify job needs them populated before lint/typecheck/test:
+        #
+        #   - shared/db/policy: web-v2's next build resolves imports via
+        #     each package's `exports` map, which points into dist/.
+        #   - cli (tsc-only): web-v2 imports `@coodra/cli/lib/*` subpaths
+        #     that only exist after tsc emits them. We skip the bundle
+        #     step here because the bundle copies apps/web-v2/.next/
+        #     standalone, which doesn't exist yet on a clean checkout.
+        #   - web-v2: produces .next/standalone/ which the next step
+        #     consumes.
+        #   - cli (full build): now that web-v2's standalone exists, the
+        #     full cli build's bundle.mjs picks it up and writes
+        #     dist/runtime/web/. cli's services.test.ts asserts this path
+        #     resolves via `resolveRuntimeBinary`.
+        #
+        # ~90s wall clock the first time; turbo caches subsequent runs.
+        run: |
+          pnpm --filter @coodra/shared build
+          pnpm --filter @coodra/db build
+          pnpm --filter @coodra/policy build
+          pnpm --filter @coodra/cli build:tsc-only
+          pnpm --filter @coodra/web-v2 build
+          pnpm --filter @coodra/cli build
 
       - name: Lint
         run: pnpm lint
