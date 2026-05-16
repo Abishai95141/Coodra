@@ -56,6 +56,16 @@ jobs:
         # command (see packages/db/scripts/check-migration-lock.mjs).
         run: pnpm --filter @coodra/db run check:migration-lock
 
+      - name: Build @coodra/web-v2 (required for cli bundle + services tests)
+        # The cli's bundle.mjs copies apps/web-v2/.next/standalone into
+        # dist/runtime/web/. bundle.mjs soft-skips when the standalone
+        # tree is missing (cli builds still succeed in workspace dev),
+        # but the cli's services.test.ts asserts `dist/runtime/web/apps/
+        # web-v2/server.js` resolves through `resolveRuntimeBinary` —
+        # so on CI we must produce the standalone tree before tests run.
+        # ~30-60s once per verify job.
+        run: pnpm --filter @coodra/web-v2 build
+
       - name: Lint
         run: pnpm lint
 
